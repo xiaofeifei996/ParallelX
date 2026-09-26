@@ -90,8 +90,7 @@ static BOOL PXSetFrame(id object, CGRect frame)
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (!mutable || !PXSetBool(mutable, @"setBackgrounded:", NO)) return NO;
     PXSetBool(mutable, @"setForeground:", YES);
-    // iOS 15 renders the Scene at the full display size; the Swift canvas
-    // scales that finished layer into the smaller floating window.
+    // Keep the Scene at display size; scale its host only after attachment.
     if (!PXSetFrame(mutable, UIScreen.mainScreen.bounds)) return NO;
     SEL update = NSSelectorFromString(@"updateSettings:withTransitionContext:");
     if (![scene respondsToSelector:update]) return NO;

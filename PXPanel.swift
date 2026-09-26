@@ -228,8 +228,11 @@ public final class PXPanelEntry: NSObject {
         guard let scene = activeScene() else { return }
         closeHost(animated: false)
         let screen = scene.coordinateSpace.bounds
-        let width = screen.width * 0.78
-        let height = min(screen.height * 0.72, screen.height - 120)
+        let source = UIScreen.main.bounds.size
+        let scale = min(screen.width * 0.78 / source.width,
+                        (screen.height - 160 - 44) / source.height)
+        let width = source.width * scale
+        let height = source.height * scale + 44
         let frame = CGRect(x: (screen.width - width) / 2,
                            y: (screen.height - height) / 2,
                            width: width, height: height)
@@ -262,11 +265,9 @@ public final class PXPanelEntry: NSObject {
         clip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         clip.clipsToBounds = true
         card.addSubview(clip)
-        let canvas = UIView(frame: UIScreen.main.bounds)
-        let scaleX = clip.bounds.width / max(canvas.bounds.width, 1)
-        let scaleY = clip.bounds.height / max(canvas.bounds.height, 1)
-        canvas.transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
+        let canvas = UIView(frame: CGRect(origin: .zero, size: source))
         canvas.center = CGPoint(x: clip.bounds.midX, y: clip.bounds.midY)
+        canvas.alpha = 0
         clip.addSubview(canvas)
         let spinner = UIActivityIndicatorView(style: .medium)
         spinner.center = CGPoint(x: width / 2, y: height / 2)
@@ -285,7 +286,12 @@ public final class PXPanelEntry: NSObject {
         PXSceneBridge.shared().openApplication(bundleID, in: canvas) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
-            if !success { self.closeHost(animated: true) }
+            if success {
+                UIView.performWithoutAnimation {
+                    canvas.transform = CGAffineTransform(scaleX: scale, y: scale)
+                    canvas.alpha = 1
+                }
+            } else { self.closeHost(animated: true) }
         }
     }
 

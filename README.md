@@ -3,7 +3,7 @@
 Minimal iOS 15 / Dopamine RootHide / arm64e floating-app experiment. This is
 a new project: it does not package or link Myrtle or MoxuanSplit.
 
-Alpha 1 scope: select applications in Settings, pull a narrow panel from the
+Alpha scope: select applications in Settings, pull a narrow panel from the
 right edge, tap one application to open a single floating window, and close it
 with the title-bar button. There are no shortcuts, radial selector, resize,
 multiple windows, or background-card changes.
