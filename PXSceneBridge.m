@@ -10,13 +10,6 @@ static id PXCall(id object, NSString *name)
         ? ((id (*)(id, SEL))objc_msgSend)(object, selector) : nil;
 }
 
-static id PXCallObject(id object, NSString *name, id value)
-{
-    SEL selector = NSSelectorFromString(name);
-    return [object respondsToSelector:selector]
-        ? ((id (*)(id, SEL, id))objc_msgSend)(object, selector, value) : nil;
-}
-
 static id PXIvar(id object, const char *name)
 {
     if (!object) return nil;
