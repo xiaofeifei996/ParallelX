@@ -1,5 +1,6 @@
 #import "PXAppCatalog.h"
 #import <objc/message.h>
+#import <string.h>
 
 static id PXRead(id object, NSString *name)
 {
@@ -19,7 +20,9 @@ NSArray<NSDictionary<NSString *, NSString *> *> *PXInstalledApplications(void)
         if (![bundleID isKindOfClass:NSString.class] || bundleID.length == 0 ||
             [bundleID isEqualToString:@"com.apple.springboard"]) continue;
         SEL hiddenSelector = NSSelectorFromString(@"isHidden");
-        if ([proxy respondsToSelector:hiddenSelector] &&
+        NSMethodSignature *hiddenSignature = [proxy methodSignatureForSelector:hiddenSelector];
+        if (hiddenSignature && hiddenSignature.numberOfArguments == 2 &&
+            strcmp(hiddenSignature.methodReturnType, @encode(BOOL)) == 0 &&
             ((BOOL (*)(id, SEL))objc_msgSend)(proxy, hiddenSelector)) continue;
         NSString *name = PXRead(proxy, @"localizedName");
         if (![name isKindOfClass:NSString.class] || name.length == 0)

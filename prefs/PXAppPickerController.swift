@@ -43,7 +43,10 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         let id = apps[indexPath.row].id
         if let index = selected.firstIndex(of: id) { selected.remove(at: index) }
         else { selected.append(id) }
-        UserDefaults(suiteName: domain)?.set(selected, forKey: "applications")
+        let names = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0.name) })
+        let defaults = UserDefaults(suiteName: domain)
+        defaults?.set(selected, forKey: "applications")
+        defaults?.set(names, forKey: "applicationNames")
         tableView.reloadRows(at: [indexPath], with: .none)
         tableView.deselectRow(at: indexPath, animated: true)
     }

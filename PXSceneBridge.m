@@ -1,6 +1,7 @@
 #import "PXSceneBridge.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import <string.h>
 
 static id PXCall(id object, NSString *name)
 {
@@ -82,8 +83,12 @@ static BOOL PXSetFrame(id object, CGRect frame)
     id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
     SEL selector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
     NSMethodSignature *signature = [workspace methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments != 4) return NO;
-    return ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, YES);
+    if (signature && signature.numberOfArguments == 4)
+        return ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, YES);
+    id springBoard = UIApplication.sharedApplication;
+    signature = [springBoard methodSignatureForSelector:selector];
+    return signature && signature.numberOfArguments == 4 &&
+        ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, YES);
 }
 
 - (BOOL)foregroundScene:(id)scene

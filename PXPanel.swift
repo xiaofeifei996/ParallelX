@@ -143,12 +143,10 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func selectedApps() -> [(id: String, name: String)] {
-        let ids = UserDefaults(suiteName: preferenceDomain)?.stringArray(forKey: "applications") ?? []
-        let names = Dictionary(uniqueKeysWithValues: PXInstalledApplications().compactMap { app -> (String, String)? in
-            guard let id = app["id"], let name = app["name"] else { return nil }
-            return (id, name)
-        })
-        return ids.compactMap { id in names[id].map { (id: id, name: $0) } }
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let ids = defaults?.stringArray(forKey: "applications") ?? []
+        let names = defaults?.dictionary(forKey: "applicationNames") as? [String: String] ?? [:]
+        return ids.map { (id: $0, name: names[$0] ?? $0) }
     }
 
     private func beginPanel() {
