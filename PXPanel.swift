@@ -282,7 +282,7 @@ public final class PXPanelEntry: NSObject {
             card.alpha = 1
             card.transform = .identity
         }
-        PXSceneBridge.sharedBridge().openApplication(bundleID, in: canvas) { [weak self, weak window] success in
+        PXSceneBridge.shared().openApplication(bundleID, in: canvas) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
             if !success { self.closeHost(animated: true) }
@@ -294,7 +294,7 @@ public final class PXPanelEntry: NSObject {
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
         hostWindow = nil
-        PXSceneBridge.sharedBridge().close()
+        PXSceneBridge.shared().close()
         let finish = {
             window.isHidden = true
             window.rootViewController = nil
