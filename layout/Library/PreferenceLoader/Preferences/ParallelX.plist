@@ -1,0 +1,9 @@
+{
+    entry = {
+        bundle = "ParallelXPrefs";
+        cell = PSLinkCell;
+        detail = "PXRootListController";
+        isController = 1;
+        label = "ParallelX";
+    };
+}

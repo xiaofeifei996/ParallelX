@@ -1,0 +1,8 @@
+{
+    title = "ParallelX";
+    items = (
+        { cell = PSGroupCell; label = "分屏应用"; },
+        { cell = PSButtonCell; label = "添加或移除应用"; action = openPicker; },
+        { cell = PSGroupCell; footerText = "从屏幕右侧手柄向内拖出面板，点选应用打开窗口。窗口右上角可关闭。仅供 iOS 15 RootHide 初期测试。"; }
+    );
+}
