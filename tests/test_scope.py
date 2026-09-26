@@ -20,4 +20,5 @@ assert '_UISceneLayerHostContainerView' in bridge
 assert "PXSetFrame(mutable, originalFrame)" in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
 assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSettings:withTransitionContext:completion:', '')
+assert 'com.moxuan.parallelx.scene.log' in bridge
 assert not list(root.rglob("*.dylib")), "The project must not carry Myrtle binaries"
