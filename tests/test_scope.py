@@ -18,4 +18,6 @@ assert "let canvas = UIView(frame: clip.bounds)" in panel
 assert "inFrame:strongSelf.canvas.bounds" in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert "PXSetFrame(mutable, originalFrame)" in bridge
+assert 'updateSettings:withTransitionContext:completion:' in bridge
+assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSettings:withTransitionContext:completion:', '')
 assert not list(root.rglob("*.dylib")), "The project must not carry Myrtle binaries"

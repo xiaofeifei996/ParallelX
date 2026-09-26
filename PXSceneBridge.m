@@ -47,6 +47,15 @@ static CGRect PXFrame(id object)
         ? ((CGRect (*)(id, SEL))objc_msgSend)(object, selector) : CGRectZero;
 }
 
+static BOOL PXUpdateScene(id scene, id settings)
+{
+    SEL selector = NSSelectorFromString(@"updateSettings:withTransitionContext:completion:");
+    NSMethodSignature *signature = [scene methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments != 5) return NO;
+    ((void (*)(id, SEL, id, id, id))objc_msgSend)(scene, selector, settings, nil, nil);
+    return YES;
+}
+
 @interface PXSceneBridge ()
 @property(nonatomic, strong) id scene;
 @property(nonatomic, strong) UIView *hostView;
@@ -102,10 +111,8 @@ static CGRect PXFrame(id object)
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", YES);
     if (!PXSetFrame(mutable, frame)) return NO;
-    SEL update = NSSelectorFromString(@"updateSettings:withTransitionContext:");
-    if (![scene respondsToSelector:update]) return NO;
     self.originalSceneFrame = PXFrame(settings);
-    ((void (*)(id, SEL, id, id))objc_msgSend)(scene, update, mutable, nil);
+    if (!PXUpdateScene(scene, mutable)) return NO;
     self.scene = scene;
     return YES;
 }
@@ -228,9 +235,7 @@ static CGRect PXFrame(id object)
     if (scene && !CGRectIsEmpty(originalFrame)) {
         id settings = PXCall(scene, @"settings");
         id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
-        SEL update = NSSelectorFromString(@"updateSettings:withTransitionContext:");
-        if (PXSetFrame(mutable, originalFrame) && [scene respondsToSelector:update])
-            ((void (*)(id, SEL, id, id))objc_msgSend)(scene, update, mutable, nil);
+        if (PXSetFrame(mutable, originalFrame)) PXUpdateScene(scene, mutable);
     }
 }
 
