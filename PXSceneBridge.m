@@ -29,22 +29,36 @@ static BOOL PXSetBool(id object, NSString *name, BOOL value)
     return YES;
 }
 
-static BOOL PXSetFrame(id object, CGRect frame)
+static CGRect PXRect(id object, NSString *name)
 {
-    SEL selector = NSSelectorFromString(@"setFrame:");
-    NSMethodSignature *signature = [object methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments != 3 ||
-        strcmp([signature getArgumentTypeAtIndex:2], @encode(CGRect)) != 0) return NO;
-    ((void (*)(id, SEL, CGRect))objc_msgSend)(object, selector, frame);
-    return YES;
-}
-
-static CGRect PXFrame(id object)
-{
-    SEL selector = NSSelectorFromString(@"frame");
+    SEL selector = NSSelectorFromString(name);
     NSMethodSignature *signature = [object methodSignatureForSelector:selector];
     return signature && strcmp(signature.methodReturnType, @encode(CGRect)) == 0
         ? ((CGRect (*)(id, SEL))objc_msgSend)(object, selector) : CGRectZero;
+}
+
+static BOOL PXSetSceneFrame(id settings, CGSize size)
+{
+    SEL selector = NSSelectorFromString(@"setFrame:");
+    NSMethodSignature *signature = [settings methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments != 3 ||
+        strcmp([signature getArgumentTypeAtIndex:2], @encode(CGRect)) != 0) return NO;
+    ((void (*)(id, SEL, CGRect))objc_msgSend)(settings, selector,
+        (CGRect){CGPointZero, size});
+    return YES;
+}
+
+static CGSize PXSourceSize(id settings)
+{
+    // The server frame can retain a stale floating size. The display is the
+    // canonical full-screen source that every hosted app renders into.
+    CGSize size = PXRect(PXCall(settings, @"displayConfiguration"), @"bounds").size;
+    if (size.width <= 0 || size.height <= 0)
+        size = UIScreen.mainScreen.bounds.size;
+    CGRect sceneFrame = PXRect(settings, @"frame");
+    if (sceneFrame.size.width > sceneFrame.size.height && size.width < size.height)
+        size = CGSizeMake(size.height, size.width);
+    return size;
 }
 
 static BOOL PXUpdateScene(id scene, id settings)
@@ -61,7 +75,7 @@ static BOOL PXUpdateScene(id scene, id settings)
 @property(nonatomic, strong) UIView *hostView;
 @property(nonatomic, strong) id presentationContext;
 @property(nonatomic, weak) UIView *canvas;
-@property(nonatomic, assign) CGRect originalSceneFrame;
+@property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) NSUInteger generation;
 @end
 
@@ -103,17 +117,18 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, YES);
 }
 
-- (BOOL)foregroundScene:(id)scene inFrame:(CGRect)frame
+- (BOOL)foregroundScene:(id)scene
 {
     id settings = PXCall(scene, @"settings");
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (!mutable || !PXSetBool(mutable, @"setBackgrounded:", NO)) return NO;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", YES);
-    if (!PXSetFrame(mutable, frame)) return NO;
-    self.originalSceneFrame = PXFrame(settings);
+    CGSize sourceSize = PXSourceSize(settings);
+    if (!PXSetSceneFrame(mutable, sourceSize)) return NO;
     if (!PXUpdateScene(scene, mutable)) return NO;
     self.scene = scene;
+    self.sourceSize = sourceSize;
     return YES;
 }
 
@@ -160,7 +175,7 @@ static BOOL PXUpdateScene(id scene, id settings)
         @try {
             id scene = [strongSelf sceneForBundleID:bundleID];
             if (scene && scene != preparedScene &&
-                [strongSelf foregroundScene:scene inFrame:strongSelf.canvas.bounds])
+                [strongSelf foregroundScene:scene])
                 preparedScene = scene;
             if (scene && scene == preparedScene) {
                 NSArray *layers = [strongSelf mainLayersForScene:scene];
@@ -184,9 +199,12 @@ static BOOL PXUpdateScene(id scene, id settings)
                                 ((void (*)(id, SEL, NSInteger))objc_msgSend)(context, style,
                                     UIScreen.mainScreen.traitCollection.userInterfaceStyle);
                             ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
-                            host.frame = strongSelf.canvas.bounds;
-                            host.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-                                                    UIViewAutoresizingFlexibleHeight;
+                            CGSize source = strongSelf.sourceSize;
+                            CGSize target = strongSelf.canvas.bounds.size;
+                            host.layer.anchorPoint = CGPointZero;
+                            host.frame = (CGRect){CGPointZero, source};
+                            host.transform = CGAffineTransformMakeScale(target.width / source.width,
+                                                                         target.height / source.height);
                             [strongSelf.canvas addSubview:host];
                             strongSelf.presentationContext = context;
                             strongSelf.hostView = host;
@@ -217,12 +235,10 @@ static BOOL PXUpdateScene(id scene, id settings)
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     self.generation += 1;
     UIView *host = self.hostView;
-    id scene = self.scene;
-    CGRect originalFrame = self.originalSceneFrame;
     self.hostView = nil;
     self.scene = nil;
     self.canvas = nil;
-    self.originalSceneFrame = CGRectZero;
+    self.sourceSize = CGSizeZero;
     SEL invalidate = NSSelectorFromString(@"invalidate");
     for (UIView *child in [host.subviews copy]) {
         if ([child respondsToSelector:invalidate])
@@ -232,11 +248,6 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
     [host removeFromSuperview];
     self.presentationContext = nil;
-    if (scene && !CGRectIsEmpty(originalFrame)) {
-        id settings = PXCall(scene, @"settings");
-        id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
-        if (PXSetFrame(mutable, originalFrame)) PXUpdateScene(scene, mutable);
-    }
 }
 
 @end
