@@ -1,7 +1,6 @@
 #import "PXSceneBridge.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
-#import <QuartzCore/QuartzCore.h>
 #import <string.h>
 
 static id PXCall(id object, NSString *name)
@@ -55,36 +54,6 @@ static BOOL PXUpdateScene(id scene, id settings)
     if (!signature || signature.numberOfArguments != 5) return NO;
     ((void (*)(id, SEL, id, id, id))objc_msgSend)(scene, selector, settings, nil, nil);
     return YES;
-}
-
-static void PXAppendViewGeometry(NSMutableString *log, UIView *view, NSString *label)
-{
-    [log appendFormat:@"%@ %@ frame=%@ bounds=%@ layer=%@\n", label,
-        NSStringFromClass(view.class), NSStringFromCGRect(view.frame),
-        NSStringFromCGRect(view.bounds), NSStringFromCGRect(view.layer.frame)];
-    id sceneLayer = PXCall(view, @"sceneLayer");
-    if ([sceneLayer isKindOfClass:CALayer.class])
-        [log appendFormat:@"%@ sceneLayer=%@ bounds=%@\n", label,
-            NSStringFromCGRect(((CALayer *)sceneLayer).frame),
-            NSStringFromCGRect(((CALayer *)sceneLayer).bounds)];
-}
-
-static void PXWriteGeometry(id scene, UIView *canvas, UIView *host)
-{
-    NSMutableString *log = [NSMutableString stringWithFormat:
-        @"scene=%@ screen=%@ window=%@ canvas=%@\n", NSStringFromCGRect(PXFrame(PXCall(scene, @"settings"))),
-        NSStringFromCGRect(UIScreen.mainScreen.bounds), NSStringFromCGRect(canvas.window.frame),
-        NSStringFromCGRect(canvas.bounds)];
-    PXAppendViewGeometry(log, host, @"host");
-    NSUInteger count = 0;
-    for (UIView *child in host.subviews) {
-        if (count++ == 12) break;
-        PXAppendViewGeometry(log, child, @"child");
-        for (UIView *grandchild in [child.subviews subarrayWithRange:NSMakeRange(0, MIN(child.subviews.count, 4))])
-            PXAppendViewGeometry(log, grandchild, @"grandchild");
-    }
-    [log writeToFile:@"/var/mobile/Library/Preferences/com.moxuan.parallelx.scene.log"
-          atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
 @interface PXSceneBridge ()
@@ -221,11 +190,6 @@ static void PXWriteGeometry(id scene, UIView *canvas, UIView *host)
                             [strongSelf.canvas addSubview:host];
                             strongSelf.presentationContext = context;
                             strongSelf.hostView = host;
-                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
-                                           dispatch_get_main_queue(), ^{
-                                if (strongSelf.generation == generation && strongSelf.canvas)
-                                    PXWriteGeometry(scene, strongSelf.canvas, host);
-                            });
                             completion(YES);
                             retry = nil;
                             return;

@@ -244,6 +244,7 @@ public final class PXPanelEntry: NSObject {
         card.layer.cornerCurve = .continuous
         card.clipsToBounds = true
         window.rootViewController = root
+        card.frame = window.bounds
         let bar = UIView(frame: CGRect(x: 0, y: 0, width: width, height: 44))
         bar.autoresizingMask = .flexibleWidth
         let title = UILabel(frame: CGRect(x: 16, y: 0, width: width - 74, height: 44))
