@@ -39,10 +39,20 @@ static BOOL PXSetFrame(id object, CGRect frame)
     return YES;
 }
 
+static CGRect PXFrame(id object)
+{
+    SEL selector = NSSelectorFromString(@"frame");
+    NSMethodSignature *signature = [object methodSignatureForSelector:selector];
+    return signature && strcmp(signature.methodReturnType, @encode(CGRect)) == 0
+        ? ((CGRect (*)(id, SEL))objc_msgSend)(object, selector) : CGRectZero;
+}
+
 @interface PXSceneBridge ()
 @property(nonatomic, strong) id scene;
 @property(nonatomic, strong) UIView *hostView;
+@property(nonatomic, strong) id presentationContext;
 @property(nonatomic, weak) UIView *canvas;
+@property(nonatomic, assign) CGRect originalSceneFrame;
 @property(nonatomic, assign) NSUInteger generation;
 @end
 
@@ -84,17 +94,19 @@ static BOOL PXSetFrame(id object, CGRect frame)
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, YES);
 }
 
-- (BOOL)foregroundScene:(id)scene
+- (BOOL)foregroundScene:(id)scene inFrame:(CGRect)frame
 {
     id settings = PXCall(scene, @"settings");
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (!mutable || !PXSetBool(mutable, @"setBackgrounded:", NO)) return NO;
     PXSetBool(mutable, @"setForeground:", YES);
-    // Keep the Scene at display size; scale its host only after attachment.
-    if (!PXSetFrame(mutable, UIScreen.mainScreen.bounds)) return NO;
+    PXSetBool(mutable, @"setAllowsSelection:", YES);
+    if (!PXSetFrame(mutable, frame)) return NO;
     SEL update = NSSelectorFromString(@"updateSettings:withTransitionContext:");
     if (![scene respondsToSelector:update]) return NO;
+    self.originalSceneFrame = PXFrame(settings);
     ((void (*)(id, SEL, id, id))objc_msgSend)(scene, update, mutable, nil);
+    self.scene = scene;
     return YES;
 }
 
@@ -140,26 +152,41 @@ static BOOL PXSetFrame(id object, CGRect frame)
         }
         @try {
             id scene = [strongSelf sceneForBundleID:bundleID];
-            if (scene && scene != preparedScene && [strongSelf foregroundScene:scene])
+            if (scene && scene != preparedScene &&
+                [strongSelf foregroundScene:scene inFrame:strongSelf.canvas.bounds])
                 preparedScene = scene;
             if (scene && scene == preparedScene) {
                 NSArray *layers = [strongSelf mainLayersForScene:scene];
-                Class hostClass = NSClassFromString(@"_UIContextLayerHostView");
-                SEL initializer = NSSelectorFromString(@"initWithSceneLayer:");
-                if (layers.count && [hostClass instancesRespondToSelector:initializer]) {
-                    id view = ((id (*)(id, SEL, id))objc_msgSend)([hostClass alloc], initializer,
-                                                                  layers.firstObject);
-                    if ([view isKindOfClass:UIView.class]) {
-                        UIView *host = view;
-                        host.frame = strongSelf.canvas.bounds;
-                        host.autoresizingMask = UIViewAutoresizingFlexibleWidth |
-                                                UIViewAutoresizingFlexibleHeight;
-                        [strongSelf.canvas addSubview:host];
-                        strongSelf.scene = scene;
-                        strongSelf.hostView = host;
-                        completion(YES);
-                        retry = nil;
-                        return;
+                Class hostClass = NSClassFromString(@"_UISceneLayerHostContainerView");
+                Class contextClass = NSClassFromString(@"UIScenePresentationContext");
+                SEL initializer = NSSelectorFromString(@"initWithScene:debugDescription:");
+                SEL contextInitializer = NSSelectorFromString(@"_initWithDefaultValues");
+                SEL bindContext = NSSelectorFromString(@"_setPresentationContext:");
+                if (layers.count && [hostClass instancesRespondToSelector:initializer] &&
+                    [hostClass instancesRespondToSelector:bindContext] &&
+                    [contextClass instancesRespondToSelector:contextInitializer]) {
+                    id context = ((id (*)(id, SEL))objc_msgSend)([contextClass alloc],
+                                                                   contextInitializer);
+                    if (context) {
+                        id view = ((id (*)(id, SEL, id, id))objc_msgSend)([hostClass alloc],
+                            initializer, scene, @"ParallelX");
+                        if ([view isKindOfClass:UIView.class]) {
+                            UIView *host = view;
+                            SEL style = NSSelectorFromString(@"setAppearanceStyle:");
+                            if ([context respondsToSelector:style])
+                                ((void (*)(id, SEL, NSInteger))objc_msgSend)(context, style,
+                                    UIScreen.mainScreen.traitCollection.userInterfaceStyle);
+                            ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
+                            host.frame = strongSelf.canvas.bounds;
+                            host.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                                                    UIViewAutoresizingFlexibleHeight;
+                            [strongSelf.canvas addSubview:host];
+                            strongSelf.presentationContext = context;
+                            strongSelf.hostView = host;
+                            completion(YES);
+                            retry = nil;
+                            return;
+                        }
                     }
                 }
             }
@@ -183,13 +210,28 @@ static BOOL PXSetFrame(id object, CGRect frame)
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     self.generation += 1;
     UIView *host = self.hostView;
+    id scene = self.scene;
+    CGRect originalFrame = self.originalSceneFrame;
     self.hostView = nil;
     self.scene = nil;
     self.canvas = nil;
-    [host removeFromSuperview];
+    self.originalSceneFrame = CGRectZero;
     SEL invalidate = NSSelectorFromString(@"invalidate");
+    for (UIView *child in [host.subviews copy]) {
+        if ([child respondsToSelector:invalidate])
+            ((void (*)(id, SEL))objc_msgSend)(child, invalidate);
+    }
     if ([host respondsToSelector:invalidate])
         ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
+    [host removeFromSuperview];
+    self.presentationContext = nil;
+    if (scene && !CGRectIsEmpty(originalFrame)) {
+        id settings = PXCall(scene, @"settings");
+        id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+        SEL update = NSSelectorFromString(@"updateSettings:withTransitionContext:");
+        if (PXSetFrame(mutable, originalFrame) && [scene respondsToSelector:update])
+            ((void (*)(id, SEL, id, id))objc_msgSend)(scene, update, mutable, nil);
+    }
 }
 
 @end

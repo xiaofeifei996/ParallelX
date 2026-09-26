@@ -12,8 +12,10 @@ assert "PXPanel.swift" in makefile and "PXSceneBridge.m" in makefile
 assert 'stringArray(forKey: "applications")' in panel
 assert 'dictionary(forKey: "applicationNames")' in panel
 assert "PXSceneBridge.shared().close()" in panel
-assert "let height = source.height * scale + 44" in panel
-assert "canvas.transform = CGAffineTransform(scaleX: scale, y: scale)" in panel
-assert panel.index("openApplication(bundleID, in: canvas)") < panel.index("canvas.transform = CGAffineTransform")
-assert '_UIContextLayerHostView' in bridge
+assert "let width = screen.width * 0.78" in panel
+assert "let height = min(screen.height * 0.72, screen.height - 120)" in panel
+assert "let canvas = UIView(frame: clip.bounds)" in panel
+assert "inFrame:strongSelf.canvas.bounds" in bridge
+assert '_UISceneLayerHostContainerView' in bridge
+assert "PXSetFrame(mutable, originalFrame)" in bridge
 assert not list(root.rglob("*.dylib")), "The project must not carry Myrtle binaries"
