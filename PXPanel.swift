@@ -100,6 +100,8 @@ public final class PXPanelEntry: NSObject {
     private weak var previousKeyWindow: UIWindow?
     private var panel: PXPanelViewController?
     private var handle: UIView?
+    private var hostedBundleID: String?
+    private var resizeStartFrame: CGRect?
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -227,9 +229,10 @@ public final class PXPanelEntry: NSObject {
     private func openHost(_ bundleID: String) {
         guard let scene = activeScene() else { return }
         closeHost(animated: false)
+        hostedBundleID = bundleID
         let screen = scene.coordinateSpace.bounds
         let width = screen.width * 0.78
-        let height = min(screen.height * 0.72, screen.height - 120)
+        let height = 44 + width * screen.height / screen.width
         let frame = CGRect(x: (screen.width - width) / 2,
                            y: (screen.height - height) / 2,
                            width: width, height: height)
@@ -247,10 +250,18 @@ public final class PXPanelEntry: NSObject {
         card.frame = window.bounds
         let bar = UIView(frame: CGRect(x: 0, y: 0, width: width, height: 44))
         bar.autoresizingMask = .flexibleWidth
-        let title = UILabel(frame: CGRect(x: 16, y: 0, width: width - 74, height: 44))
+        let title = UILabel(frame: CGRect(x: 16, y: 0, width: width - 120, height: 44))
         title.text = selectedApps().first(where: { $0.id == bundleID })?.name ?? bundleID
         title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.autoresizingMask = .flexibleWidth
         bar.addSubview(title)
+        let maximize = UIButton(type: .system)
+        maximize.frame = CGRect(x: width - 92, y: 2, width: 44, height: 40)
+        maximize.autoresizingMask = .flexibleLeftMargin
+        maximize.setImage(UIImage(systemName: "square"), for: .normal)
+        maximize.accessibilityLabel = "全屏打开应用"
+        maximize.addTarget(self, action: #selector(fullscreenTapped), for: .touchUpInside)
+        bar.addSubview(maximize)
         let close = UIButton(type: .system)
         close.frame = CGRect(x: width - 48, y: 2, width: 44, height: 40)
         close.autoresizingMask = .flexibleLeftMargin
@@ -270,6 +281,24 @@ public final class PXPanelEntry: NSObject {
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
         card.addSubview(spinner)
+        for (side, glyph) in [(-1, "↙"), (1, "↘")] {
+            let corner = UILabel(frame: CGRect(x: side < 0 ? 0 : width - 36,
+                                               y: height - 36, width: 36, height: 36))
+            corner.tag = side
+            corner.text = glyph
+            corner.textAlignment = .center
+            corner.font = .systemFont(ofSize: 18, weight: .medium)
+            corner.textColor = .secondaryLabel
+            corner.backgroundColor = .secondarySystemBackground
+            corner.autoresizingMask = side < 0 ? [.flexibleTopMargin] :
+                                              [.flexibleLeftMargin, .flexibleTopMargin]
+            corner.isUserInteractionEnabled = true
+            corner.isAccessibilityElement = true
+            corner.accessibilityLabel = "拖动调整窗口大小"
+            corner.addGestureRecognizer(UIPanGestureRecognizer(target: self,
+                                                               action: #selector(resizeHost(_:))))
+            card.addSubview(corner)
+        }
         window.isHidden = false
         card.alpha = 0
         card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
@@ -283,15 +312,67 @@ public final class PXPanelEntry: NSObject {
         PXSceneBridge.shared().openApplication(bundleID, in: canvas) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
-            if !success { self.closeHost(animated: true) }
+            if success { self.matchHostAspect() }
+            else { self.closeHost(animated: true) }
         }
+    }
+
+    private func matchHostAspect() {
+        guard let window = hostWindow, let card = window.rootViewController?.view else { return }
+        let source = PXSceneBridge.shared().hostedSourceSize()
+        guard source.width > 0, source.height > 0 else { return }
+        let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        let width = min(screen.width * 0.78,
+                        (screen.height - 80 - 44) * source.width / source.height)
+        let height = 44 + width * source.height / source.width
+        window.frame = CGRect(x: screen.midX - width / 2, y: screen.midY - height / 2,
+                              width: width, height: height)
+        card.frame = window.bounds
+        card.layoutIfNeeded()
+        PXSceneBridge.shared().layoutHost()
     }
 
     @objc private func closeTapped() { closeHost(animated: true) }
 
+    @objc private func fullscreenTapped() {
+        guard let bundleID = hostedBundleID,
+              PXSceneBridge.shared().openFullscreenApplication(bundleID) else { return }
+        closeHost(animated: false)
+    }
+
+    @objc private func resizeHost(_ gesture: UIPanGestureRecognizer) {
+        guard let window = hostWindow, let card = window.rootViewController?.view else { return }
+        if gesture.state == .began { resizeStartFrame = window.frame }
+        guard let start = resizeStartFrame else { return }
+        if gesture.state == .changed || gesture.state == .ended {
+            let translation = gesture.translation(in: handleWindow)
+            let horizontal = (gesture.view?.tag == -1 ? -translation.x : translation.x) / start.width
+            let vertical = translation.y / (start.height - 44)
+            let change = abs(horizontal) > abs(vertical) ? horizontal : vertical
+            let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+            let horizontalRoom = gesture.view?.tag == -1 ?
+                start.maxX - screen.minX - 12 : screen.maxX - start.minX - 12
+            let maximum = min(horizontalRoom / start.width,
+                              (screen.maxY - start.minY - 20 - 44) / (start.height - 44))
+            let scale = min(max(1 + change, 220 / start.width), max(220 / start.width, maximum))
+            let size = CGSize(width: start.width * scale,
+                              height: 44 + (start.height - 44) * scale)
+            let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
+            window.frame = CGRect(x: x, y: start.minY, width: size.width, height: size.height)
+            card.frame = window.bounds
+            card.layoutIfNeeded()
+            PXSceneBridge.shared().layoutHost()
+        }
+        if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
+            resizeStartFrame = nil
+        }
+    }
+
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
         hostWindow = nil
+        hostedBundleID = nil
+        resizeStartFrame = nil
         PXSceneBridge.shared().close()
         let finish = {
             window.isHidden = true

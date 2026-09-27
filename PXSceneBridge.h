@@ -6,6 +6,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)openApplication:(NSString *)bundleID
                 inView:(UIView *)canvas
             completion:(void (^)(BOOL success))completion;
+- (void)layoutHost;
+- (CGSize)hostedSourceSize;
+- (BOOL)openFullscreenApplication:(NSString *)bundleID;
 - (void)close;
 @end
 NS_ASSUME_NONNULL_END

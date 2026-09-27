@@ -117,6 +117,41 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, YES);
 }
 
+- (BOOL)openFullscreenApplication:(NSString *)bundleID
+{
+    if (bundleID.length == 0) return NO;
+    SEL selector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
+    id springBoard = UIApplication.sharedApplication;
+    NSMethodSignature *signature = [springBoard methodSignatureForSelector:selector];
+    if (signature && signature.numberOfArguments == 4 &&
+        ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, NO))
+        return YES;
+    id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
+    signature = [workspace methodSignatureForSelector:selector];
+    return signature && signature.numberOfArguments == 4 &&
+        ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
+}
+
+- (void)layoutHost
+{
+    UIView *host = self.hostView;
+    UIView *canvas = self.canvas;
+    CGSize source = self.sourceSize;
+    CGSize target = canvas.bounds.size;
+    if (!host || !canvas || source.width <= 0 || source.height <= 0 ||
+        target.width <= 0 || target.height <= 0) return;
+    CGFloat scale = MIN(target.width / source.width, target.height / source.height);
+    host.transform = CGAffineTransformIdentity;
+    host.bounds = (CGRect){CGPointZero, source};
+    host.center = CGPointMake(target.width / 2, target.height / 2);
+    host.transform = CGAffineTransformMakeScale(scale, scale);
+}
+
+- (CGSize)hostedSourceSize
+{
+    return self.sourceSize;
+}
+
 - (BOOL)foregroundScene:(id)scene
 {
     id settings = PXCall(scene, @"settings");
@@ -199,15 +234,10 @@ static BOOL PXUpdateScene(id scene, id settings)
                                 ((void (*)(id, SEL, NSInteger))objc_msgSend)(context, style,
                                     UIScreen.mainScreen.traitCollection.userInterfaceStyle);
                             ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
-                            CGSize source = strongSelf.sourceSize;
-                            CGSize target = strongSelf.canvas.bounds.size;
-                            host.layer.anchorPoint = CGPointZero;
-                            host.frame = (CGRect){CGPointZero, source};
-                            host.transform = CGAffineTransformMakeScale(target.width / source.width,
-                                                                         target.height / source.height);
                             [strongSelf.canvas addSubview:host];
                             strongSelf.presentationContext = context;
                             strongSelf.hostView = host;
+                            [strongSelf layoutHost];
                             completion(YES);
                             retry = nil;
                             return;

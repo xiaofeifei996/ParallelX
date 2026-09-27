@@ -13,12 +13,18 @@ assert 'stringArray(forKey: "applications")' in panel
 assert 'dictionary(forKey: "applicationNames")' in panel
 assert "PXSceneBridge.shared().close()" in panel
 assert "let width = screen.width * 0.78" in panel
-assert "let height = min(screen.height * 0.72, screen.height - 120)" in panel
+assert "let height = 44 + width * screen.height / screen.width" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
 assert panel.index("card.frame = window.bounds") < panel.index("let clip = UIView(frame:")
+assert "if success { self.matchHostAspect() }" in panel
+assert "height: 44 + (start.height - 44) * scale" in panel
+assert "#selector(resizeHost(_:))" in panel
+assert "#selector(fullscreenTapped)" in panel
 assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
-assert "host.transform = CGAffineTransformMakeScale(target.width / source.width," in bridge
+assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
+assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
+assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
