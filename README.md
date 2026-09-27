@@ -5,7 +5,8 @@ a new project: it does not package or link Myrtle or MoxuanSplit.
 
 Alpha scope: select applications in Settings, pull a narrow panel from the
 right edge, tap one application to open a single floating window, resize it
-from either bottom corner, open it full-screen from the title bar, or close it.
+from either bottom corner, drag it from the bottom-center grip, open it full-screen
+from the title bar, or close it. Window corner radius is adjustable in Settings.
 There are no shortcuts, radial selector, multiple windows, or background-card changes.
 
 Swift owns the panel, preferences picker, window presentation, and animations.

@@ -132,6 +132,34 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
 }
 
+- (void)prepareWindowForBundleID:(NSString *)bundleID
+                      completion:(dispatch_block_t)completion
+{
+    if (!completion) return;
+    dispatch_block_t finish = ^{
+        if (NSThread.isMainThread) completion();
+        else dispatch_async(dispatch_get_main_queue(), completion);
+    };
+    id frontmost = PXCall(UIApplication.sharedApplication,
+                          @"_accessibilityFrontMostApplication");
+    NSString *currentID = PXCall(frontmost, @"bundleIdentifier");
+    if (![currentID isKindOfClass:NSString.class] ||
+        ![currentID isEqualToString:bundleID]) {
+        finish();
+        return;
+    }
+    id controller = PXCall(NSClassFromString(@"SBUIController"), @"sharedInstance");
+    SEL selector = NSSelectorFromString(@"_returnToHomeScreenWithCompletion:");
+    NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments != 3 ||
+        signature.methodReturnType[0] != 'v' ||
+        [signature getArgumentTypeAtIndex:2][0] != '@') {
+        finish();
+        return;
+    }
+    ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, [finish copy]);
+}
+
 - (void)layoutHost
 {
     UIView *host = self.hostView;

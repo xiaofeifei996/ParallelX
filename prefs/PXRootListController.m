@@ -19,4 +19,11 @@
     [self.navigationController pushViewController:picker animated:YES];
 }
 
+- (void)openRadius
+{
+    Class controllerClass = NSClassFromString(@"PXCornerRadiusController");
+    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
+    [self.navigationController pushViewController:[controllerClass new] animated:YES];
+}
+
 @end

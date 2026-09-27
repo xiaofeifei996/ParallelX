@@ -8,6 +8,9 @@ NS_ASSUME_NONNULL_BEGIN
             completion:(void (^)(BOOL success))completion;
 - (void)layoutHost;
 - (CGSize)hostedSourceSize;
+- (void)prepareWindowForBundleID:(NSString *)bundleID
+                      completion:(dispatch_block_t)completion
+    NS_SWIFT_NAME(prepareWindow(for:completion:));
 - (BOOL)openFullscreenApplication:(NSString *)bundleID;
 - (void)close;
 @end

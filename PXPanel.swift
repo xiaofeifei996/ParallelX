@@ -102,6 +102,7 @@ public final class PXPanelEntry: NSObject {
     private var handle: UIView?
     private var hostedBundleID: String?
     private var resizeStartFrame: CGRect?
+    private var moveStartFrame: CGRect?
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -227,6 +228,12 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func openHost(_ bundleID: String) {
+        PXSceneBridge.shared().prepareWindow(for: bundleID) { [weak self] in
+            self?.presentHost(bundleID)
+        }
+    }
+
+    private func presentHost(_ bundleID: String) {
         guard let scene = activeScene() else { return }
         closeHost(animated: false)
         hostedBundleID = bundleID
@@ -243,27 +250,33 @@ public final class PXPanelEntry: NSObject {
         let root = UIViewController()
         let card = root.view!
         card.backgroundColor = .secondarySystemBackground
-        card.layer.cornerRadius = 20
+        let savedRadius = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "cornerRadius") as? NSNumber
+        card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
         card.layer.cornerCurve = .continuous
         card.clipsToBounds = true
         window.rootViewController = root
         card.frame = window.bounds
-        let bar = UIView(frame: CGRect(x: 0, y: 0, width: width, height: 44))
-        bar.autoresizingMask = .flexibleWidth
-        let title = UILabel(frame: CGRect(x: 16, y: 0, width: width - 120, height: 44))
+        let toolbarWidth = width * 0.78
+        let bar = UIView(frame: CGRect(x: (width - toolbarWidth) / 2, y: 4,
+                                       width: toolbarWidth, height: 36))
+        bar.autoresizingMask = [.flexibleLeftMargin, .flexibleWidth, .flexibleRightMargin]
+        bar.backgroundColor = .tertiarySystemBackground
+        bar.layer.cornerRadius = 13
+        bar.layer.cornerCurve = .continuous
+        let title = UILabel(frame: CGRect(x: 12, y: 0, width: toolbarWidth - 84, height: 36))
         title.text = selectedApps().first(where: { $0.id == bundleID })?.name ?? bundleID
-        title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.font = .systemFont(ofSize: 13, weight: .medium)
         title.autoresizingMask = .flexibleWidth
         bar.addSubview(title)
         let maximize = UIButton(type: .system)
-        maximize.frame = CGRect(x: width - 92, y: 2, width: 44, height: 40)
+        maximize.frame = CGRect(x: toolbarWidth - 76, y: 0, width: 36, height: 36)
         maximize.autoresizingMask = .flexibleLeftMargin
         maximize.setImage(UIImage(systemName: "square"), for: .normal)
         maximize.accessibilityLabel = "全屏打开应用"
         maximize.addTarget(self, action: #selector(fullscreenTapped), for: .touchUpInside)
         bar.addSubview(maximize)
         let close = UIButton(type: .system)
-        close.frame = CGRect(x: width - 48, y: 2, width: 44, height: 40)
+        close.frame = CGRect(x: toolbarWidth - 40, y: 0, width: 36, height: 36)
         close.autoresizingMask = .flexibleLeftMargin
         close.setImage(UIImage(systemName: "xmark"), for: .normal)
         close.accessibilityLabel = "关闭分屏窗口"
@@ -281,17 +294,18 @@ public final class PXPanelEntry: NSObject {
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
         card.addSubview(spinner)
-        for (side, glyph) in [(-1, "↙"), (1, "↘")] {
-            let corner = UILabel(frame: CGRect(x: side < 0 ? 0 : width - 36,
-                                               y: height - 36, width: 36, height: 36))
+        for side in [-1, 1] {
+            let corner = UIView(frame: CGRect(x: side < 0 ? 0 : width - 36,
+                                              y: height - 36, width: 36, height: 36))
             corner.tag = side
-            corner.text = glyph
-            corner.textAlignment = .center
-            corner.font = .systemFont(ofSize: 18, weight: .medium)
-            corner.textColor = .secondaryLabel
-            corner.backgroundColor = .secondarySystemBackground
             corner.autoresizingMask = side < 0 ? [.flexibleTopMargin] :
                                               [.flexibleLeftMargin, .flexibleTopMargin]
+            let line = UIView(frame: CGRect(x: 7, y: 16, width: 23, height: 5))
+            line.backgroundColor = .secondaryLabel
+            line.layer.cornerRadius = 2.5
+            line.transform = CGAffineTransform(rotationAngle: side < 0 ?
+                                               CGFloat.pi / 4 : -CGFloat.pi / 4)
+            corner.addSubview(line)
             corner.isUserInteractionEnabled = true
             corner.isAccessibilityElement = true
             corner.accessibilityLabel = "拖动调整窗口大小"
@@ -299,6 +313,19 @@ public final class PXPanelEntry: NSObject {
                                                                action: #selector(resizeHost(_:))))
             card.addSubview(corner)
         }
+        let moveGrip = UIView(frame: CGRect(x: (width - 90) / 2, y: height - 28,
+                                            width: 90, height: 28))
+        moveGrip.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin,
+                                     .flexibleTopMargin]
+        let moveLine = UIView(frame: CGRect(x: 15, y: 17, width: 60, height: 5))
+        moveLine.backgroundColor = .secondaryLabel
+        moveLine.layer.cornerRadius = 2.5
+        moveGrip.addSubview(moveLine)
+        moveGrip.isAccessibilityElement = true
+        moveGrip.accessibilityLabel = "拖动分屏窗口"
+        moveGrip.addGestureRecognizer(UIPanGestureRecognizer(target: self,
+                                                              action: #selector(moveHost(_:))))
+        card.addSubview(moveGrip)
         window.isHidden = false
         card.alpha = 0
         card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
@@ -368,11 +395,25 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
+    @objc private func moveHost(_ gesture: UIPanGestureRecognizer) {
+        guard let window = hostWindow else { return }
+        if gesture.state == .began { moveStartFrame = window.frame }
+        guard let start = moveStartFrame else { return }
+        if gesture.state == .changed || gesture.state == .ended {
+            let translation = gesture.translation(in: handleWindow)
+            window.frame = start.offsetBy(dx: translation.x, dy: translation.y)
+        }
+        if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
+            moveStartFrame = nil
+        }
+    }
+
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
         hostWindow = nil
         hostedBundleID = nil
         resizeStartFrame = nil
+        moveStartFrame = nil
         PXSceneBridge.shared().close()
         let finish = {
             window.isHidden = true

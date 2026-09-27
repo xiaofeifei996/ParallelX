@@ -3,6 +3,8 @@
     items = (
         { cell = PSGroupCell; label = "分屏应用"; },
         { cell = PSButtonCell; label = "添加或移除应用"; action = openPicker; },
-        { cell = PSGroupCell; footerText = "从屏幕右侧手柄向内拖出面板，点选应用打开窗口。窗口右上角可关闭。仅供 iOS 15 RootHide 初期测试。"; }
+        { cell = PSGroupCell; label = "窗口外观"; footerText = "拖动横条调整圆角，长按数字可直接输入。更改在下次打开窗口时生效。"; },
+        { cell = PSButtonCell; label = "窗口圆角"; action = openRadius; },
+        { cell = PSGroupCell; footerText = "从右侧手柄拖出面板选择应用。窗口下方中央可拖动位置，两侧下角可等比缩放。仅供 iOS 15 RootHide 测试。"; }
     );
 }
