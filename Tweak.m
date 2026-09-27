@@ -2,11 +2,19 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <substrate.h>
+#import <notify.h>
 #import "PXSceneBridge.h"
 
 static void (*PXOriginalSceneUpdate)(id, SEL, id, id, id);
 static void (*PXOriginalSceneUpdateWithoutCompletion)(id, SEL, id, id);
 static void (*PXOriginalKeyboardDidMove)(id, SEL);
+static void (*PXOriginalKeyboardLayout)(id, SEL);
+
+static void PXKeyboardLayout(id view, SEL selector)
+{
+    PXOriginalKeyboardLayout(view, selector);
+    [[PXSceneBridge sharedBridge] relocateKeyboardView:view];
+}
 
 static void PXSceneUpdate(id scene, SEL selector, id settings, id context, id completion)
 {
@@ -50,6 +58,17 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (keyboard && class_getInstanceMethod(keyboard, didMove))
             MSHookMessageEx(keyboard, didMove, (IMP)PXKeyboardDidMove,
                             (IMP *)&PXOriginalKeyboardDidMove);
+        if (keyboard && class_getInstanceMethod(keyboard, @selector(layoutSubviews)))
+            MSHookMessageEx(keyboard, @selector(layoutSubviews), (IMP)PXKeyboardLayout,
+                            (IMP *)&PXOriginalKeyboardLayout);
+        static int lockToken;
+        notify_register_dispatch("com.apple.springboard.lockstate", &lockToken,
+            dispatch_get_main_queue(), ^(int token) {
+                uint64_t state = 0;
+                if (notify_get_state(token, &state) == NOTIFY_STATUS_OK)
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"PXLockStateChanged"
+                        object:nil userInfo:@{@"locked": @(state != 0)}];
+            });
         Class entry = NSClassFromString(@"PXPanelEntry");
         SEL start = NSSelectorFromString(@"start");
         if ([entry respondsToSelector:start])

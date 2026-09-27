@@ -119,6 +119,7 @@ public final class PXPanelEntry: NSObject {
     private var resizeStartFrame: CGRect?
     private var moveStartFrame: CGRect?
     private var needsHostRefresh = false
+    private var deviceLocked = false
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -126,6 +127,21 @@ public final class PXPanelEntry: NSObject {
         NotificationCenter.default.addObserver(shared,
             selector: #selector(sceneDeactivated), name: UIScene.willDeactivateNotification, object: nil)
         shared.installHandle()
+        NotificationCenter.default.addObserver(shared,
+            selector: #selector(lockStateChanged), name: Notification.Name("PXLockStateChanged"), object: nil)
+    }
+
+    @objc private func lockStateChanged(_ notification: Notification) {
+        let locked = notification.userInfo?["locked"] as? Bool ?? false
+        guard locked != deviceLocked else { return }
+        deviceLocked = locked
+        if locked {
+            hostWindow?.isHidden = true
+            if hostWindow != nil {
+                needsHostRefresh = true
+                PXSceneBridge.shared().close()
+            }
+        } else { refreshHost() }
     }
 
     @objc private func sceneDeactivated(_ notification: Notification) {
@@ -136,15 +152,24 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func sceneActivated(_ notification: Notification) {
         installHandle()
-        guard needsHostRefresh, let window = hostWindow,
-              (notification.object as? UIWindowScene) === window.windowScene,
+        if (notification.object as? UIWindowScene) === hostWindow?.windowScene { refreshHost() }
+    }
+
+    private func refreshHost() {
+        guard !deviceLocked, needsHostRefresh, let window = hostWindow,
               let bundleID = hostedBundleID, let canvas = hostCanvas,
               let controls = handleWindow?.rootViewController?.view else { return }
         needsHostRefresh = false
         PXSceneBridge.shared().openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
-            if success { self.matchHostAspect() }
+            if success {
+                PXSceneBridge.shared().layoutHost()
+                self.hostCard?.alpha = 1
+                self.hostCard?.transform = .identity
+                window?.isUserInteractionEnabled = true
+                window?.isHidden = false
+            }
             else { self.closeHost(animated: false) }
         }
     }
@@ -200,7 +225,8 @@ public final class PXPanelEntry: NSObject {
         controller.apps = selectedApps()
         controller.dismiss = { [weak self] in self?.hidePanel() }
         controller.choose = { [weak self] id in
-            self?.hidePanel { self?.openHost(id) }
+            self?.hidePanel()
+            self?.openHost(id)
         }
         window.rootViewController = controller
         _ = controller.view

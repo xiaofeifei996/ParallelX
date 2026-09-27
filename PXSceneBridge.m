@@ -115,6 +115,8 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, weak) UIView *keyboardOverlay;
 @property(nonatomic, weak) UIView *keyboardHostView;
 @property(nonatomic, strong) UIView *keyboardSlot;
+@property(nonatomic, assign) UIWindowLevel keyboardWindowLevel;
+@property(nonatomic, assign) BOOL relocatingKeyboard;
 @property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) NSUInteger generation;
 @end
@@ -316,14 +318,28 @@ static int PXApplicationPID(NSString *bundleID)
 
 - (void)relocateKeyboardView:(UIView *)view
 {
+    if (self.relocatingKeyboard) return;
     if (view == self.keyboardHostView) {
         if (!view.window || view.superview != self.keyboardSlot) {
             self.keyboardSlot.userInteractionEnabled = NO;
             [self.keyboardSlot removeFromSuperview];
             self.keyboardSlot = nil;
             self.keyboardHostView = nil;
+            self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel;
         }
-        return;
+        else {
+            CGSize screen = self.keyboardOverlay.bounds.size;
+            CGFloat height = MIN(view.bounds.size.height, screen.height * 0.4);
+            if (height <= 0 || screen.width <= 0) return;
+            CGRect slotFrame = CGRectMake(0, screen.height - height, screen.width, height);
+            self.relocatingKeyboard = YES;
+            if (!CGRectEqualToRect(self.keyboardSlot.frame, slotFrame)) self.keyboardSlot.frame = slotFrame;
+            CGRect keyboardFrame = CGRectMake(0, height - view.bounds.size.height,
+                                               screen.width, view.bounds.size.height);
+            if (!CGRectEqualToRect(view.frame, keyboardFrame)) view.frame = keyboardFrame;
+            self.relocatingKeyboard = NO;
+            return;
+        }
     }
     UIView *host = self.hostView;
     UIView *overlay = self.keyboardOverlay;
@@ -331,6 +347,9 @@ static int PXApplicationPID(NSString *bundleID)
     CGSize screen = overlay.bounds.size;
     CGFloat sourceHeight = view.bounds.size.height;
     if (screen.width <= 0 || screen.height <= 0 || sourceHeight <= 0) return;
+    self.relocatingKeyboard = YES;
+    if (!self.keyboardSlot) self.keyboardWindowLevel = overlay.window.windowLevel;
+    overlay.window.windowLevel = MAX(overlay.window.windowLevel, self.canvas.window.windowLevel + 1);
     CGFloat height = MIN(sourceHeight, screen.height * 0.4);
     UIView *previousSlot = self.keyboardSlot;
     self.keyboardHostView = nil;
@@ -347,6 +366,17 @@ static int PXApplicationPID(NSString *bundleID)
     view.frame = CGRectMake(0, height - sourceHeight, screen.width, sourceHeight);
     self.keyboardSlot = slot;
     self.keyboardHostView = view;
+    self.relocatingKeyboard = NO;
+}
+
+- (void)relocateExistingKeyboard:(UIView *)root
+{
+    Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView");
+    if (keyboard && [root isKindOfClass:keyboard]) {
+        [self relocateKeyboardView:root];
+        return;
+    }
+    for (UIView *child in [root.subviews copy]) [self relocateExistingKeyboard:child];
 }
 
 - (void)openApplication:(NSString *)bundleID
@@ -380,7 +410,7 @@ static int PXApplicationPID(NSString *bundleID)
             if (scene && scene != preparedScene &&
                 [strongSelf foregroundScene:scene])
                 preparedScene = scene;
-            if (scene == preparedScene) [strongSelf keepHostedProcessAlive];
+            [strongSelf keepHostedProcessAlive];
             if (scene && scene == preparedScene) {
                 NSArray *layers = [strongSelf mainLayersForScene:scene];
                 Class hostClass = NSClassFromString(@"_UISceneLayerHostContainerView");
@@ -403,10 +433,12 @@ static int PXApplicationPID(NSString *bundleID)
                                 ((void (*)(id, SEL, NSInteger))objc_msgSend)(context, style,
                                     UIScreen.mainScreen.traitCollection.userInterfaceStyle);
                             ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
-                            [strongSelf.canvas addSubview:host];
                             strongSelf.presentationContext = context;
                             strongSelf.hostView = host;
+                            [strongSelf.canvas addSubview:host];
                             [strongSelf layoutHost];
+                            [host layoutIfNeeded];
+                            [strongSelf relocateExistingKeyboard:host];
                             completion(YES);
                             retry = nil;
                             return;
@@ -417,13 +449,13 @@ static int PXApplicationPID(NSString *bundleID)
         } @catch (__unused NSException *exception) {
             // Private interfaces vary; fail closed instead of crashing SpringBoard.
         }
-        if (++attempts >= 24) {
+        if (++attempts >= 40) {
             [strongSelf close];
             completion(NO);
             retry = nil;
             return;
         }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 125 * NSEC_PER_MSEC),
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (attempts < 10 ? 50 : 125) * NSEC_PER_MSEC),
                        dispatch_get_main_queue(), retry);
     };
     dispatch_async(dispatch_get_main_queue(), retry);
@@ -433,6 +465,7 @@ static int PXApplicationPID(NSString *bundleID)
 {
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     self.generation += 1;
+    if (self.keyboardSlot) self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel;
     self.keyboardHostView = nil;
     self.keyboardSlot.userInteractionEnabled = NO;
     [self.keyboardSlot removeFromSuperview];

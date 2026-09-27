@@ -16,7 +16,7 @@ assert "let width = screen.width * 0.78" in panel
 assert "let height = width * screen.height / screen.width" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
 assert panel.index("root.view.addSubview(card)") < panel.index("let clip = UIView(frame:")
-assert "if success { self.matchHostAspect() }" in panel
+assert "private func refreshHost()" in panel
 assert "height: start.height * scale" in panel
 assert "#selector(resizeHost(_:))" in panel
 assert "if gesture.state == .began { fullscreenTapped() }" in panel
@@ -78,6 +78,11 @@ assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSett
 entry = (root / "Tweak.m").read_text(encoding="utf-8")
 assert 'MSHookMessageEx(scene, update' in entry
 assert 'protectedSettings:settings forScene:scene' in entry
+assert 'com.apple.springboard.lockstate' in entry
+assert 'guard !deviceLocked, needsHostRefresh' in panel
+assert 'self.canvas.window.windowLevel + 1' in bridge
+assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in bridge
+assert 'self.relocatingKeyboard' in bridge
 assert 'keepHostedProcessAlive' in bridge
 assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge
