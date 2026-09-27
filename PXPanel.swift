@@ -60,10 +60,11 @@ private final class PXDockedHost {
     let canvas: UIView
     let bridge: PXSceneBridge
     let bundleID: String
-    let side: Int
+    var side: Int
     let sourceSize: CGSize
     let originalFrame: CGRect
     let originalCardFrame: CGRect
+    let originalCornerRadius: CGFloat
     let corners: [UIView]
     let topCorners: [UIView]
     let moveGrip: UIView?
@@ -81,6 +82,7 @@ private final class PXDockedHost {
         self.sourceSize = bridge.hostedSourceSize()
         self.originalFrame = window.frame
         self.originalCardFrame = card.frame
+        self.originalCornerRadius = card.layer.cornerRadius
         self.corners = corners
         self.topCorners = topCorners
         self.moveGrip = moveGrip
@@ -840,15 +842,24 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
+        guard dockedHosts.count < min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
+            .integer(forKey: "dockCount") ?? 2)) else { return }
+        parkMain(side: sender.tag)
+    }
+
+    @discardableResult private func parkMain(side: Int) -> Bool {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
-              let bundleID = hostedBundleID,
-              dockedHosts.count < min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
-                  .integer(forKey: "dockCount") ?? 2)) else { return }
-        let overlay = UIControl(frame: .zero)
-        overlay.addTarget(self, action: #selector(restoreDockTapped(_:)), for: .touchUpInside)
+              let bundleID = hostedBundleID else { return false }
+        let overlay = UIView(frame: .zero)
+        overlay.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(restoreDockTapped(_:))))
+        for direction in [UISwipeGestureRecognizer.Direction.up, .left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(dockSwiped(_:)))
+            swipe.direction = direction
+            overlay.addGestureRecognizer(swipe)
+        }
         window.rootViewController?.view.addSubview(overlay)
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
-                                bridge: activeBridge, bundleID: bundleID, side: sender.tag,
+                                bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 moveGrip: hostMoveGrip, overlay: overlay)
         dockedHosts.append(dock)
@@ -862,6 +873,7 @@ public final class PXPanelEntry: NSObject {
         hostedBundleID = nil
         activeBridge = PXSceneBridge()
         layoutDocks()
+        return true
     }
 
     private func layoutDocks() {
@@ -886,21 +898,40 @@ public final class PXPanelEntry: NSObject {
                 dock.window.frame = frame
                 dock.card.frame = CGRect(origin: .zero, size: frame.size)
                 dock.overlay.frame = dock.window.bounds
+                let radius = dock.originalCornerRadius * width / max(1, dock.originalCardFrame.width)
+                dock.card.layer.cornerRadius = radius
+                dock.card.subviews.first?.layer.cornerRadius = radius
+                dock.card.layer.shadowPath = UIBezierPath(roundedRect: dock.card.bounds,
+                                                          cornerRadius: radius).cgPath
                 dock.card.layoutIfNeeded()
                 dock.bridge.layoutHost()
             }
         }
     }
 
-    @objc private func restoreDockTapped(_ sender: UIControl) {
-        guard let window = sender.window,
+    @objc private func restoreDockTapped(_ sender: UITapGestureRecognizer) {
+        guard let window = sender.view?.window,
               let dock = dockedHosts.first(where: { $0.window === window }) else { return }
         restoreDock(dock)
     }
 
+    @objc private func dockSwiped(_ sender: UISwipeGestureRecognizer) {
+        guard let window = sender.view?.window,
+              let dock = dockedHosts.first(where: { $0.window === window }) else { return }
+        if sender.direction == .up {
+            dockedHosts.removeAll { $0 === dock }
+            dock.window.isHidden = true
+            dock.bridge.close()
+            dock.window.rootViewController = nil
+        } else {
+            dock.side = sender.direction == .left ? -1 : 1
+        }
+        layoutDocks()
+    }
+
     private func restoreDock(_ dock: PXDockedHost) {
-        closeHost(animated: false)
         dockedHosts.removeAll { $0 === dock }
+        if hostWindow != nil { parkMain(side: dock.side) }
         dock.overlay.removeFromSuperview()
         activeBridge = dock.bridge
         hostWindow = dock.window
@@ -915,6 +946,10 @@ public final class PXPanelEntry: NSObject {
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
             dock.window.frame = dock.originalFrame
             dock.card.frame = dock.originalCardFrame
+            dock.card.layer.cornerRadius = dock.originalCornerRadius
+            dock.card.subviews.first?.layer.cornerRadius = dock.originalCornerRadius
+            dock.card.layer.shadowPath = UIBezierPath(roundedRect: dock.card.bounds,
+                                                      cornerRadius: dock.originalCornerRadius).cgPath
             dock.card.layoutIfNeeded()
             self.activeBridge.layoutHost()
             self.layoutHostControls()

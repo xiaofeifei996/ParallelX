@@ -11,6 +11,16 @@
     return _specifiers;
 }
 
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    if ([cell isKindOfClass:NSClassFromString(@"PSButtonCell")]) {
+        cell.textLabel.textColor = UIColor.labelColor;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
+    return cell;
+}
+
 - (void)openPicker
 {
     Class pickerClass = NSClassFromString(@"PXAppPickerController");

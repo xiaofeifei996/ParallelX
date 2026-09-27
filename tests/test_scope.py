@@ -71,7 +71,8 @@ assert fullscreen.index('openFullscreenApplication(bundleID)') < fullscreen.inde
 assert 'readyTicks >= 2 || ticks >= 15' in fullscreen
 assert 'deadline: .now() + 0.75' not in fullscreen
 assert 'exposeSystemHomeIndicator' not in panel
-assert panel.index('window.isHidden = true\n            if self?.hostWindow == nil') < panel.index('window.rootViewController = nil\n        }')
+close_host = panel.split('private func closeHost(animated: Bool)', 1)[1]
+assert close_host.index('window.isHidden = true\n            if self?.hostWindow == nil') < close_host.index('window.rootViewController = nil\n        }')
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
@@ -143,6 +144,11 @@ assert 'MSHookMessageEx(scene, update' in entry
 assert 'protectedSettings:settings forAnyScene:scene' in entry
 assert 'PXSceneBridge relocateAnyKeyboardView:view' in entry
 assert 'private func layoutDocks()' in panel and 'private func restoreDock(' in panel
+assert 'dock.card.layer.shadowPath = UIBezierPath(roundedRect: dock.card.bounds' in panel
+assert 'dock.card.layer.cornerRadius = radius' in panel
+assert 'if hostWindow != nil { parkMain(side: dock.side) }' in panel
+assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
+assert 'overlay.addGestureRecognizer(swipe)' in panel
 assert 'hostTopCorners' in panel and '#selector(dockTapped(_:))' in panel
 assert 'PXDockController.swift' in (root / 'prefs' / 'Makefile').read_text(encoding='utf-8')
 assert 'com.apple.springboard.lockstate' in entry
