@@ -247,6 +247,46 @@ static int PXApplicationPID(NSString *bundleID)
     return NO;
 }
 
+- (BOOL)shortcutIsActive:(NSString *)identifier
+{
+    if ([identifier isEqualToString:@"px.action.dark"])
+        return UIScreen.mainScreen.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
+    if ([identifier isEqualToString:@"px.action.rotation"]) {
+        id manager = PXCall(NSClassFromString(@"SBOrientationLockManager"), @"sharedInstance");
+        SEL state = NSSelectorFromString(@"isUserLocked");
+        return [manager respondsToSelector:state] &&
+            ((BOOL (*)(id, SEL))objc_msgSend)(manager, state);
+    }
+    if ([identifier isEqualToString:@"px.action.record"]) {
+        if (!NSClassFromString(@"RPScreenRecorder"))
+            dlopen("/System/Library/Frameworks/ReplayKit.framework/ReplayKit", RTLD_LAZY);
+        id recorder = PXCall(NSClassFromString(@"RPScreenRecorder"), @"sharedRecorder");
+        SEL state = NSSelectorFromString(@"isRecording");
+        return [recorder respondsToSelector:state] &&
+            ((BOOL (*)(id, SEL))objc_msgSend)(recorder, state);
+    }
+    return NO;
+}
+
+- (NSString *)recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank
+{
+    if (rank < 1) return nil;
+    id switcher = PXCall(NSClassFromString(@"SBMainSwitcherViewController"), @"sharedInstance");
+    NSArray *layouts = PXCall(switcher, @"recentAppLayouts");
+    if (![layouts isKindOfClass:NSArray.class]) return nil;
+    NSMutableSet<NSString *> *seen = [NSMutableSet setWithArray:excluded];
+    for (id layout in layouts) {
+        for (id item in PXCall(layout, @"allItems")) {
+            NSString *bundleID = PXCall(item, @"bundleIdentifier");
+            if (![bundleID isKindOfClass:NSString.class] || bundleID.length == 0 ||
+                [seen containsObject:bundleID] || [bundleID isEqualToString:@"com.apple.springboard"]) continue;
+            [seen addObject:bundleID];
+            if (--rank == 0) return bundleID;
+        }
+    }
+    return nil;
+}
+
 - (NSString *)frontmostBundleID
 {
     id frontmost = PXCall(UIApplication.sharedApplication,
@@ -485,7 +525,7 @@ static int PXApplicationPID(NSString *bundleID)
     slot.backgroundColor = UIColor.clearColor;
     slot.opaque = NO;
     slot.clipsToBounds = YES;
-    [overlay addSubview:slot];
+    [overlay insertSubview:slot atIndex:0];
     [slot addSubview:view];
     view.frame = CGRectMake(0, height - sourceHeight, screen.width, sourceHeight);
     self.keyboardSlot = slot;

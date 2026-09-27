@@ -9,12 +9,20 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.record", "屏幕录制", "record.circle"),
     ("px.action.rotation", "方向锁定", "lock.rotation"),
     ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
-    ("px.action.screenshot", "截屏", "camera.viewfinder")
+    ("px.action.screenshot", "截屏", "camera.viewfinder"),
+    ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath")
 ]
 
+private func isShortcut(_ id: String) -> Bool {
+    id.hasPrefix("px.action.") || id.hasPrefix("px.url.")
+}
+
 private func panelIcon(_ id: String) -> UIImage? {
-    if let shortcut = shortcuts.first(where: { $0.id == id }) {
-        return UIImage(systemName: shortcut.symbol)
+    if isShortcut(id) {
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let custom = (defaults?.dictionary(forKey: "shortcutSymbols") as? [String: String])?[id]
+        let fallback = shortcuts.first(where: { $0.id == id })?.symbol ?? "link"
+        return UIImage(systemName: custom ?? fallback) ?? UIImage(systemName: fallback)
     }
     return PXApplicationIcon(id)
 }
@@ -32,6 +40,11 @@ private final class PXHostViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         onLayout?()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle { onLayout?() }
     }
 }
 
@@ -175,16 +188,20 @@ private final class PXPanelViewController: UIViewController {
                                       width: size, height: size)
                 button.tag = appIndex
                 button.accessibilityLabel = apps[appIndex].name
-                button.backgroundColor = .systemGray5
+                let id = apps[appIndex].id
+                let action = isShortcut(id)
+                let active = action && PXSceneBridge.shared().shortcutIsActive(id)
+                button.backgroundColor = active ? .darkGray : .systemGray5
                 button.layer.cornerRadius = size / 2
                 button.layer.shadowColor = UIColor.black.cgColor
                 button.layer.shadowOpacity = 0.12
                 button.layer.shadowRadius = 5
                 button.layer.shadowOffset = CGSize(width: 0, height: 2)
-                let icon = UIImageView(image: panelIcon(apps[appIndex].id) ?? UIImage(systemName: "app"))
+                let icon = UIImageView(image: panelIcon(id)?.withConfiguration(
+                    UIImage.SymbolConfiguration(pointSize: size * 0.43, weight: .medium)) ?? UIImage(systemName: "app"))
                 icon.frame = button.bounds.insetBy(dx: 4, dy: 4)
-                icon.tintColor = .label
-                icon.contentMode = .scaleAspectFill
+                icon.tintColor = active ? .white : .label
+                icon.contentMode = action ? .center : .scaleAspectFill
                 icon.layer.cornerRadius = (size - 8) / 2
                 icon.clipsToBounds = true
                 icon.isUserInteractionEnabled = false
@@ -218,19 +235,25 @@ private final class PXPanelViewController: UIViewController {
                 UIView.animate(withDuration: 0.16) { old.subviews.first?.transform = .identity }
             }
             selectedIndex = next
-            selectedSince = next == nil ? nil : CACurrentMediaTime()
+            selectedSince = (next.map { isShortcut(apps[$0].id) } ?? true) ? nil : CACurrentMediaTime()
             if let hit = hit, let next = next {
                 selectionFeedback.selectionChanged()
                 selectionFeedback.prepare()
-                holdFeedback.prepare()
-                let task = DispatchWorkItem { [weak self] in
-                    guard let self = self, self.selectedIndex == next else { return }
-                    self.holdFeedback.impactOccurred()
+                let id = apps[next].id
+                if !isShortcut(id) {
+                    holdFeedback.prepare()
+                    let task = DispatchWorkItem { [weak self] in
+                        guard let self = self, self.selectedIndex == next else { return }
+                        self.holdFeedback.impactOccurred()
+                    }
+                    holdFeedbackTask = task
+                    DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
                 }
-                holdFeedbackTask = task
-                DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
-                selectionPreview.image = panelIcon(apps[next].id) ?? UIImage(systemName: "app")
-                selectionPreview.tintColor = .label
+                selectionPreview.image = panelIcon(id)?.withConfiguration(
+                    UIImage.SymbolConfiguration(pointSize: 52, weight: .medium)) ?? UIImage(systemName: "app")
+                selectionPreview.contentMode = isShortcut(id) ? .center : .scaleAspectFill
+                selectionPreview.tintColor = PXSceneBridge.shared().shortcutIsActive(id) ? .white : .label
+                selectionPreview.backgroundColor = PXSceneBridge.shared().shortcutIsActive(id) ? .darkGray : .systemGray5
                 selectionPreview.transform = CGAffineTransform(scaleX: 0.76, y: 0.76)
                 UIView.animate(withDuration: 0.28, delay: 0,
                                usingSpringWithDamping: 0.72, initialSpringVelocity: 0,
@@ -482,7 +505,7 @@ public final class PXPanelEntry: NSObject {
                let controller = panel,
                let bundleID = controller.updateSelection(at: gesture.location(in: controller.view)) {
                 let fullscreen = controller.selectedDuration >= controller.holdDuration
-                if bundleID.hasPrefix("px.action.") {
+                if isShortcut(bundleID) {
                     hidePanel { [weak self] in self?.performShortcut(bundleID) }
                 } else {
                     hidePanel()
@@ -523,7 +546,19 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func performShortcut(_ id: String) {
-        if id == "px.action.window" {
+        if id == "px.action.recent" {
+            let defaults = UserDefaults(suiteName: preferenceDomain)
+            let rank = min(20, max(1, defaults?.integer(forKey: "recentAppRank") ?? 1))
+            let excluded = (defaults?.stringArray(forKey: "applications") ?? []).filter { !isShortcut($0) }
+            if let recent = PXSceneBridge.shared().recentApplicationSkipping(excluded, rank: rank) {
+                openHost(recent)
+            }
+        } else if id.hasPrefix("px.url."),
+                  let entries = UserDefaults(suiteName: preferenceDomain)?.array(forKey: "urlShortcuts") as? [[String: String]],
+                  let text = entries.first(where: { $0["id"] == id })?["url"],
+                  let url = URL(string: text) {
+            UIApplication.shared.open(url)
+        } else if id == "px.action.window" {
             if hostWindow != nil { fullscreenTapped() }
             else if let frontmost = PXSceneBridge.shared().frontmostBundleID() { openHost(frontmost) }
         } else {
@@ -557,8 +592,11 @@ public final class PXPanelEntry: NSObject {
         card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
         card.layer.cornerCurve = .continuous
         card.layer.shadowColor = UIColor.black.cgColor
-        card.layer.shadowOpacity = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
-        card.layer.shadowRadius = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
+        let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
+        let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
+        let dark = card.traitCollection.userInterfaceStyle == .dark
+        card.layer.shadowOpacity = dark ? min(0.75, strength * 1.6) : strength
+        card.layer.shadowRadius = dark ? blur + 4 : blur
         card.layer.shadowOffset = CGSize(width: 0, height: 3)
         root.view.addSubview(card)
         let clip = UIView(frame: card.bounds)
@@ -655,6 +693,12 @@ public final class PXPanelEntry: NSObject {
 
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
+        let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
+        let dark = card.traitCollection.userInterfaceStyle == .dark
+        card.layer.shadowOpacity = dark ? min(0.75, strength * 1.6) : strength
+        card.layer.shadowRadius = dark ? blur + 4 : blur
         if card.layer.shadowPath?.boundingBox != card.bounds {
             card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
                                                   cornerRadius: card.layer.cornerRadius).cgPath
@@ -670,7 +714,6 @@ public final class PXPanelEntry: NSObject {
                                    y: center.y + arcRadius * sin(middle))
             corner.frame = CGRect(x: midpoint.x - 22, y: midpoint.y - 22, width: 44, height: 44)
         }
-        let defaults = UserDefaults(suiteName: preferenceDomain)
         let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
         let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
         let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))

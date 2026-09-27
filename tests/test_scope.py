@@ -21,7 +21,12 @@ assert 'let centerX = view.bounds.maxX - size / 2 - edgeInset' in panel
 assert 'sheet = UIVisualEffectView' not in panel
 assert 'launcherDragDistance' in panel
 assert 'updateSelection(at: gesture.location(in: controller.view))' in panel
-assert 'selectedSince = next == nil ? nil : CACurrentMediaTime()' in panel
+assert 'selectedSince = (next.map { isShortcut(apps[$0].id) } ?? true) ? nil : CACurrentMediaTime()' in panel
+assert 'if !isShortcut(id)' in panel
+assert 'recentApplicationSkipping(excluded, rank: rank)' in panel
+assert 'urlShortcuts' in panel and 'shortcutSymbols' in panel
+assert '[overlay insertSubview:slot atIndex:0]' in bridge
+assert 'recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank' in bridge
 assert 'UISelectionFeedbackGenerator()' in panel
 assert 'UIImpactFeedbackGenerator(style: .medium)' in panel
 assert 'holdFeedbackTask?.cancel()' in panel
@@ -149,3 +154,4 @@ picker = (root / "prefs" / "PXAppPickerController.swift").read_text(encoding="ut
 assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destinationIndexPath.row)' in picker
 assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
 assert 'px.action.window' in picker
+assert 'px.action.recent' in picker and 'urls.count < 10' in picker
