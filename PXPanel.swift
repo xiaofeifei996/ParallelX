@@ -943,8 +943,9 @@ public final class PXPanelEntry: NSObject {
     @discardableResult private func parkMain(side: Int) -> Bool {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
-              let controls = handleWindow?.rootViewController?.view else { return false }
-        let overlay = UIView(frame: window.frame)
+              let root = window.rootViewController?.view else { return false }
+        let overlay = UIView(frame: root.bounds)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)
         overlay.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(restoreDockTapped(_:))))
         for direction in [UISwipeGestureRecognizer.Direction.up, .left, .right] {
@@ -952,8 +953,9 @@ public final class PXPanelEntry: NSObject {
             swipe.direction = direction
             overlay.addGestureRecognizer(swipe)
         }
-        controls.addSubview(overlay)
-        window.isUserInteractionEnabled = false
+        root.addSubview(overlay)
+        window.windowLevel = .statusBar - 3
+        card.layer.shadowOpacity = 0
         canvas.isUserInteractionEnabled = false
         activeBridge.setHostedInteractionEnabled(false)
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
@@ -983,11 +985,11 @@ public final class PXPanelEntry: NSObject {
             .object(forKey: "dockWidth") as? Int ?? 110)
         for (index, dock) in dockedHosts.enumerated() {
             let ratio = dock.sourceSize.height / max(1, dock.sourceSize.width)
-            let width = min(max(64, requested), available / CGFloat(count) / max(1, ratio))
+            let width = max(35, min(requested, available / CGFloat(count) / max(1, ratio)))
             let height = width * ratio
             let preceding = dockedHosts.prefix(index).reduce(CGFloat.zero) { sum, item in
                 let r = item.sourceSize.height / max(1, item.sourceSize.width)
-                return sum + min(max(64, requested), available / CGFloat(count) / max(1, r)) * r + 12
+                return sum + max(35, min(requested, available / CGFloat(count) / max(1, r))) * r + 12
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
@@ -995,7 +997,6 @@ public final class PXPanelEntry: NSObject {
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 dock.window.frame = frame
                 dock.card.frame = CGRect(origin: .zero, size: frame.size)
-                dock.overlay.frame = frame
                 let radius = dock.originalCornerRadius * width / max(1, dock.originalCardFrame.width)
                 dock.card.layer.cornerRadius = radius
                 dock.card.subviews.first?.layer.cornerRadius = radius
@@ -1036,6 +1037,7 @@ public final class PXPanelEntry: NSObject {
         dockedHosts.removeAll { $0 === dock }
         if hostWindow != nil { parkMain(side: dock.side) }
         dock.overlay.removeFromSuperview()
+        dock.window.windowLevel = .statusBar - 2
         dock.window.isUserInteractionEnabled = true
         dock.canvas.isUserInteractionEnabled = true
         dock.bridge.setHostedInteractionEnabled(true)
@@ -1058,6 +1060,10 @@ public final class PXPanelEntry: NSObject {
                                                       cornerRadius: dock.originalCornerRadius).cgPath
             dock.card.layoutIfNeeded()
             self.activeBridge.layoutHost()
+            self.layoutHostControls()
+            dock.card.layer.shadowOpacity = 0
+        } completion: { [weak self, weak dock] _ in
+            guard let self = self, let dock = dock, self.hostWindow === dock.window else { return }
             self.layoutHostControls()
         }
         layoutDocks()

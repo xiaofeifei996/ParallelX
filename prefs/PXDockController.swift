@@ -16,7 +16,7 @@ public final class PXDockController: UIViewController {
             label.font = .preferredFont(forTextStyle: .body)
             view.addSubview(label)
         }
-        widthSlider.minimumValue = 70
+        widthSlider.minimumValue = 35
         widthSlider.maximumValue = 160
         widthSlider.value = Float(defaults?.object(forKey: "dockWidth") as? Int ?? 110)
         countSlider.minimumValue = 1

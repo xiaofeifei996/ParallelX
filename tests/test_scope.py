@@ -149,9 +149,13 @@ assert 'dock.card.layer.cornerRadius = radius' in panel
 assert 'if hostWindow != nil { parkMain(side: dock.side) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
-assert 'controls.addSubview(overlay)' in panel
-assert 'window.isUserInteractionEnabled = false' in panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks()', 1)[0]
-assert 'dock.overlay.frame = frame' in panel
+park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks()', 1)[0]
+assert 'root.addSubview(overlay)' in park and 'controls.addSubview(overlay)' not in park
+assert 'window.windowLevel = .statusBar - 3' in park
+assert 'card.layer.shadowOpacity = 0' in park
+assert 'overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]' in park
+assert 'dock.overlay.frame = frame' not in panel
+assert 'dock.window.windowLevel = .statusBar - 2' in panel
 assert 'dock.window.isUserInteractionEnabled = true' in panel
 assert 'activeBridge.setHostedInteractionEnabled(false)' in panel
 assert 'dock.bridge.setHostedInteractionEnabled(true)' in panel
@@ -170,6 +174,9 @@ assert 'bool(forKey: "clearOnLock")' in panel
 assert 'for dock in Array(dockedHosts) { removeDock(dock) }' in panel
 assert 'recordDockTouch' not in panel and 'touchProbe' not in panel
 assert 'overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)' in panel
+assert 'max(35, min(requested' in panel
+dock_settings = (root / 'prefs' / 'PXDockController.swift').read_text(encoding='utf-8')
+assert 'widthSlider.minimumValue = 35' in dock_settings
 assert 'onBrightnessHold' in panel and 'start.value + (start.y - y)' in panel
 assert 'setBrightnessLevel:(float)level' in bridge
 picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
