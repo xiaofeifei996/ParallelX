@@ -395,7 +395,7 @@ static int PXApplicationPID(NSString *bundleID)
         }
         else {
             CGSize screen = self.keyboardOverlay.bounds.size;
-            CGFloat height = MIN(view.bounds.size.height, screen.height * 0.4);
+            CGFloat height = MIN(view.bounds.size.height, screen.height * 0.55);
             if (height <= 0 || screen.width <= 0) return;
             CGRect slotFrame = CGRectMake(0, screen.height - height, screen.width, height);
             self.relocatingKeyboard = YES;
@@ -416,7 +416,7 @@ static int PXApplicationPID(NSString *bundleID)
     self.relocatingKeyboard = YES;
     if (!self.keyboardSlot) self.keyboardWindowLevel = overlay.window.windowLevel;
     overlay.window.windowLevel = MAX(overlay.window.windowLevel, self.canvas.window.windowLevel + 1);
-    CGFloat height = MIN(sourceHeight, screen.height * 0.4);
+    CGFloat height = MIN(sourceHeight, screen.height * 0.55);
     UIView *previousSlot = self.keyboardSlot;
     self.keyboardHostView = nil;
     self.keyboardSlot = nil;

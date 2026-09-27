@@ -2,6 +2,7 @@ import UIKit
 
 private let preferenceDomain = "com.moxuan.parallelx"
 private let gripMargin: CGFloat = 28
+private let gripTop: CGFloat = 28
 private let gripBottom: CGFloat = 168
 
 private final class PXHandleWindow: UIWindow {
@@ -22,13 +23,19 @@ private final class PXHostViewController: UIViewController {
 
 private final class PXPanelViewController: UIViewController {
     var apps: [(id: String, name: String)] = []
+    var handleCenterY: CGFloat = 0
+    var handleCenterX: CGFloat = 0
+    var holdDuration: TimeInterval = 0.7
     private let shade = UIView()
     private let pageControl = UIPageControl()
     private let selectionPreview = UIImageView()
     private let selectionFeedback = UISelectionFeedbackGenerator()
+    private let holdFeedback = UIImpactFeedbackGenerator(style: .medium)
     private var buttons: [UIButton] = []
+    private var buttonRings: [Int] = []
     private var selectedIndex: Int?
     private var selectedSince: CFTimeInterval?
+    private var holdFeedbackTask: DispatchWorkItem?
     private var page = 0
     private var pageCapacity = 1
     private var lastSize = CGSize.zero
@@ -54,9 +61,9 @@ private final class PXPanelViewController: UIViewController {
         pageControl.isUserInteractionEnabled = false
         pageControl.hidesForSinglePage = true
         view.addSubview(pageControl)
-        selectionPreview.backgroundColor = .systemGray5
+        selectionPreview.backgroundColor = .clear
         selectionPreview.contentMode = .scaleAspectFill
-        selectionPreview.layer.cornerRadius = 40
+        selectionPreview.layer.cornerRadius = 18
         selectionPreview.clipsToBounds = true
         selectionPreview.isUserInteractionEnabled = false
         selectionPreview.alpha = 0
@@ -78,10 +85,12 @@ private final class PXPanelViewController: UIViewController {
         super.viewDidLayoutSubviews()
         shade.frame = view.bounds
         pageControl.frame = CGRect(x: view.bounds.width - 110,
-                                   y: view.bounds.midY + min(300, view.bounds.height * 0.38),
+                                   y: min(view.bounds.maxY - 42,
+                                          handleCenterY + min(300, view.bounds.height * 0.38)),
                                    width: 100, height: 26)
-        selectionPreview.frame = CGRect(x: view.bounds.midX - 40,
-                                        y: view.bounds.midY - 40, width: 80, height: 80)
+        selectionPreview.frame = CGRect(x: view.bounds.midX - 42,
+                                        y: max(view.safeAreaInsets.top + 36, view.bounds.height * 0.2 - 42),
+                                        width: 84, height: 84)
         guard lastSize != view.bounds.size else { return }
         lastSize = view.bounds.size
         layoutPage()
@@ -90,25 +99,32 @@ private final class PXPanelViewController: UIViewController {
     func setProgress(_ progress: CGFloat) {
         self.progress = min(1, max(0, progress))
         shade.alpha = self.progress
-        for button in buttons {
-            button.alpha = self.progress
-            button.transform = CGAffineTransform(translationX: view.bounds.width * (1 - self.progress), y: 0)
+        for (index, button) in buttons.enumerated() {
+            let step = CGFloat(buttonRings[index]) * 0.12
+            let amount = min(1, max(0, (self.progress - step) / (1 - step)))
+            button.alpha = amount
+            button.transform = CGAffineTransform(translationX: (handleCenterX - button.center.x) * (1 - amount),
+                                                 y: (handleCenterY - button.center.y) * (1 - amount))
+                .scaledBy(x: 0.72 + 0.28 * amount, y: 0.72 + 0.28 * amount)
         }
         pageControl.alpha = self.progress
         selectionPreview.alpha = selectedIndex == nil ? 0 : self.progress
     }
 
     private func layoutPage() {
+        holdFeedbackTask?.cancel()
         selectedIndex = nil
         selectedSince = nil
         selectionPreview.alpha = 0
         buttons.forEach { $0.removeFromSuperview() }
         buttons.removeAll()
+        buttonRings.removeAll()
         let size = iconSize
         let spacing = size + 10
+        let centerY = handleCenterY == 0 ? view.bounds.midY : handleCenterY
         let maxRadius = min(view.bounds.width - size - edgeInset - 16,
-                            min(view.bounds.midY - view.safeAreaInsets.top - size / 2 - 12,
-                                view.bounds.midY - view.safeAreaInsets.bottom - size / 2 - 12))
+                            min(centerY - view.safeAreaInsets.top - size / 2 - 12,
+                                view.bounds.maxY - view.safeAreaInsets.bottom - centerY - size / 2 - 12))
         let angle: CGFloat = .pi / 2
         var rings: [(count: Int, radius: CGFloat)] = []
         var previousRadius: CGFloat = 0
@@ -131,13 +147,13 @@ private final class PXPanelViewController: UIViewController {
         var appIndex = page * pageCapacity
         let end = min(apps.count, appIndex + pageCapacity)
         let centerX = view.bounds.maxX - size / 2 - edgeInset
-        for ring in rings {
+        for (ringIndex, ring) in rings.enumerated() {
             let count = min(ring.count, end - appIndex)
             guard count > 0 else { break }
             for slot in 0..<count {
                 let theta = count == 1 ? 0 : -angle + 2 * angle * CGFloat(slot) / CGFloat(count - 1)
                 let center = CGPoint(x: centerX - ring.radius * cos(theta),
-                                     y: view.bounds.midY + ring.radius * sin(theta))
+                                     y: centerY + ring.radius * sin(theta))
                 let button = UIButton(type: .custom)
                 button.frame = CGRect(x: center.x - size / 2, y: center.y - size / 2,
                                       width: size, height: size)
@@ -158,6 +174,7 @@ private final class PXPanelViewController: UIViewController {
                 button.addSubview(icon)
                 view.addSubview(button)
                 buttons.append(button)
+                buttonRings.append(ringIndex)
                 appIndex += 1
             }
         }
@@ -178,6 +195,7 @@ private final class PXPanelViewController: UIViewController {
         }
         let next = hit?.tag
         if next != selectedIndex {
+            holdFeedbackTask?.cancel()
             if let selectedIndex = selectedIndex,
                let old = buttons.first(where: { $0.tag == selectedIndex }) {
                 UIView.animate(withDuration: 0.16) { old.subviews.first?.transform = .identity }
@@ -187,6 +205,13 @@ private final class PXPanelViewController: UIViewController {
             if let hit = hit, let next = next {
                 selectionFeedback.selectionChanged()
                 selectionFeedback.prepare()
+                holdFeedback.prepare()
+                let task = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.selectedIndex == next else { return }
+                    self.holdFeedback.impactOccurred()
+                }
+                holdFeedbackTask = task
+                DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
                 selectionPreview.image = PXApplicationIcon(apps[next].id) ?? UIImage(systemName: "app")
                 selectionPreview.transform = CGAffineTransform(scaleX: 0.76, y: 0.76)
                 UIView.animate(withDuration: 0.28, delay: 0,
@@ -205,6 +230,28 @@ private final class PXPanelViewController: UIViewController {
 
     var selectedDuration: CFTimeInterval {
         selectedSince.map { CACurrentMediaTime() - $0 } ?? 0
+    }
+
+    func cancelSelectionFeedback() { holdFeedbackTask?.cancel() }
+
+    func animateClosed(completion: @escaping () -> Void) {
+        cancelSelectionFeedback()
+        let duration = UIAccessibility.isReduceMotionEnabled ? 0 : 0.25
+        let outer = buttonRings.max() ?? 0
+        for (index, button) in buttons.enumerated() {
+            UIView.animate(withDuration: duration, delay: Double(outer - buttonRings[index]) * 0.035,
+                           options: [.curveEaseIn, .beginFromCurrentState]) {
+                button.alpha = 0
+                button.transform = CGAffineTransform(translationX: self.handleCenterX - button.center.x,
+                                                     y: self.handleCenterY - button.center.y)
+                    .scaledBy(x: 0.72, y: 0.72)
+            }
+        }
+        UIView.animate(withDuration: duration + Double(outer) * 0.035) {
+            self.shade.alpha = 0
+            self.pageControl.alpha = 0
+            self.selectionPreview.alpha = 0
+        } completion: { _ in completion() }
     }
 }
 
@@ -230,6 +277,8 @@ public final class PXPanelEntry: NSObject {
     private var needsHostRefresh = false
     private var deviceLocked = false
     private var panelDragProgress: CGFloat = 0
+    private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
+    private var handleDragStartY: CGFloat = 0
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -328,8 +377,10 @@ public final class PXPanelEntry: NSObject {
         let width = min(52, max(12, CGFloat(defaults?.object(forKey: "handleWidth") as? Int ?? 24)))
         let height = min(160, max(44, CGFloat(defaults?.object(forKey: "handleHeight") as? Int ?? 86)))
         window.frame = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        let fraction = min(0.78, max(0.22,
+            CGFloat(defaults?.object(forKey: "handleCenterFraction") as? Double ?? 0.5)))
         pill.frame = CGRect(x: window.bounds.maxX - width,
-                            y: window.bounds.midY - height / 2, width: width, height: height)
+                            y: window.bounds.height * fraction - height / 2, width: width, height: height)
         pill.layer.cornerRadius = min(width / 2, 16)
         let markHeight = height * 0.46
         pill.subviews.first?.frame = CGRect(x: (width - 4) / 2,
@@ -353,6 +404,11 @@ public final class PXPanelEntry: NSObject {
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
         controller.apps = selectedApps()
+        controller.handleCenterY = handle?.center.y ?? window.bounds.midY
+        controller.handleCenterX = handle?.center.x ?? window.bounds.maxX
+        let holdMillis = UserDefaults(suiteName: preferenceDomain)?
+            .object(forKey: "launcherHoldMilliseconds") as? Int ?? 700
+        controller.holdDuration = Double(min(2000, max(300, holdMillis))) / 1000
         window.rootViewController = controller
         _ = controller.view
         controller.view.layoutIfNeeded()
@@ -364,19 +420,29 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dragHandle(_ gesture: UIPanGestureRecognizer) {
-        guard let root = handleWindow?.rootViewController?.view else { return }
-        let distance = -gesture.translation(in: root).x
+        guard let root = handleWindow?.rootViewController?.view, let pill = handle else { return }
+        let translation = gesture.translation(in: root)
+        let distance = -translation.x
         let savedDistance = UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "launcherDragDistance") as? Int ?? 120
         let threshold = min(240, max(10, CGFloat(savedDistance)))
-        let holdMillis = UserDefaults(suiteName: preferenceDomain)?
-            .object(forKey: "launcherHoldMilliseconds") as? Int ?? 700
         switch gesture.state {
         case .began:
             panelDragProgress = 0
-            beginPanel()
+            handleDragMode = 0
+            handleDragStartY = pill.center.y
             fallthrough
         case .changed:
+            if handleDragMode == 0, max(abs(translation.x), abs(translation.y)) > 5 {
+                handleDragMode = abs(translation.y) > abs(translation.x) ? 2 : 1
+                if handleDragMode == 1 { beginPanel() }
+            }
+            if handleDragMode == 2 {
+                pill.center.y = min(root.bounds.height * 0.78,
+                                    max(root.bounds.height * 0.22, handleDragStartY + translation.y))
+                return
+            }
+            guard handleDragMode == 1 else { return }
             panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))
             panel?.setProgress(panelDragProgress)
             if panelDragProgress >= 0.8 {
@@ -386,15 +452,22 @@ public final class PXPanelEntry: NSObject {
                 }
             }
         case .ended:
+            if handleDragMode == 2 {
+                UserDefaults(suiteName: preferenceDomain)?.set(Double(pill.center.y / root.bounds.height),
+                                                                  forKey: "handleCenterFraction")
+                handleDragMode = 0
+                return
+            }
             if panelDragProgress >= 0.8,
                let controller = panel,
                let bundleID = controller.updateSelection(at: gesture.location(in: controller.view)) {
-                let fullscreen = controller.selectedDuration >= Double(min(2000, max(300, holdMillis))) / 1000
+                let fullscreen = controller.selectedDuration >= controller.holdDuration
                 hidePanel()
                 if fullscreen { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
                 else { openHost(bundleID) }
             } else { hidePanel() }
         case .cancelled, .failed:
+            if handleDragMode == 2 { updateHandleAppearance() }
             hidePanel()
         default: break
         }
@@ -406,11 +479,7 @@ public final class PXPanelEntry: NSObject {
             return
         }
         window.isUserInteractionEnabled = false
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.34,
-                       delay: 0, usingSpringWithDamping: 0.82,
-                       initialSpringVelocity: 0, options: [.beginFromCurrentState]) {
-            controller.setProgress(0)
-        } completion: { [weak self] _ in
+        controller.animateClosed { [weak self] in
             guard let self = self, self.panelWindow === window else { return }
             window.isHidden = true
             window.rootViewController = nil
@@ -439,22 +508,28 @@ public final class PXPanelEntry: NSObject {
                            y: (screen.height - height) / 2,
                            width: width, height: height)
         let window = PXHandleWindow(windowScene: scene)
-        window.frame = CGRect(x: cardFrame.minX - gripMargin, y: cardFrame.minY,
-                              width: width + 2 * gripMargin, height: height + gripBottom)
+        window.frame = CGRect(x: cardFrame.minX - gripMargin, y: cardFrame.minY - gripTop,
+                              width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
         window.windowLevel = .alert + 1
         window.backgroundColor = .clear
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
-        let card = UIView(frame: CGRect(x: gripMargin, y: 0, width: width, height: height))
+        let card = UIView(frame: CGRect(x: gripMargin, y: gripTop, width: width, height: height))
         card.backgroundColor = .secondarySystemBackground
-        let savedRadius = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "cornerRadius") as? NSNumber
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let savedRadius = defaults?.object(forKey: "cornerRadius") as? NSNumber
         card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
         card.layer.cornerCurve = .continuous
-        card.clipsToBounds = true
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowOpacity = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
+        card.layer.shadowRadius = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
+        card.layer.shadowOffset = CGSize(width: 0, height: 3)
         root.view.addSubview(card)
         let clip = UIView(frame: card.bounds)
         clip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        clip.layer.cornerRadius = card.layer.cornerRadius
+        clip.layer.cornerCurve = .continuous
         clip.clipsToBounds = true
         card.addSubview(clip)
         let canvas = UIView(frame: clip.bounds)
@@ -465,7 +540,6 @@ public final class PXPanelEntry: NSObject {
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
         card.addSubview(spinner)
-        let defaults = UserDefaults(suiteName: preferenceDomain)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
         for side in [-1, 1] {
             let corner = UIView(frame: .zero)
@@ -536,9 +610,9 @@ public final class PXPanelEntry: NSObject {
                         (screen.height - 80) * source.width / source.height)
         let height = width * source.height / source.width
         window.frame = CGRect(x: screen.midX - width / 2 - gripMargin,
-                              y: screen.midY - height / 2,
-                              width: width + 2 * gripMargin, height: height + gripBottom)
-        card.frame = CGRect(x: gripMargin, y: 0, width: width, height: height)
+                              y: screen.midY - height / 2 - gripTop,
+                              width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
+        card.frame = CGRect(x: gripMargin, y: gripTop, width: width, height: height)
         card.layoutIfNeeded()
         layoutHostControls()
         PXSceneBridge.shared().layoutHost()
@@ -546,6 +620,10 @@ public final class PXPanelEntry: NSObject {
 
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
+        if card.layer.shadowPath?.boundingBox != card.bounds {
+            card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
+                                                  cornerRadius: card.layer.cornerRadius).cgPath
+        }
         let frame = card.frame
         for corner in hostCorners {
             let radius = max(CGFloat(12), card.layer.cornerRadius)
@@ -587,6 +665,8 @@ public final class PXPanelEntry: NSObject {
                                                 y: screen.height / oldFrame.height)
             card.center = CGPoint(x: screen.midX, y: screen.midY)
             card.layer.cornerRadius = 0
+            card.subviews.first?.layer.cornerRadius = 0
+            card.layer.shadowOpacity = 0
         } completion: { [weak self, weak window] _ in
             if self?.hostWindow === window { self?.closeHost(animated: false) }
         }
@@ -600,7 +680,7 @@ public final class PXPanelEntry: NSObject {
         guard let window = hostWindow, let card = hostCard else { return }
         if gesture.state == .began {
             resizeStartFrame = CGRect(x: window.frame.minX + gripMargin,
-                                      y: window.frame.minY, width: card.bounds.width,
+                                      y: window.frame.minY + gripTop, width: card.bounds.width,
                                       height: card.bounds.height)
             resizeStartRadius = card.layer.cornerRadius
             resizeLink?.invalidate()
@@ -632,10 +712,10 @@ public final class PXPanelEntry: NSObject {
                     CATransaction.begin()
                     CATransaction.setDisableActions(true)
                     window.transform = .identity
-                    window.frame = CGRect(x: x - gripMargin, y: start.minY,
+                    window.frame = CGRect(x: x - gripMargin, y: start.minY - gripTop,
                                           width: size.width + 2 * gripMargin,
-                                          height: size.height + gripBottom)
-                    card.frame = CGRect(x: gripMargin, y: 0,
+                                          height: size.height + gripTop + gripBottom)
+                    card.frame = CGRect(x: gripMargin, y: gripTop,
                                         width: size.width, height: size.height)
                     card.layer.cornerRadius = resizeStartRadius
                     card.layoutIfNeeded()
@@ -653,9 +733,9 @@ public final class PXPanelEntry: NSObject {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
                 window.transform = .identity
-                window.frame = CGRect(x: start.minX - gripMargin, y: start.minY,
+                window.frame = CGRect(x: start.minX - gripMargin, y: start.minY - gripTop,
                                       width: start.width + 2 * gripMargin,
-                                      height: start.height + gripBottom)
+                                      height: start.height + gripTop + gripBottom)
                 card.layer.cornerRadius = resizeStartRadius
                 CATransaction.commit()
             }
@@ -669,7 +749,7 @@ public final class PXPanelEntry: NSObject {
         CATransaction.setDisableActions(true)
         window.transform = CGAffineTransform(scaleX: preview.scale, y: preview.scale)
         window.center = CGPoint(x: preview.x - preview.scale * (gripMargin - window.bounds.midX),
-                                y: preview.y + preview.scale * window.bounds.midY)
+                                y: preview.y - preview.scale * (gripTop - window.bounds.midY))
         card.layer.cornerRadius = resizeStartRadius / preview.scale
         CATransaction.commit()
     }

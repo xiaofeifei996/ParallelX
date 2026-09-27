@@ -23,6 +23,16 @@ assert 'launcherDragDistance' in panel
 assert 'updateSelection(at: gesture.location(in: controller.view))' in panel
 assert 'selectedSince = next == nil ? nil : CACurrentMediaTime()' in panel
 assert 'UISelectionFeedbackGenerator()' in panel
+assert 'UIImpactFeedbackGenerator(style: .medium)' in panel
+assert 'holdFeedbackTask?.cancel()' in panel
+assert 'self.selectedIndex == next' in panel
+assert 'selectedDuration >= controller.holdDuration' in panel
+assert 'handleCenterFraction' in panel and 'handleDragMode == 2' in panel
+assert 'buttonRings.append(ringIndex)' in panel and 'controller.animateClosed' in panel
+assert 'selectionPreview.layer.cornerRadius = 18' in panel
+assert 'shadowStrength' in panel and 'shadowBlur' in panel
+assert 'card.layer.shadowPath = UIBezierPath' in panel
+assert 'let gripTop: CGFloat = 28' in panel
 assert 'launcherHoldMilliseconds' in panel
 assert 'handleWidth' in panel and 'handleHeight' in panel
 assert 'showPanel()' not in panel
@@ -85,6 +95,7 @@ assert "host.transform = CGAffineTransformIdentity" not in bridge
 assert 'relocateKeyboardView:(UIView *)view' in bridge
 assert 'self.keyboardOverlay = keyboardOverlay' in bridge
 assert 'slot.opaque = NO' in bridge
+assert 'screen.height * 0.55' in bridge and 'screen.height * 0.4' not in bridge
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 assert "_returnToHomeScreenWithCompletion:" in bridge
@@ -118,6 +129,7 @@ assert 'com.apple.springboard' in (root / "ParallelX.plist").read_text(encoding=
 assert not (root / "ParallelXSupport.plist").exists(), "Only SpringBoard may be injected"
 radius = (root / "prefs" / "PXCornerRadiusController.swift").read_text(encoding="utf-8")
 assert "UISlider()" in radius and "UILongPressGestureRecognizer" in radius
+assert '"shadowStrength"' in radius and '"shadowBlur"' in radius
 gesture = (root / "prefs" / "PXGestureAreaController.swift").read_text(encoding="utf-8")
 assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureOffset", "gestureDebug"))
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
