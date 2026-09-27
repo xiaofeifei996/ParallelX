@@ -7,6 +7,13 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     private var apps: [(id: String, name: String)] = []
     private var selected: [String] = []
     private var available: [(id: String, name: String)] = []
+    private let shortcuts: [(id: String, name: String, symbol: String)] = [
+        ("px.action.dark", "深色模式", "moon.fill"),
+        ("px.action.record", "屏幕录制 · 再次选择停止", "record.circle"),
+        ("px.action.rotation", "方向锁定", "lock.rotation"),
+        ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
+        ("px.action.screenshot", "截屏", "camera.viewfinder")
+    ]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,7 +42,8 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     private func saveSelection() {
         let defaults = UserDefaults(suiteName: domain)
         defaults?.set(selected, forKey: "applications")
-        defaults?.set(Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0.name) }),
+        defaults?.set(Dictionary(uniqueKeysWithValues:
+            apps.map { ($0.id, $0.name) } + shortcuts.map { ($0.id, $0.name) }),
                       forKey: "applicationNames")
     }
 
@@ -44,34 +52,44 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         table.setEditing(editing, animated: animated)
     }
 
-    public func numberOfSections(in tableView: UITableView) -> Int { 2 }
+    public func numberOfSections(in tableView: UITableView) -> Int { 3 }
 
     public func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        section == 0 ? "已添加 · 编辑可拖动排序" : "可添加应用"
+        section == 0 ? "已添加 · 编辑可拖动排序" :
+            section == 1 ? "快捷操作" : "可添加应用"
     }
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        section == 0 ? selected.count : available.count
+        section == 0 ? selected.count : section == 1 ? shortcuts.count : available.count
     }
 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "app") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "app")
         let app = indexPath.section == 0
             ? apps.first(where: { $0.id == selected[indexPath.row] }) ??
+                shortcuts.first(where: { $0.id == selected[indexPath.row] }).map { (id: $0.id, name: $0.name) } ??
                 (id: selected[indexPath.row], name: selected[indexPath.row])
-            : available[indexPath.row]
+            : indexPath.section == 1
+                ? (id: shortcuts[indexPath.row].id, name: shortcuts[indexPath.row].name)
+                : available[indexPath.row]
         cell.textLabel?.text = app.name
         cell.detailTextLabel?.text = app.id
         cell.detailTextLabel?.textColor = .secondaryLabel
-        cell.imageView?.image = PXApplicationIcon(app.id)
-        cell.accessoryType = indexPath.section == 0 ? .checkmark : .none
+        cell.imageView?.image = shortcuts.first(where: { $0.id == app.id })
+            .flatMap { UIImage(systemName: $0.symbol) } ?? PXApplicationIcon(app.id)
+        cell.imageView?.tintColor = .label
+        cell.accessoryType = selected.contains(app.id) ? .checkmark : .none
         cell.showsReorderControl = indexPath.section == 0
         return cell
     }
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if indexPath.section == 0 { selected.remove(at: indexPath.row) }
-        else { selected.append(available[indexPath.row].id) }
+        else if indexPath.section == 1 {
+            let id = shortcuts[indexPath.row].id
+            if selected.contains(id) { selected.removeAll { $0 == id } }
+            else { selected.append(id) }
+        } else { selected.append(available[indexPath.row].id) }
         refreshAvailable()
         saveSelection()
         tableView.reloadData()

@@ -29,7 +29,12 @@ assert 'self.selectedIndex == next' in panel
 assert 'selectedDuration >= controller.holdDuration' in panel
 assert 'handleCenterFraction' in panel and 'handleDragMode == 2' in panel
 assert 'buttonRings.append(ringIndex)' in panel and 'controller.animateClosed' in panel
-assert 'selectionPreview.layer.cornerRadius = 18' in panel
+assert 'selectionPreview.layer.cornerRadius = 26' in panel
+assert 'width: 110, height: 110' in panel
+assert 'selectionPreview.layer.borderWidth = 6' in panel
+assert 'shortcuts: [(id: String, name: String, symbol: String)]' in panel
+assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped() }' in panel
+assert 'window.windowLevel = .statusBar - 2' in panel
 assert 'shadowStrength' in panel and 'shadowBlur' in panel
 assert 'card.layer.shadowPath = UIBezierPath' in panel
 assert 'let gripTop: CGFloat = 28' in panel
@@ -98,6 +103,9 @@ assert 'slot.opaque = NO' in bridge
 assert 'screen.height * 0.55' in bridge and 'screen.height * 0.4' not in bridge
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
+assert 'performShortcut:(NSString *)identifier' in bridge
+assert all(action in bridge for action in ('px.action.dark', 'px.action.record',
+                                          'px.action.rotation', 'px.action.screenshot'))
 assert "_returnToHomeScreenWithCompletion:" in bridge
 prepare = bridge.split("- (void)prepareWindowForBundleID:", 1)[1].split("- (void)layoutHost", 1)[0]
 assert "id controller = UIApplication.sharedApplication;" in prepare
@@ -139,3 +147,5 @@ assert all(key in launcher for key in ("launcherEdgeInset", "launcherHoldMillise
 assert "PXLauncherController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 picker = (root / "prefs" / "PXAppPickerController.swift").read_text(encoding="utf-8")
 assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destinationIndexPath.row)' in picker
+assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
+assert 'px.action.window' in picker

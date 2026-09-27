@@ -2,6 +2,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <string.h>
+#import <dlfcn.h>
 
 @interface PXKeyboardSlot : UIView
 @end
@@ -187,6 +188,63 @@ static int PXApplicationPID(NSString *bundleID)
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
     if (opened) self.fullscreenHandoff = YES;
     return opened;
+}
+
+- (BOOL)performShortcut:(NSString *)identifier
+{
+    if ([identifier isEqualToString:@"px.action.dark"]) {
+        Class styleClass = NSClassFromString(@"UISUserInterfaceStyleMode");
+        SEL setter = NSSelectorFromString(@"setModeValue:");
+        if (!styleClass || ![styleClass instancesRespondToSelector:setter]) return NO;
+        id style = [styleClass new];
+        NSInteger next = UIScreen.mainScreen.traitCollection.userInterfaceStyle ==
+            UIUserInterfaceStyleDark ? 1 : 2;
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(style, setter, next);
+        return YES;
+    }
+    if ([identifier isEqualToString:@"px.action.rotation"]) {
+        id manager = PXCall(NSClassFromString(@"SBOrientationLockManager"), @"sharedInstance");
+        SEL state = NSSelectorFromString(@"isUserLocked");
+        if (![manager respondsToSelector:state]) return NO;
+        BOOL locked = ((BOOL (*)(id, SEL))objc_msgSend)(manager, state);
+        SEL action = NSSelectorFromString(locked ? @"unlock" : @"lock");
+        if (![manager respondsToSelector:action]) return NO;
+        ((void (*)(id, SEL))objc_msgSend)(manager, action);
+        return YES;
+    }
+    if ([identifier isEqualToString:@"px.action.screenshot"]) {
+        id springBoard = UIApplication.sharedApplication;
+        SEL action = NSSelectorFromString(@"takeScreenshot");
+        if (![springBoard respondsToSelector:action]) return NO;
+        ((void (*)(id, SEL))objc_msgSend)(springBoard, action);
+        return YES;
+    }
+    if ([identifier isEqualToString:@"px.action.record"]) {
+        if (!NSClassFromString(@"RPScreenRecorder"))
+            dlopen("/System/Library/Frameworks/ReplayKit.framework/ReplayKit", RTLD_LAZY);
+        id recorder = PXCall(NSClassFromString(@"RPScreenRecorder"), @"sharedRecorder");
+        SEL state = NSSelectorFromString(@"isRecording");
+        if (![recorder respondsToSelector:state]) return NO;
+        BOOL recording = ((BOOL (*)(id, SEL))objc_msgSend)(recorder, state);
+        if (recording) {
+            SEL stop = NSSelectorFromString(@"stopSystemRecording:");
+            if (![recorder respondsToSelector:stop]) return NO;
+            ((void (*)(id, SEL, id))objc_msgSend)(recorder, stop, ^(NSError *error) { (void)error; });
+        } else {
+            SEL start = NSSelectorFromString(@"startSystemRecordingWithMicrophoneEnabled:handler:");
+            if ([recorder respondsToSelector:start]) {
+                ((void (*)(id, SEL, BOOL, id))objc_msgSend)(recorder, start, NO,
+                    ^(NSError *error) { (void)error; });
+            } else {
+                start = NSSelectorFromString(@"startRecordingWithMicrophoneEnabled:windowToRecord:systemRecording:handler:");
+                if (![recorder respondsToSelector:start]) return NO;
+                ((void (*)(id, SEL, BOOL, id, BOOL, id))objc_msgSend)(recorder, start, NO,
+                    nil, YES, ^(NSError *error) { (void)error; });
+            }
+        }
+        return YES;
+    }
+    return NO;
 }
 
 - (NSString *)frontmostBundleID

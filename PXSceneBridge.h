@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(prepareWindow(for:wasFullscreen:completion:));
 - (nullable id)protectedSettings:(id)settings forScene:(id)scene;
 - (BOOL)openFullscreenApplication:(NSString *)bundleID;
+- (BOOL)performShortcut:(NSString *)identifier;
 - (void)close;
 @end
 NS_ASSUME_NONNULL_END

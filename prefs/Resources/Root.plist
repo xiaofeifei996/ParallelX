@@ -2,7 +2,7 @@
     title = "ParallelX";
     items = (
         { cell = PSGroupCell; label = "分屏应用"; },
-        { cell = PSButtonCell; label = "添加、移除与排序应用"; action = openPicker; },
+        { cell = PSButtonCell; label = "添加应用、快捷操作与排序"; action = openPicker; },
         { cell = PSGroupCell; label = "呼出面板"; footerText = "从右侧手柄向屏幕内滑动，圆心留空，仅显示应用图标。"; },
         { cell = PSButtonCell; label = "面板、手柄与选择手势"; action = openLauncher; },
         { cell = PSGroupCell; label = "窗口外观"; footerText = "调整圆角和阴影；更改在下次打开窗口时生效。"; },

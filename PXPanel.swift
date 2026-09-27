@@ -4,6 +4,20 @@ private let preferenceDomain = "com.moxuan.parallelx"
 private let gripMargin: CGFloat = 28
 private let gripTop: CGFloat = 28
 private let gripBottom: CGFloat = 168
+private let shortcuts: [(id: String, name: String, symbol: String)] = [
+    ("px.action.dark", "深色模式", "moon.fill"),
+    ("px.action.record", "屏幕录制", "record.circle"),
+    ("px.action.rotation", "方向锁定", "lock.rotation"),
+    ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
+    ("px.action.screenshot", "截屏", "camera.viewfinder")
+]
+
+private func panelIcon(_ id: String) -> UIImage? {
+    if let shortcut = shortcuts.first(where: { $0.id == id }) {
+        return UIImage(systemName: shortcut.symbol)
+    }
+    return PXApplicationIcon(id)
+}
 
 private final class PXHandleWindow: UIWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -61,9 +75,11 @@ private final class PXPanelViewController: UIViewController {
         pageControl.isUserInteractionEnabled = false
         pageControl.hidesForSinglePage = true
         view.addSubview(pageControl)
-        selectionPreview.backgroundColor = .clear
+        selectionPreview.backgroundColor = .systemGray5
         selectionPreview.contentMode = .scaleAspectFill
-        selectionPreview.layer.cornerRadius = 18
+        selectionPreview.layer.cornerRadius = 26
+        selectionPreview.layer.borderWidth = 6
+        selectionPreview.layer.borderColor = UIColor.systemGray5.cgColor
         selectionPreview.clipsToBounds = true
         selectionPreview.isUserInteractionEnabled = false
         selectionPreview.alpha = 0
@@ -88,9 +104,9 @@ private final class PXPanelViewController: UIViewController {
                                    y: min(view.bounds.maxY - 42,
                                           handleCenterY + min(300, view.bounds.height * 0.38)),
                                    width: 100, height: 26)
-        selectionPreview.frame = CGRect(x: view.bounds.midX - 42,
-                                        y: max(view.safeAreaInsets.top + 36, view.bounds.height * 0.2 - 42),
-                                        width: 84, height: 84)
+        selectionPreview.frame = CGRect(x: view.bounds.midX - 55,
+                                        y: max(view.safeAreaInsets.top + 24, view.bounds.height * 0.2 - 55),
+                                        width: 110, height: 110)
         guard lastSize != view.bounds.size else { return }
         lastSize = view.bounds.size
         layoutPage()
@@ -165,8 +181,9 @@ private final class PXPanelViewController: UIViewController {
                 button.layer.shadowOpacity = 0.12
                 button.layer.shadowRadius = 5
                 button.layer.shadowOffset = CGSize(width: 0, height: 2)
-                let icon = UIImageView(image: PXApplicationIcon(apps[appIndex].id) ?? UIImage(systemName: "app"))
+                let icon = UIImageView(image: panelIcon(apps[appIndex].id) ?? UIImage(systemName: "app"))
                 icon.frame = button.bounds.insetBy(dx: 4, dy: 4)
+                icon.tintColor = .label
                 icon.contentMode = .scaleAspectFill
                 icon.layer.cornerRadius = (size - 8) / 2
                 icon.clipsToBounds = true
@@ -212,7 +229,8 @@ private final class PXPanelViewController: UIViewController {
                 }
                 holdFeedbackTask = task
                 DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
-                selectionPreview.image = PXApplicationIcon(apps[next].id) ?? UIImage(systemName: "app")
+                selectionPreview.image = panelIcon(apps[next].id) ?? UIImage(systemName: "app")
+                selectionPreview.tintColor = .label
                 selectionPreview.transform = CGAffineTransform(scaleX: 0.76, y: 0.76)
                 UIView.animate(withDuration: 0.28, delay: 0,
                                usingSpringWithDamping: 0.72, initialSpringVelocity: 0,
@@ -344,7 +362,7 @@ public final class PXPanelEntry: NSObject {
         guard let scene = activeScene() else { return }
         let window = PXHandleWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = .statusBar + 1
+        window.windowLevel = .statusBar - 1
         window.backgroundColor = .clear
         let root = UIViewController()
         root.view.backgroundColor = .clear
@@ -392,7 +410,9 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let ids = defaults?.stringArray(forKey: "applications") ?? []
         let names = defaults?.dictionary(forKey: "applicationNames") as? [String: String] ?? [:]
-        return ids.map { (id: $0, name: names[$0] ?? $0) }
+        return ids.map { id in
+            (id: id, name: names[id] ?? shortcuts.first(where: { $0.id == id })?.name ?? id)
+        }
     }
 
     private func beginPanel() {
@@ -400,7 +420,7 @@ public final class PXPanelEntry: NSObject {
         panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = .alert + 2
+        window.windowLevel = .statusBar + 1
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
         controller.apps = selectedApps()
@@ -462,9 +482,15 @@ public final class PXPanelEntry: NSObject {
                let controller = panel,
                let bundleID = controller.updateSelection(at: gesture.location(in: controller.view)) {
                 let fullscreen = controller.selectedDuration >= controller.holdDuration
-                hidePanel()
-                if fullscreen { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
-                else { openHost(bundleID) }
+                if bundleID.hasPrefix("px.action.") {
+                    hidePanel { [weak self] in self?.performShortcut(bundleID) }
+                } else {
+                    hidePanel()
+                    if fullscreen {
+                        if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped() }
+                        else { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
+                    } else { openHost(bundleID) }
+                }
             } else { hidePanel() }
         case .cancelled, .failed:
             if handleDragMode == 2 { updateHandleAppearance() }
@@ -496,6 +522,15 @@ public final class PXPanelEntry: NSObject {
         presentHost(bundleID, wasFullscreen: wasFullscreen)
     }
 
+    private func performShortcut(_ id: String) {
+        if id == "px.action.window" {
+            if hostWindow != nil { fullscreenTapped() }
+            else if let frontmost = PXSceneBridge.shared().frontmostBundleID() { openHost(frontmost) }
+        } else {
+            _ = PXSceneBridge.shared().performShortcut(id)
+        }
+    }
+
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
@@ -510,7 +545,7 @@ public final class PXPanelEntry: NSObject {
         let window = PXHandleWindow(windowScene: scene)
         window.frame = CGRect(x: cardFrame.minX - gripMargin, y: cardFrame.minY - gripTop,
                               width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
-        window.windowLevel = .alert + 1
+        window.windowLevel = .statusBar - 2
         window.backgroundColor = .clear
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
