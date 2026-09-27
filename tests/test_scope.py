@@ -23,9 +23,11 @@ assert "if gesture.state == .began { fullscreenTapped() }" in panel
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'PXCornerGrip' in panel and 'path.addQuadCurve' in panel
+assert 'corner.isOpaque = false' in panel and 'corner.backgroundColor = .clear' in panel
 assert 'for side in [-1, 1]' in panel
 assert 'controls.addSubview(corner)' in panel
 assert 'controls.addSubview(moveGrip)' in panel
+assert 'width: 240, height: 72' in panel
 assert 'handleWindow?.windowLevel = .alert + 2' in panel
 assert 'handleWindow?.windowLevel = .statusBar + 1' in panel
 assert 'hostCorners.forEach { $0.removeFromSuperview() }' in panel
@@ -49,6 +51,11 @@ assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
 assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
 assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
+assert "host.transform = CGAffineTransformIdentity" not in bridge
+assert 'relocateKeyboardView:(UIView *)view' in bridge
+assert 'self.keyboardOverlay = keyboardOverlay' in bridge
+assert 'slot.opaque = NO' in bridge
+assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 assert "_returnToHomeScreenWithCompletion:" in bridge
 assert "host.autoresizingMask" not in bridge

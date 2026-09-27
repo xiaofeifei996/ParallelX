@@ -318,6 +318,8 @@ public final class PXPanelEntry: NSObject {
         for side in [-1, 1] {
             let corner = PXCornerGrip(frame: .zero)
             corner.tag = side
+            corner.isOpaque = false
+            corner.backgroundColor = .clear
             corner.isUserInteractionEnabled = true
             corner.isAccessibilityElement = true
             corner.accessibilityLabel = "拖动调整窗口大小"
@@ -327,7 +329,7 @@ public final class PXPanelEntry: NSObject {
             hostCorners.append(corner)
         }
         let moveGrip = UIView(frame: .zero)
-        let moveLine = UIView(frame: CGRect(x: 45, y: 10, width: 70, height: 5))
+        let moveLine = UIView(frame: CGRect(x: 85, y: 24, width: 70, height: 5))
         moveLine.backgroundColor = .secondaryLabel
         moveLine.layer.cornerRadius = 2.5
         moveGrip.addSubview(moveLine)
@@ -356,7 +358,8 @@ public final class PXPanelEntry: NSObject {
             card.alpha = 1
             card.transform = .identity
         } completion: { [weak self] _ in self?.layoutHostControls() }
-        PXSceneBridge.shared().openApplication(bundleID, in: canvas) { [weak self, weak window] success in
+        PXSceneBridge.shared().openApplication(bundleID, in: canvas,
+                                               keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
             if success { self.matchHostAspect() }
@@ -398,8 +401,8 @@ public final class PXPanelEntry: NSObject {
                                        y: center.y - corner.frame.minY)
             corner.arcRadius = arcRadius
         }
-        hostMoveGrip?.frame = CGRect(x: frame.midX - 80, y: frame.maxY - 10,
-                                     width: 160, height: gripBottom)
+        hostMoveGrip?.frame = CGRect(x: frame.midX - 120, y: frame.maxY - 20,
+                                     width: 240, height: 72)
     }
 
     @objc private func closeTapped() { closeHost(animated: true) }

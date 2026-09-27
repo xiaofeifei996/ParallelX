@@ -6,6 +6,7 @@
 
 static void (*PXOriginalSceneUpdate)(id, SEL, id, id, id);
 static void (*PXOriginalSceneUpdateWithoutCompletion)(id, SEL, id, id);
+static void (*PXOriginalKeyboardDidMove)(id, SEL);
 
 static void PXSceneUpdate(id scene, SEL selector, id settings, id context, id completion)
 {
@@ -23,6 +24,16 @@ static void PXSceneUpdateWithoutCompletion(id scene, SEL selector, id settings, 
     PXOriginalSceneUpdateWithoutCompletion(scene, selector, protected ?: settings, context);
 }
 
+static void PXKeyboardDidMove(id view, SEL selector)
+{
+    PXOriginalKeyboardDidMove(view, selector);
+    __weak UIView *candidate = view;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *keyboard = candidate;
+        if (keyboard) [[PXSceneBridge sharedBridge] relocateKeyboardView:keyboard];
+    });
+}
+
 __attribute__((constructor)) static void PXInitialize(void)
 {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -34,6 +45,11 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (scene && class_getInstanceMethod(scene, updateShort))
             MSHookMessageEx(scene, updateShort, (IMP)PXSceneUpdateWithoutCompletion,
                             (IMP *)&PXOriginalSceneUpdateWithoutCompletion);
+        Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView");
+        SEL didMove = @selector(didMoveToWindow);
+        if (keyboard && class_getInstanceMethod(keyboard, didMove))
+            MSHookMessageEx(keyboard, didMove, (IMP)PXKeyboardDidMove,
+                            (IMP *)&PXOriginalKeyboardDidMove);
         Class entry = NSClassFromString(@"PXPanelEntry");
         SEL start = NSSelectorFromString(@"start");
         if ([entry respondsToSelector:start])

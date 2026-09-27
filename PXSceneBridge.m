@@ -116,6 +116,9 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, strong) id presentationContext;
 @property(nonatomic, strong) id processAssertion;
 @property(nonatomic, weak) UIView *canvas;
+@property(nonatomic, weak) UIView *keyboardOverlay;
+@property(nonatomic, weak) UIView *keyboardHostView;
+@property(nonatomic, strong) UIView *keyboardSlot;
 @property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) NSUInteger generation;
 @end
@@ -223,8 +226,8 @@ static int PXApplicationPID(NSString *bundleID)
     if (!host || !canvas || source.width <= 0 || source.height <= 0 ||
         target.width <= 0 || target.height <= 0) return;
     CGFloat scale = MIN(target.width / source.width, target.height / source.height);
-    host.transform = CGAffineTransformIdentity;
-    host.bounds = (CGRect){CGPointZero, source};
+    if (!CGSizeEqualToSize(host.bounds.size, source))
+        host.bounds = (CGRect){CGPointZero, source};
     host.center = CGPointMake(target.width / 2, target.height / 2);
     host.transform = CGAffineTransformMakeScale(scale, scale);
 }
@@ -313,8 +316,40 @@ static int PXApplicationPID(NSString *bundleID)
     return main;
 }
 
+- (void)relocateKeyboardView:(UIView *)view
+{
+    if (view == self.keyboardHostView) {
+        if (!view.window) {
+            [self.keyboardSlot removeFromSuperview];
+            self.keyboardSlot = nil;
+            self.keyboardHostView = nil;
+        }
+        return;
+    }
+    UIView *host = self.hostView;
+    UIView *overlay = self.keyboardOverlay;
+    if (!host || !overlay || !view.window || ![view isDescendantOfView:host]) return;
+    CGSize screen = overlay.bounds.size;
+    CGFloat sourceHeight = view.bounds.size.height;
+    if (screen.width <= 0 || screen.height <= 0 || sourceHeight <= 0) return;
+    CGFloat height = MIN(sourceHeight, screen.height * 0.4);
+    UIView *slot = [[UIView alloc] initWithFrame:CGRectMake(0, screen.height - height,
+                                                            screen.width, height)];
+    slot.backgroundColor = UIColor.clearColor;
+    slot.opaque = NO;
+    slot.clipsToBounds = YES;
+    [overlay addSubview:slot];
+    [slot addSubview:view];
+    view.frame = CGRectMake(0, height - sourceHeight, screen.width, sourceHeight);
+    self.keyboardSlot = slot;
+    self.keyboardHostView = view;
+    PXTransitionLog([NSString stringWithFormat:@"keyboard outside height=%.1f source=%.1f",
+                     height, sourceHeight]);
+}
+
 - (void)openApplication:(NSString *)bundleID
                 inView:(UIView *)canvas
+       keyboardOverlay:(UIView *)keyboardOverlay
             completion:(void (^)(BOOL))completion
 {
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
@@ -326,6 +361,7 @@ static int PXApplicationPID(NSString *bundleID)
         return;
     }
     self.canvas = canvas;
+    self.keyboardOverlay = keyboardOverlay;
     self.bundleID = bundleID;
     __weak typeof(self) weakSelf = self;
     __block NSUInteger attempts = 0;
@@ -395,6 +431,10 @@ static int PXApplicationPID(NSString *bundleID)
 {
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     self.generation += 1;
+    self.keyboardHostView = nil;
+    [self.keyboardSlot removeFromSuperview];
+    self.keyboardSlot = nil;
+    self.keyboardOverlay = nil;
     UIView *host = self.hostView;
     self.hostView = nil;
     id scene = self.scene;

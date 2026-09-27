@@ -5,7 +5,9 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)sharedBridge;
 - (void)openApplication:(NSString *)bundleID
                 inView:(UIView *)canvas
+       keyboardOverlay:(UIView *)keyboardOverlay
             completion:(void (^)(BOOL success))completion;
+- (void)relocateKeyboardView:(UIView *)view;
 - (void)layoutHost;
 - (CGSize)hostedSourceSize;
 - (nullable NSString *)frontmostBundleID;
