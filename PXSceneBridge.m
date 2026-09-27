@@ -117,6 +117,7 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, strong) UIView *keyboardSlot;
 @property(nonatomic, assign) UIWindowLevel keyboardWindowLevel;
 @property(nonatomic, assign) BOOL relocatingKeyboard;
+@property(nonatomic, assign) BOOL fullscreenHandoff;
 @property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) NSUInteger generation;
 @end
@@ -148,15 +149,24 @@ static int PXApplicationPID(NSString *bundleID)
 
 - (BOOL)launchSuspended:(NSString *)bundleID
 {
-    id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
     SEL selector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
-    NSMethodSignature *signature = [workspace methodSignatureForSelector:selector];
-    if (signature && signature.numberOfArguments == 4)
-        return ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, YES);
     id springBoard = UIApplication.sharedApplication;
-    signature = [springBoard methodSignatureForSelector:selector];
-    return signature && signature.numberOfArguments == 4 &&
+    NSMethodSignature *signature = [springBoard methodSignatureForSelector:selector];
+    BOOL launched = signature && signature.numberOfArguments == 4 &&
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, YES);
+    if (!launched) {
+        id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
+        signature = [workspace methodSignatureForSelector:selector];
+        launched = signature && signature.numberOfArguments == 4 &&
+            ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, YES);
+    }
+    if (launched && !PXApplicationPID(bundleID)) {
+        id manager = PXCall(NSClassFromString(@"FBProcessManager"), @"sharedInstance");
+        SEL create = NSSelectorFromString(@"createApplicationProcessForBundleID:");
+        if ([manager methodSignatureForSelector:create].numberOfArguments == 3)
+            ((void (*)(id, SEL, id))objc_msgSend)(manager, create, bundleID);
+    }
+    return launched;
 }
 
 - (BOOL)openFullscreenApplication:(NSString *)bundleID
@@ -166,12 +176,16 @@ static int PXApplicationPID(NSString *bundleID)
     id springBoard = UIApplication.sharedApplication;
     NSMethodSignature *signature = [springBoard methodSignatureForSelector:selector];
     if (signature && signature.numberOfArguments == 4 &&
-        ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, NO))
+        ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, NO)) {
+        self.fullscreenHandoff = YES;
         return YES;
+    }
     id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
     signature = [workspace methodSignatureForSelector:selector];
-    return signature && signature.numberOfArguments == 4 &&
+    BOOL opened = signature && signature.numberOfArguments == 4 &&
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
+    if (opened) self.fullscreenHandoff = YES;
+    return opened;
 }
 
 - (NSString *)frontmostBundleID
@@ -316,6 +330,38 @@ static int PXApplicationPID(NSString *bundleID)
     return main;
 }
 
+- (void)registerColdSceneInSwitcher:(id)scene bundleID:(NSString *)bundleID
+{
+    NSString *sceneID = PXCall(scene, @"identifier");
+    if (![sceneID isKindOfClass:NSString.class] ||
+        ![sceneID containsString:bundleID]) return;
+    id switcher = PXCall(NSClassFromString(@"SBMainSwitcherViewController"), @"sharedInstance");
+    NSArray *recent = PXCall(switcher, @"recentAppLayouts");
+    SEL add = NSSelectorFromString(@"_addAppLayoutToFront:");
+    if (![recent isKindOfClass:NSArray.class] || ![switcher respondsToSelector:add]) return;
+    for (id layout in recent) {
+        for (id item in PXCall(layout, @"allItems")) {
+            if ([PXCall(item, @"bundleIdentifier") isEqual:bundleID]) return;
+        }
+    }
+    Class itemClass = NSClassFromString(@"SBDisplayItem");
+    Class layoutClass = NSClassFromString(@"SBAppLayout");
+    SEL itemSelector = NSSelectorFromString(@"displayItemWithType:bundleIdentifier:uniqueIdentifier:");
+    SEL layoutSelector = NSSelectorFromString(@"initWithItemsForLayoutRoles:configuration:environment:");
+    if (![itemClass respondsToSelector:itemSelector] ||
+        ![layoutClass instancesRespondToSelector:layoutSelector]) return;
+    NSString *uniqueID = [sceneID hasPrefix:@"sceneID:"] ? sceneID :
+        [@"sceneID:" stringByAppendingString:sceneID];
+    @try {
+        id item = ((id (*)(id, SEL, NSInteger, id, id))objc_msgSend)(itemClass,
+            itemSelector, 0, bundleID, uniqueID);
+        if (!item) return;
+        id layout = ((id (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(
+            [layoutClass alloc], layoutSelector, @{@1: item}, 1, 1);
+        if (layout) ((void (*)(id, SEL, id))objc_msgSend)(switcher, add, layout);
+    } @catch (__unused NSException *exception) { }
+}
+
 - (void)relocateKeyboardView:(UIView *)view
 {
     if (self.relocatingKeyboard) return;
@@ -387,8 +433,12 @@ static int PXApplicationPID(NSString *bundleID)
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     [self close];
     NSUInteger generation = self.generation;
-    if (bundleID.length == 0 || !canvas ||
-        (![self sceneForBundleID:bundleID] && ![self launchSuspended:bundleID])) {
+    if (bundleID.length == 0 || !canvas) {
+        completion(NO);
+        return;
+    }
+    BOOL coldStart = ![self sceneForBundleID:bundleID];
+    if (coldStart && ![self launchSuspended:bundleID]) {
         completion(NO);
         return;
     }
@@ -439,6 +489,8 @@ static int PXApplicationPID(NSString *bundleID)
                             [strongSelf layoutHost];
                             [host layoutIfNeeded];
                             [strongSelf relocateExistingKeyboard:host];
+                            if (coldStart)
+                                [strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID];
                             completion(YES);
                             retry = nil;
                             return;
@@ -475,6 +527,8 @@ static int PXApplicationPID(NSString *bundleID)
     self.hostView = nil;
     id scene = self.scene;
     NSString *bundleID = self.bundleID;
+    BOOL fullscreenHandoff = self.fullscreenHandoff;
+    self.fullscreenHandoff = NO;
     self.scene = nil;
     self.bundleID = nil;
     self.canvas = nil;
@@ -494,7 +548,7 @@ static int PXApplicationPID(NSString *bundleID)
         if ([assertion respondsToSelector:NSSelectorFromString(@"invalidate")])
             ((void (*)(id, SEL))objc_msgSend)(assertion, NSSelectorFromString(@"invalidate"));
     } @catch (__unused NSException *exception) { }
-    if (scene && ![[self frontmostBundleID] isEqualToString:bundleID]) {
+    if (scene && !fullscreenHandoff && ![[self frontmostBundleID] isEqualToString:bundleID]) {
         id settings = PXCall(scene, @"settings");
         id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
         if (mutable && PXSetBool(mutable, @"setBackgrounded:", YES)) {

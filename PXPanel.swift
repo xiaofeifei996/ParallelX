@@ -117,6 +117,7 @@ public final class PXPanelEntry: NSObject {
     private var hostedBundleID: String?
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
+    private var resizeStartRadius: CGFloat = 0
     private var moveStartFrame: CGRect?
     private var needsHostRefresh = false
     private var deviceLocked = false
@@ -436,9 +437,27 @@ public final class PXPanelEntry: NSObject {
     @objc private func closeTapped() { closeHost(animated: true) }
 
     @objc private func fullscreenTapped() {
-        guard let bundleID = hostedBundleID,
-              PXSceneBridge.shared().openFullscreenApplication(bundleID) else { return }
-        closeHost(animated: false)
+        guard let bundleID = hostedBundleID, let window = hostWindow,
+              let card = hostCard, let scene = window.windowScene else { return }
+        let oldFrame = CGRect(x: window.frame.minX + card.frame.minX,
+                              y: window.frame.minY + card.frame.minY,
+                              width: card.bounds.width, height: card.bounds.height)
+        guard PXSceneBridge.shared().openFullscreenApplication(bundleID) else { return }
+        hostCorners.forEach { $0.removeFromSuperview() }
+        hostMoveGrip?.removeFromSuperview()
+        window.isUserInteractionEnabled = false
+        window.frame = scene.coordinateSpace.bounds
+        card.frame = oldFrame
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.32,
+                       delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+            let screen = scene.coordinateSpace.bounds
+            card.transform = CGAffineTransform(scaleX: screen.width / oldFrame.width,
+                                                y: screen.height / oldFrame.height)
+            card.center = CGPoint(x: screen.midX, y: screen.midY)
+            card.layer.cornerRadius = 0
+        } completion: { [weak self, weak window] _ in
+            if self?.hostWindow === window { self?.closeHost(animated: false) }
+        }
     }
 
     @objc private func moveGripHeld(_ gesture: UILongPressGestureRecognizer) {
@@ -451,6 +470,7 @@ public final class PXPanelEntry: NSObject {
             resizeStartFrame = CGRect(x: window.frame.minX + gripMargin,
                                       y: window.frame.minY, width: card.bounds.width,
                                       height: card.bounds.height)
+            resizeStartRadius = card.layer.cornerRadius
         }
         guard let start = resizeStartFrame else { return }
         if gesture.state == .changed || gesture.state == .ended {
@@ -466,15 +486,34 @@ public final class PXPanelEntry: NSObject {
             let scale = min(max(1 + change, 220 / start.width), max(220 / start.width, maximum))
             let size = CGSize(width: start.width * scale, height: start.height * scale)
             let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
-            window.frame = CGRect(x: x - gripMargin, y: start.minY,
-                                  width: size.width + 2 * gripMargin,
-                                  height: size.height + gripBottom)
-            card.frame = CGRect(x: gripMargin, y: 0, width: size.width, height: size.height)
-            card.layoutIfNeeded()
-            layoutHostControls()
-            PXSceneBridge.shared().layoutHost()
+            if gesture.state == .changed {
+                window.transform = CGAffineTransform(scaleX: scale, y: scale)
+                window.center = CGPoint(x: x - scale * (gripMargin - window.bounds.midX),
+                                        y: start.minY + scale * window.bounds.midY)
+                card.layer.cornerRadius = resizeStartRadius / scale
+            } else {
+                UIView.performWithoutAnimation {
+                    window.transform = .identity
+                    window.frame = CGRect(x: x - gripMargin, y: start.minY,
+                                          width: size.width + 2 * gripMargin,
+                                          height: size.height + gripBottom)
+                    card.frame = CGRect(x: gripMargin, y: 0,
+                                        width: size.width, height: size.height)
+                    card.layer.cornerRadius = resizeStartRadius
+                    card.layoutIfNeeded()
+                    layoutHostControls()
+                    PXSceneBridge.shared().layoutHost()
+                }
+            }
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
+            if gesture.state != .ended {
+                window.transform = .identity
+                window.frame = CGRect(x: start.minX - gripMargin, y: start.minY,
+                                      width: start.width + 2 * gripMargin,
+                                      height: start.height + gripBottom)
+                card.layer.cornerRadius = resizeStartRadius
+            }
             resizeStartFrame = nil
         }
     }
