@@ -72,6 +72,8 @@ assert 'deadline: .now() + 0.75' in fullscreen
 assert 'self.handleWindow?.windowLevel = window.windowLevel + 1' in fullscreen
 assert 'self.exposeSystemHomeIndicator(in: scene, through: window)' in fullscreen
 assert 'overlay.layer.mask = mask' in panel
+assert '["SBMainSwitcherWindow", "SBMainDisplaySceneLayoutWindow"]' in panel
+assert 'guard let source else { return }' not in panel
 assert 'handleWindow?.windowLevel = .statusBar - 1' in panel
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel

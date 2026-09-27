@@ -821,10 +821,10 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func exposeSystemHomeIndicator(in scene: UIWindowScene, through overlay: UIWindow) {
-        let source = scene.windows.first { NSStringFromClass(type(of: $0)) == "SBMainSwitcherWindow" }
-            ?? scene.windows.first { NSStringFromClass(type(of: $0)) == "SBMainDisplaySceneLayoutWindow" }
-        guard let source else { return }
-        var views: [UIView] = [source]
+        var views: [UIView] = scene.windows.filter {
+            ["SBMainSwitcherWindow", "SBMainDisplaySceneLayoutWindow"]
+                .contains(NSStringFromClass(type(of: $0)))
+        }
         while let view = views.popLast() {
             if NSStringFromClass(type(of: view)) == "MTLumaDodgePillView" {
                 let opening = view.convert(view.bounds, to: overlay).insetBy(dx: -4, dy: -3)
