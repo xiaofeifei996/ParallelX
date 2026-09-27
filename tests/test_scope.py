@@ -137,6 +137,7 @@ assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in b
 assert 'self.relocatingKeyboard' in bridge
 assert 'PXSetSceneFrame(mutable, self.sourceSize)' in bridge
 assert 'UILaunchStoryboardName' in bridge and 'renderInContext:context' in bridge
+assert 'NSClassFromString(@"LSApplicationProxy")' in bridge
 assert 'codes.aurora.kayoko.core.show' in bridge
 assert 'keepHostedProcessAlive' in bridge
 assert 'applicationDisplayItemWithBundleIdentifier:sceneIdentifier:' in bridge

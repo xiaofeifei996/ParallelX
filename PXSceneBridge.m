@@ -158,10 +158,10 @@ static int PXApplicationPID(NSString *bundleID)
 {
     if (bundleID.length == 0 || size.width <= 0 || size.height <= 0) return nil;
     @try {
-        id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
+        Class proxyClass = NSClassFromString(@"LSApplicationProxy");
         SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
-        if (![workspace respondsToSelector:lookup]) return nil;
-        id proxy = ((id (*)(id, SEL, id))objc_msgSend)(workspace, lookup, bundleID);
+        if (![proxyClass respondsToSelector:lookup]) return nil;
+        id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, lookup, bundleID);
         NSURL *url = PXCall(proxy, @"bundleURL");
         if (![url isKindOfClass:NSURL.class]) return nil;
         NSBundle *bundle = [NSBundle bundleWithURL:url];
