@@ -203,14 +203,21 @@ static int PXApplicationPID(NSString *bundleID)
         finish();
         return;
     }
-    id controller = PXCall(NSClassFromString(@"SBUIController"), @"sharedInstance");
+    id controller = UIApplication.sharedApplication;
     SEL selector = NSSelectorFromString(@"_returnToHomeScreenWithCompletion:");
     NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
     if (!signature || signature.numberOfArguments != 3 ||
         signature.methodReturnType[0] != 'v' ||
         [signature getArgumentTypeAtIndex:2][0] != '@') {
-        PXTransitionLog(@"home selector unavailable");
-        finish();
+        id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
+        SEL press = NSSelectorFromString(@"performSinglePressUpActions");
+        if ([actions respondsToSelector:press]) {
+            PXTransitionLog(@"home hardware action invoked");
+            ((void (*)(id, SEL))objc_msgSend)(actions, press);
+            finish();
+        } else {
+            PXTransitionLog(@"home action unavailable; window not opened");
+        }
         return;
     }
     PXTransitionLog(@"home selector invoked");

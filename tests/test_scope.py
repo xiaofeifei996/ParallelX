@@ -58,6 +58,10 @@ assert 'slot.opaque = NO' in bridge
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 assert "_returnToHomeScreenWithCompletion:" in bridge
+prepare = bridge.split("- (void)prepareWindowForBundleID:", 1)[1].split("- (void)layoutHost", 1)[0]
+assert "id controller = UIApplication.sharedApplication;" in prepare
+assert "SBHomeHardwareButtonActions" in prepare and "performSinglePressUpActions" in prepare
+assert 'home action unavailable; window not opened' in prepare
 assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
