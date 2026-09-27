@@ -149,6 +149,8 @@ assert 'dock.card.layer.cornerRadius = radius' in panel
 assert 'if hostWindow != nil { parkMain(side: dock.side) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
+assert 'card.addSubview(overlay)' in panel
+assert 'dock.overlay.frame = dock.card.bounds' in panel
 assert 'hostTopCorners' in panel and '#selector(dockTapped(_:))' in panel
 assert 'PXDockController.swift' in (root / 'prefs' / 'Makefile').read_text(encoding='utf-8')
 assert 'com.apple.springboard.lockstate' in entry

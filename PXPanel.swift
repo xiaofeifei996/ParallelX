@@ -850,14 +850,15 @@ public final class PXPanelEntry: NSObject {
     @discardableResult private func parkMain(side: Int) -> Bool {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID else { return false }
-        let overlay = UIView(frame: .zero)
+        let overlay = UIView(frame: card.bounds)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         overlay.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(restoreDockTapped(_:))))
         for direction in [UISwipeGestureRecognizer.Direction.up, .left, .right] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(dockSwiped(_:)))
             swipe.direction = direction
             overlay.addGestureRecognizer(swipe)
         }
-        window.rootViewController?.view.addSubview(overlay)
+        card.addSubview(overlay)
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
@@ -897,7 +898,7 @@ public final class PXPanelEntry: NSObject {
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 dock.window.frame = frame
                 dock.card.frame = CGRect(origin: .zero, size: frame.size)
-                dock.overlay.frame = dock.window.bounds
+                dock.overlay.frame = dock.card.bounds
                 let radius = dock.originalCornerRadius * width / max(1, dock.originalCardFrame.width)
                 dock.card.layer.cornerRadius = radius
                 dock.card.subviews.first?.layer.cornerRadius = radius
