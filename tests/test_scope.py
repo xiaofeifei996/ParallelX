@@ -169,6 +169,7 @@ assert 'guard !deviceLocked, needsHostRefresh' in panel
 assert 'bool(forKey: "clearOnLock")' in panel
 assert 'for dock in Array(dockedHosts) { removeDock(dock) }' in panel
 assert 'recordDockTouch("park \\(bundleID)' in panel
+assert 'recordDockTouch("layout \\(dock.bundleID)' in panel
 picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
 assert 'navigationItem.searchController = search' in picker
 assert 'localizedCaseInsensitiveContains(query)' in picker

@@ -347,6 +347,7 @@ private final class PXPanelViewController: UIViewController {
 public final class PXPanelEntry: NSObject {
     private static let shared = PXPanelEntry()
     private static let touchProbeQueue = DispatchQueue(label: "com.moxuan.parallelx.touch-probe")
+    private var touchProbeCount = 0
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
     private var hostWindow: UIWindow?
@@ -488,10 +489,11 @@ public final class PXPanelEntry: NSObject {
         guard let scene = activeScene() else { return }
         let window = PXHandleWindow(windowScene: scene)
         window.onHitTest = { [weak self] point, hit in
-            guard let self = self,
-                  let dock = self.dockedHosts.first(where: { $0.overlay.frame.contains(point) }) else { return }
+            guard let self = self, !self.dockedHosts.isEmpty, self.touchProbeCount < 80 else { return }
+            self.touchProbeCount += 1
             let viewName = hit.map { String(describing: type(of: $0)) } ?? "nil"
-            self.recordDockTouch("hit \(dock.bundleID) overlay=\(hit === dock.overlay) view=\(viewName)")
+            let frames = self.dockedHosts.map { "\($0.bundleID):\($0.overlay.frame)" }.joined(separator: ",")
+            self.recordDockTouch("hit point=\(point) view=\(viewName) docks=\(frames)")
         }
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar - 1
@@ -915,7 +917,8 @@ public final class PXPanelEntry: NSObject {
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 moveGrip: hostMoveGrip, overlay: overlay)
         dockedHosts.append(dock)
-        recordDockTouch("park \(bundleID) overlay=\(overlay.frame)")
+        touchProbeCount = 0
+        recordDockTouch("park \(bundleID) initial=\(overlay.frame)")
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
         hostWindow = nil
         hostCard = nil
@@ -946,6 +949,7 @@ public final class PXPanelEntry: NSObject {
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
+            recordDockTouch("layout \(dock.bundleID) target=\(frame)")
             UIView.animate(withDuration: 0.38, delay: 0, usingSpringWithDamping: 0.86,
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 dock.window.frame = frame
