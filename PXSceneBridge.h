@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
             completion:(void (^)(BOOL success))completion;
 - (void)relocateKeyboardView:(UIView *)view;
 - (void)layoutHost;
+- (void)setHostedInteractionEnabled:(BOOL)enabled;
 - (CGSize)hostedSourceSize;
 - (BOOL)hasSceneForApplication:(NSString *)bundleID;
 - (nullable UIImage *)launchImageForApplication:(NSString *)bundleID size:(CGSize)size;

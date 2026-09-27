@@ -110,6 +110,7 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, strong) id scene;
 @property(nonatomic, copy) NSString *bundleID;
 @property(nonatomic, strong) UIView *hostView;
+@property(nonatomic, assign) BOOL suppressSelection;
 @property(nonatomic, strong) id presentationContext;
 @property(nonatomic, strong) id processAssertion;
 @property(nonatomic, weak) UIView *canvas;
@@ -425,6 +426,17 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     host.transform = CGAffineTransformMakeScale(scale, scale);
 }
 
+- (void)setHostedInteractionEnabled:(BOOL)enabled
+{
+    self.suppressSelection = !enabled;
+    self.hostView.userInteractionEnabled = enabled;
+    id scene = self.scene;
+    id settings = PXCall(scene, @"settings");
+    id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+    if (mutable && PXSetBool(mutable, @"setAllowsSelection:", enabled))
+        PXUpdateScene(scene, mutable);
+}
+
 - (CGSize)hostedSourceSize
 {
     return self.sourceSize;
@@ -436,7 +448,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (!mutable || !PXSetBool(mutable, @"setBackgrounded:", NO)) return NO;
     PXSetBool(mutable, @"setForeground:", YES);
-    PXSetBool(mutable, @"setAllowsSelection:", YES);
+    PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
     CGSize sourceSize = PXSourceSize(settings);
     if (!PXSetSceneFrame(mutable, sourceSize)) return NO;
     if (!PXUpdateScene(scene, mutable)) return NO;
@@ -483,7 +495,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     id mutable = [settings mutableCopy];
     if (!PXSetBool(mutable, @"setBackgrounded:", NO)) return nil;
     PXSetBool(mutable, @"setForeground:", YES);
-    PXSetBool(mutable, @"setAllowsSelection:", YES);
+    PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
     if (self.sourceSize.width > 0 && self.sourceSize.height > 0)
         PXSetSceneFrame(mutable, self.sourceSize);
     SEL deactivation = NSSelectorFromString(@"setDeactivationReasons:");
@@ -679,6 +691,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                             initializer, scene, @"ParallelX");
                         if ([view isKindOfClass:UIView.class]) {
                             UIView *host = view;
+                            host.userInteractionEnabled = !strongSelf.suppressSelection;
                             SEL style = NSSelectorFromString(@"setAppearanceStyle:");
                             if ([context respondsToSelector:style])
                                 ((void (*)(id, SEL, NSInteger))objc_msgSend)(context, style,

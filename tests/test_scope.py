@@ -153,6 +153,10 @@ assert 'controls.addSubview(overlay)' in panel
 assert 'window.isUserInteractionEnabled = false' in panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks()', 1)[0]
 assert 'dock.overlay.frame = frame' in panel
 assert 'dock.window.isUserInteractionEnabled = true' in panel
+assert 'activeBridge.setHostedInteractionEnabled(false)' in panel
+assert 'dock.bridge.setHostedInteractionEnabled(true)' in panel
+assert bridge.count('setAllowsSelection:", !self.suppressSelection') == 2
+assert 'host.userInteractionEnabled = !strongSelf.suppressSelection' in bridge
 assert 'shared.removeDock(dock, fullscreenHandoff: true)' in panel
 assert 'dock.bridge.closeForFullscreen()' in panel
 assert 'activateApplication:fromIcon:location:activationSettings:actions:' in entry

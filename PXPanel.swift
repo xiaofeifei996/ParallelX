@@ -875,6 +875,8 @@ public final class PXPanelEntry: NSObject {
         }
         controls.addSubview(overlay)
         window.isUserInteractionEnabled = false
+        canvas.isUserInteractionEnabled = false
+        activeBridge.setHostedInteractionEnabled(false)
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
@@ -956,6 +958,8 @@ public final class PXPanelEntry: NSObject {
         if hostWindow != nil { parkMain(side: dock.side) }
         dock.overlay.removeFromSuperview()
         dock.window.isUserInteractionEnabled = true
+        dock.canvas.isUserInteractionEnabled = true
+        dock.bridge.setHostedInteractionEnabled(true)
         activeBridge = dock.bridge
         hostWindow = dock.window
         hostCard = dock.card
