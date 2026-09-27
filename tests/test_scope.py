@@ -17,10 +17,14 @@ assert 'ring.radius * cos(theta)' in panel and 'ring.radius * sin(theta)' in pan
 assert 'let angle: CGFloat = .pi / 2' in panel
 assert 'let desiredRadius = requested == 1' in panel
 assert 'pageCapacity = max(1, rings.reduce' in panel
-assert 'let centerX = view.bounds.maxX - size / 2 - 6' in panel
+assert 'let centerX = view.bounds.maxX - size / 2 - edgeInset' in panel
 assert 'sheet = UIVisualEffectView' not in panel
 assert 'launcherDragDistance' in panel
-assert 'selectedApp(at: gesture.location(in: controller.view))' in panel
+assert 'updateSelection(at: gesture.location(in: controller.view))' in panel
+assert 'selectedSince = next == nil ? nil : CACurrentMediaTime()' in panel
+assert 'UISelectionFeedbackGenerator()' in panel
+assert 'launcherHoldMilliseconds' in panel
+assert 'handleWidth' in panel and 'handleHeight' in panel
 assert 'showPanel()' not in panel
 for count in (3, 5, 7, 12):
     spacing = 62
@@ -119,4 +123,7 @@ assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureO
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 launcher = (root / "prefs" / "PXLauncherController.swift").read_text(encoding="utf-8")
 assert all(key in launcher for key in ("launcherIconSize", "launcherRing1", "launcherRing4"))
+assert all(key in launcher for key in ("launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight"))
 assert "PXLauncherController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
+picker = (root / "prefs" / "PXAppPickerController.swift").read_text(encoding="utf-8")
+assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destinationIndexPath.row)' in picker

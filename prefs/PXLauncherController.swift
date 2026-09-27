@@ -4,21 +4,28 @@ import UIKit
 public final class PXLauncherController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["launcherIconSize", "launcherRing1", "launcherRing2",
-                        "launcherRing3", "launcherRing4", "launcherDragDistance"]
+                        "launcherRing3", "launcherRing4", "launcherDragDistance",
+                        "launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight"]
     private let titles = ["图标大小", "第一环应用数", "第二环应用数", "第三环应用数",
-                          "第四环应用数", "手柄滑动距离"]
-    private let initial = [52, 3, 5, 7, 9, 120]
+                          "第四环应用数", "手柄滑动距离", "面板距右边缘", "长按全屏时长",
+                          "手柄宽度", "手柄高度"]
+    private let initial = [52, 3, 5, 7, 9, 120, 6, 700, 24, 86]
     private let limits: [(Float, Float)] = [(36, 72), (1, 30), (1, 30),
-                                            (1, 30), (1, 30), (50, 240)]
-    private let labels = (0..<6).map { _ in UILabel() }
-    private let sliders = (0..<6).map { _ in UISlider() }
+                                            (1, 30), (1, 30), (10, 240), (0, 120),
+                                            (300, 2000), (12, 52), (44, 160)]
+    private let labels = (0..<10).map { _ in UILabel() }
+    private let sliders = (0..<10).map { _ in UISlider() }
+    private let scroll = UIScrollView()
     private let hint = UILabel()
-    private var values = [52, 3, 5, 7, 9, 120]
+    private var values = [52, 3, 5, 7, 9, 120, 6, 700, 24, 86]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = "半圆应用面板"
         view.backgroundColor = .systemGroupedBackground
+        scroll.frame = view.bounds
+        scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(scroll)
         for index in keys.indices {
             let label = labels[index]
             label.font = .preferredFont(forTextStyle: .body)
@@ -28,7 +35,7 @@ public final class PXLauncherController: UIViewController {
                 label.addGestureRecognizer(UILongPressGestureRecognizer(target: self,
                                                                          action: #selector(editRingCount(_:))))
             }
-            view.addSubview(label)
+            scroll.addSubview(label)
             let slider = sliders[index]
             slider.tag = index
             slider.minimumValue = limits[index].0
@@ -38,30 +45,36 @@ public final class PXLauncherController: UIViewController {
             slider.addTarget(self, action: #selector(valueChanged(_:)), for: .valueChanged)
             slider.addTarget(self, action: #selector(valueFinished(_:)),
                              for: [.touchUpInside, .touchUpOutside, .touchCancel])
-            view.addSubview(slider)
+            scroll.addSubview(slider)
             updateLabel(index)
         }
-        hint.text = "圆心留空。长按环容量文字可输入数量；屏幕放不下时分多次呼出，按住手柄上滑切换页。滑到图标松手打开，空白处松手收回。"
+        hint.text = "长按环容量文字可输入数量。滑到图标后松手打开分屏；保持选中至设定时长再松手打开全屏。换图标会重新计时。空白处松手收回。"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
         hint.numberOfLines = 0
-        view.addSubview(hint)
+        scroll.addSubview(hint)
     }
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let top = view.safeAreaInsets.top + 18
+        let top: CGFloat = 20
         for index in keys.indices {
             let y = top + CGFloat(index) * 82
-            labels[index].frame = CGRect(x: 20, y: y, width: view.bounds.width - 40, height: 28)
+            labels[index].frame = CGRect(x: 20, y: y, width: scroll.bounds.width - 40, height: 28)
             sliders[index].frame = CGRect(x: 20, y: y + 34,
-                                           width: view.bounds.width - 40, height: 38)
+                                           width: scroll.bounds.width - 40, height: 38)
         }
-        hint.frame = CGRect(x: 20, y: top + 500, width: view.bounds.width - 40, height: 95)
+        hint.frame = CGRect(x: 20, y: top + CGFloat(keys.count) * 82,
+                            width: scroll.bounds.width - 40, height: 100)
+        scroll.contentSize = CGSize(width: scroll.bounds.width, height: hint.frame.maxY + 20)
     }
 
     private func updateLabel(_ index: Int) {
-        labels[index].text = "\(titles[index])：\(values[index])\(index == 0 || index == 5 ? " pt" : " 个")"
+        if index == 7 {
+            labels[index].text = "\(titles[index])：\(String(format: "%.2f", Double(values[index]) / 1000)) 秒"
+        } else {
+            labels[index].text = "\(titles[index])：\(values[index])\((1...4).contains(index) ? " 个" : " pt")"
+        }
     }
 
     @objc private func valueChanged(_ slider: UISlider) {
