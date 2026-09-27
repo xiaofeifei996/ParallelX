@@ -756,6 +756,7 @@ public final class PXPanelEntry: NSObject {
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
     private var keyboardDismissLayer: PXKeyboardDismissLayer?
     private var observedKeyboardFrame = CGRect.null
+    private var keyboardDismissSuppressed = false
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -765,7 +766,7 @@ public final class PXPanelEntry: NSObject {
         shared.installHandle()
         NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
             name: Notification.Name("PXKeyboardStateChanged"), object: nil)
-        for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardDidChangeFrameNotification,
+        for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardDidShowNotification, UIResponder.keyboardDidChangeFrameNotification,
                      UIResponder.keyboardDidHideNotification] {
             NotificationCenter.default.addObserver(shared, selector: #selector(keyboardFrameChanged(_:)), name: name, object: nil)
         }
@@ -917,10 +918,15 @@ public final class PXPanelEntry: NSObject {
     @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
 
     @objc private func keyboardFrameChanged(_ notification: Notification) {
-        if notification.name == UIResponder.keyboardDidHideNotification { observedKeyboardFrame = .null }
+        if notification.name == UIResponder.keyboardDidHideNotification {
+            observedKeyboardFrame = .null
+            keyboardDismissSuppressed = true
+        }
         else if let frame = (notification.userInfo?["frame"] ?? notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]) as? NSValue {
             let visible = frame.cgRectValue.intersection(UIScreen.main.bounds)
             observedKeyboardFrame = visible.isEmpty || visible.height < 30 ? .null : visible
+            if !observedKeyboardFrame.isNull { keyboardDismissSuppressed = false }
+            else if notification.name != Notification.Name("PXKeyboardFrameChanged") { keyboardDismissSuppressed = true }
         }
         refreshKeyboardDismissLayer()
     }
@@ -930,7 +936,7 @@ public final class PXPanelEntry: NSObject {
         let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
             defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
         let keyboardFrame = activeBridge.isKeyboardRelocated() ? activeBridge.relocatedKeyboardFrame() : observedKeyboardFrame
-        guard enabled, !deviceLocked, hostWindow != nil, !keyboardFrame.isNull,
+        guard enabled, !deviceLocked, !keyboardDismissSuppressed, hostWindow != nil, !keyboardFrame.isNull,
               let root = handleWindow?.rootViewController?.view, let card = hostCard else {
             keyboardDismissLayer?.removeFromSuperview()
             keyboardDismissLayer = nil

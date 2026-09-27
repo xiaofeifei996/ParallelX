@@ -72,7 +72,7 @@ static NSArray *PXStaticActions(NSString *bundleID)
 
 void PXFetchApplicationActions(NSString *bundleID, void (^completion)(NSArray<NSDictionary *> *))
 {
-    NSAssert(NSThread.isMainThread, @"Fetch application actions on the main thread");
+    NSCAssert(NSThread.isMainThread, @"Fetch application actions on the main thread");
     __block BOOL finished = NO;
     NSMutableArray *base = [NSMutableArray array];
     void (^finish)(NSArray *) = ^(NSArray *raw) {

@@ -156,7 +156,10 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     for (PXSceneBridge *bridge in PXBridges.allObjects)
         [bridge relocateKeyboardView:view];
     // A system-owned keyboard need not be reparented by ParallelX to be visible.
-    CGRect frame = view.window && !view.hidden && view.alpha > 0.01
+    BOOL visible = view.window && !view.window.hidden;
+    for (UIView *ancestor = view; ancestor && visible; ancestor = ancestor.superview)
+        visible = !ancestor.hidden && ancestor.alpha > 0.01;
+    CGRect frame = visible
         ? [view convertRect:view.bounds toView:nil] : CGRectNull;
     frame = CGRectIntersection(frame, UIScreen.mainScreen.bounds);
     if (CGRectIsEmpty(frame) || frame.size.height < 30) frame = CGRectNull;
