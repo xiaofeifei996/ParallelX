@@ -213,6 +213,7 @@ assert 'deadline: .now() + 0.16' not in panel
 assert 'if dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }' in panel
 assert 'captureOutsideKeyboard' in panel and 'isKeyboardRelocated()' in panel
 assert 'urlSplitExcluded' in entry and 'URL 分屏黑名单' in root_plist
+assert '!notification && link ? [defaults stringArrayForKey:@"urlSplitExcluded"] : nil' in entry
 assert 'displayItemWithType:bundleIdentifier:uniqueIdentifier:' not in bridge
 assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge

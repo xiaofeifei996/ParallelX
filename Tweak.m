@@ -92,7 +92,7 @@ static BOOL PXExternalTarget(id options, id target, id source, NSString **bundle
     BOOL enabled = notification ? [defaults objectForKey:@"notificationSplitEnabled"] == nil ||
         [defaults boolForKey:@"notificationSplitEnabled"] :
         [defaults objectForKey:@"urlSplitEnabled"] == nil || [defaults boolForKey:@"urlSplitEnabled"];
-    NSArray *excluded = link ? [defaults stringArrayForKey:@"urlSplitExcluded"] : nil;
+    NSArray *excluded = !notification && link ? [defaults stringArrayForKey:@"urlSplitExcluded"] : nil;
     BOOL eligible = enabled && ![excluded containsObject:bundleID] &&
         ![bundleID isEqualToString:@"com.apple.springboard"] &&
         ![bundleID isEqualToString:@"com.apple.mobileslideshow"] &&
