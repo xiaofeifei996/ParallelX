@@ -808,7 +808,8 @@ public final class PXPanelEntry: NSObject {
                 self.layoutHostControls()
                 return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak window] in
+            // ponytail: the current launch API has no transition completion; replace this hold if one is found.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self, weak window] in
                 if self?.hostWindow === window { self?.closeHost(animated: false) }
             }
         }

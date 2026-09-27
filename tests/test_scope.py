@@ -68,6 +68,7 @@ fullscreen = panel.split('@objc private func fullscreenTapped()', 1)[1].split('@
 assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApplication(bundleID)')
 assert 'window.windowLevel = .alert + 1' in fullscreen
 assert 'card.frame = cardFrame' in fullscreen
+assert 'deadline: .now() + 0.75' in fullscreen
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
