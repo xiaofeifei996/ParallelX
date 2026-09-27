@@ -139,7 +139,7 @@ public final class PXPanelEntry: NSObject {
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar + 1
         window.backgroundColor = .clear
-        let root = PXHostViewController()
+        let root = UIViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
         let pill = UIView(frame: CGRect(x: window.bounds.width - 18,
@@ -266,7 +266,7 @@ public final class PXPanelEntry: NSObject {
                               width: width + 2 * gripMargin, height: height + gripBottom)
         window.windowLevel = .alert + 1
         window.backgroundColor = .clear
-        let root = UIViewController()
+        let root = PXHostViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
         let card = UIView(frame: CGRect(x: gripMargin, y: 0, width: width, height: height))
