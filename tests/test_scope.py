@@ -149,8 +149,15 @@ assert 'dock.card.layer.cornerRadius = radius' in panel
 assert 'if hostWindow != nil { parkMain(side: dock.side) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
-assert 'card.addSubview(overlay)' in panel
-assert 'dock.overlay.frame = dock.card.bounds' in panel
+assert 'controls.addSubview(overlay)' in panel
+assert 'window.isUserInteractionEnabled = false' in panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks()', 1)[0]
+assert 'dock.overlay.frame = frame' in panel
+assert 'dock.window.isUserInteractionEnabled = true' in panel
+assert 'shared.removeDock(dock, fullscreenHandoff: true)' in panel
+assert 'dock.bridge.closeForFullscreen()' in panel
+assert 'activateApplication:fromIcon:location:activationSettings:actions:' in entry
+assert 'applicationActivated:' in entry
+assert 'self.fullscreenHandoff = YES;\n    [self close];' in bridge
 assert 'hostTopCorners' in panel and '#selector(dockTapped(_:))' in panel
 assert 'PXDockController.swift' in (root / 'prefs' / 'Makefile').read_text(encoding='utf-8')
 assert 'com.apple.springboard.lockstate' in entry

@@ -379,6 +379,14 @@ public final class PXPanelEntry: NSObject {
             selector: #selector(lockStateChanged), name: Notification.Name("PXLockStateChanged"), object: nil)
     }
 
+    @objc public static func applicationActivated(_ bundleID: String) {
+        DispatchQueue.main.async {
+            for dock in shared.dockedHosts.filter({ $0.bundleID == bundleID }) {
+                shared.removeDock(dock, fullscreenHandoff: true)
+            }
+        }
+    }
+
     @objc private func lockStateChanged(_ notification: Notification) {
         let locked = notification.userInfo?["locked"] as? Bool ?? false
         guard locked != deviceLocked else { return }
@@ -389,7 +397,11 @@ public final class PXPanelEntry: NSObject {
                 needsHostRefresh = true
                 activeBridge.close()
             }
-            for dock in dockedHosts { dock.window.isHidden = true; dock.bridge.close() }
+            for dock in dockedHosts {
+                dock.window.isHidden = true
+                dock.overlay.isHidden = true
+                dock.bridge.close()
+            }
         } else {
             refreshHost()
             guard let controls = handleWindow?.rootViewController?.view else { return }
@@ -397,8 +409,11 @@ public final class PXPanelEntry: NSObject {
                 dock.bridge.openApplication(dock.bundleID, in: dock.canvas,
                                             keyboardOverlay: controls) { [weak self, weak dock] success in
                     guard let dock = dock, self?.dockedHosts.contains(where: { $0 === dock }) == true else { return }
-                    if success { dock.window.isHidden = false; dock.bridge.layoutHost() }
-                    else { self?.dockedHosts.removeAll { $0 === dock }; dock.window.isHidden = true }
+                    if success {
+                        dock.window.isHidden = false
+                        dock.overlay.isHidden = false
+                        dock.bridge.layoutHost()
+                    } else { self?.removeDock(dock) }
                 }
             }
         }
@@ -849,16 +864,17 @@ public final class PXPanelEntry: NSObject {
 
     @discardableResult private func parkMain(side: Int) -> Bool {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
-              let bundleID = hostedBundleID else { return false }
-        let overlay = UIView(frame: card.bounds)
-        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+              let bundleID = hostedBundleID,
+              let controls = handleWindow?.rootViewController?.view else { return false }
+        let overlay = UIView(frame: window.frame)
         overlay.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(restoreDockTapped(_:))))
         for direction in [UISwipeGestureRecognizer.Direction.up, .left, .right] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(dockSwiped(_:)))
             swipe.direction = direction
             overlay.addGestureRecognizer(swipe)
         }
-        card.addSubview(overlay)
+        controls.addSubview(overlay)
+        window.isUserInteractionEnabled = false
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
@@ -898,7 +914,7 @@ public final class PXPanelEntry: NSObject {
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 dock.window.frame = frame
                 dock.card.frame = CGRect(origin: .zero, size: frame.size)
-                dock.overlay.frame = dock.card.bounds
+                dock.overlay.frame = frame
                 let radius = dock.originalCornerRadius * width / max(1, dock.originalCardFrame.width)
                 dock.card.layer.cornerRadius = radius
                 dock.card.subviews.first?.layer.cornerRadius = radius
@@ -911,22 +927,27 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func restoreDockTapped(_ sender: UITapGestureRecognizer) {
-        guard let window = sender.view?.window,
-              let dock = dockedHosts.first(where: { $0.window === window }) else { return }
+        guard let dock = dockedHosts.first(where: { $0.overlay === sender.view }) else { return }
         restoreDock(dock)
     }
 
     @objc private func dockSwiped(_ sender: UISwipeGestureRecognizer) {
-        guard let window = sender.view?.window,
-              let dock = dockedHosts.first(where: { $0.window === window }) else { return }
+        guard let dock = dockedHosts.first(where: { $0.overlay === sender.view }) else { return }
         if sender.direction == .up {
-            dockedHosts.removeAll { $0 === dock }
-            dock.window.isHidden = true
-            dock.bridge.close()
-            dock.window.rootViewController = nil
+            removeDock(dock)
         } else {
             dock.side = sender.direction == .left ? -1 : 1
+            layoutDocks()
         }
+    }
+
+    private func removeDock(_ dock: PXDockedHost, fullscreenHandoff: Bool = false) {
+        dockedHosts.removeAll { $0 === dock }
+        dock.overlay.removeFromSuperview()
+        dock.window.isHidden = true
+        if fullscreenHandoff { dock.bridge.closeForFullscreen() }
+        else { dock.bridge.close() }
+        dock.window.rootViewController = nil
         layoutDocks()
     }
 
@@ -934,6 +955,7 @@ public final class PXPanelEntry: NSObject {
         dockedHosts.removeAll { $0 === dock }
         if hostWindow != nil { parkMain(side: dock.side) }
         dock.overlay.removeFromSuperview()
+        dock.window.isUserInteractionEnabled = true
         activeBridge = dock.bridge
         hostWindow = dock.window
         hostCard = dock.card

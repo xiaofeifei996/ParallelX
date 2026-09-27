@@ -9,6 +9,20 @@ static void (*PXOriginalSceneUpdate)(id, SEL, id, id, id);
 static void (*PXOriginalSceneUpdateWithoutCompletion)(id, SEL, id, id);
 static void (*PXOriginalKeyboardDidMove)(id, SEL);
 static void (*PXOriginalKeyboardLayout)(id, SEL);
+static void (*PXOriginalActivateApplication)(id, SEL, id, id, id, id, id);
+
+static void PXActivateApplication(id controller, SEL selector, id application, id icon,
+                                  id location, id settings, id actions)
+{
+    PXOriginalActivateApplication(controller, selector, application, icon, location, settings, actions);
+    SEL bundleSelector = NSSelectorFromString(@"bundleIdentifier");
+    id bundleID = [application respondsToSelector:bundleSelector]
+        ? ((id (*)(id, SEL))objc_msgSend)(application, bundleSelector) : nil;
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL activated = NSSelectorFromString(@"applicationActivated:");
+    if ([bundleID isKindOfClass:NSString.class] && [entry respondsToSelector:activated])
+        ((void (*)(id, SEL, id))objc_msgSend)(entry, activated, bundleID);
+}
 
 static void PXKeyboardLayout(id view, SEL selector)
 {
@@ -53,6 +67,11 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (scene && class_getInstanceMethod(scene, updateShort))
             MSHookMessageEx(scene, updateShort, (IMP)PXSceneUpdateWithoutCompletion,
                             (IMP *)&PXOriginalSceneUpdateWithoutCompletion);
+        Class ui = NSClassFromString(@"SBUIController");
+        SEL activate = NSSelectorFromString(@"activateApplication:fromIcon:location:activationSettings:actions:");
+        if (ui && class_getInstanceMethod(ui, activate))
+            MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
+                            (IMP *)&PXOriginalActivateApplication);
         Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView");
         SEL didMove = @selector(didMoveToWindow);
         if (keyboard && class_getInstanceMethod(keyboard, didMove))

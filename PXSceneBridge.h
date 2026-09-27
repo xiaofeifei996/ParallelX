@@ -25,5 +25,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)shortcutIsActive:(NSString *)identifier;
 - (nullable NSString *)recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank;
 - (void)close;
+- (void)closeForFullscreen;
 @end
 NS_ASSUME_NONNULL_END

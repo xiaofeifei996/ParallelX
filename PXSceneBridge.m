@@ -720,6 +720,12 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     dispatch_async(dispatch_get_main_queue(), retry);
 }
 
+- (void)closeForFullscreen
+{
+    self.fullscreenHandoff = YES;
+    [self close];
+}
+
 - (void)close
 {
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
