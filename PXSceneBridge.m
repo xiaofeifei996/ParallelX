@@ -118,6 +118,7 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, assign) UIWindowLevel keyboardWindowLevel;
 @property(nonatomic, assign) BOOL relocatingKeyboard;
 @property(nonatomic, assign) BOOL fullscreenHandoff;
+@property(nonatomic, copy) NSString *latestSwitcherBundleID;
 @property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) NSUInteger generation;
 @end
@@ -330,35 +331,54 @@ static int PXApplicationPID(NSString *bundleID)
     return main;
 }
 
-- (void)registerColdSceneInSwitcher:(id)scene bundleID:(NSString *)bundleID
+- (BOOL)promoteSwitcherCard:(NSString *)bundleID
 {
-    NSString *sceneID = PXCall(scene, @"identifier");
-    if (![sceneID isKindOfClass:NSString.class] ||
-        ![sceneID containsString:bundleID]) return;
+    if (![self.latestSwitcherBundleID isEqualToString:bundleID]) return NO;
     id switcher = PXCall(NSClassFromString(@"SBMainSwitcherViewController"), @"sharedInstance");
     NSArray *recent = PXCall(switcher, @"recentAppLayouts");
     SEL add = NSSelectorFromString(@"_addAppLayoutToFront:");
-    if (![recent isKindOfClass:NSArray.class] || ![switcher respondsToSelector:add]) return;
-    for (id layout in recent) {
-        for (id item in PXCall(layout, @"allItems")) {
-            if ([PXCall(item, @"bundleIdentifier") isEqual:bundleID]) return;
+    if (![recent isKindOfClass:NSArray.class] || ![switcher respondsToSelector:add]) return NO;
+    for (NSUInteger index = 0; index < recent.count; index++) {
+        id layout = recent[index];
+        BOOL contains = NO;
+        SEL membership = NSSelectorFromString(@"containsItemWithBundleIdentifier:");
+        if ([layout respondsToSelector:membership])
+            contains = ((BOOL (*)(id, SEL, id))objc_msgSend)(layout, membership, bundleID);
+        else for (id item in PXCall(layout, @"allItems")) {
+            if ([PXCall(item, @"bundleIdentifier") isEqual:bundleID]) { contains = YES; break; }
         }
+        if (!contains) continue;
+        if (index) ((void (*)(id, SEL, id))objc_msgSend)(switcher, add, layout);
+        return YES;
+    }
+    return NO;
+}
+
+- (void)registerColdSceneInSwitcher:(id)scene bundleID:(NSString *)bundleID
+{
+    NSString *sceneID = PXCall(scene, @"identifier");
+    if (![sceneID isKindOfClass:NSString.class] || sceneID.length == 0) return;
+    self.latestSwitcherBundleID = bundleID;
+    BOOL existing = [self promoteSwitcherCard:bundleID];
+    for (NSNumber *delay in @[@0.25, @0.75, @1.5, @3.0]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self promoteSwitcherCard:bundleID]; });
     }
     Class itemClass = NSClassFromString(@"SBDisplayItem");
-    Class layoutClass = NSClassFromString(@"SBAppLayout");
-    SEL itemSelector = NSSelectorFromString(@"displayItemWithType:bundleIdentifier:uniqueIdentifier:");
-    SEL layoutSelector = NSSelectorFromString(@"initWithItemsForLayoutRoles:configuration:environment:");
-    if (![itemClass respondsToSelector:itemSelector] ||
-        ![layoutClass instancesRespondToSelector:layoutSelector]) return;
-    NSString *uniqueID = [sceneID hasPrefix:@"sceneID:"] ? sceneID :
-        [@"sceneID:" stringByAppendingString:sceneID];
+    SEL factory = NSSelectorFromString(@"applicationDisplayItemWithBundleIdentifier:sceneIdentifier:");
+    SEL add = NSSelectorFromString(@"addAppLayoutForDisplayItem:completion:");
+    id switcher = PXCall(NSClassFromString(@"SBMainSwitcherViewController"), @"sharedInstance");
+    Method factoryMethod = class_getClassMethod(itemClass, factory);
+    Method addMethod = class_getInstanceMethod([switcher class], add);
+    if (!factoryMethod || method_getNumberOfArguments(factoryMethod) != 4 ||
+        !addMethod || method_getNumberOfArguments(addMethod) != 4 || existing) return;
     @try {
-        id item = ((id (*)(id, SEL, NSInteger, id, id))objc_msgSend)(itemClass,
-            itemSelector, 0, bundleID, uniqueID);
+        id item = ((id (*)(id, SEL, id, id))objc_msgSend)(itemClass,
+            factory, bundleID, sceneID);
         if (!item) return;
-        id layout = ((id (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(
-            [layoutClass alloc], layoutSelector, @{@1: item}, 1, 1);
-        if (layout) ((void (*)(id, SEL, id))objc_msgSend)(switcher, add, layout);
+        ((void (*)(id, SEL, id, id))objc_msgSend)(switcher, add, item, ^{
+            dispatch_async(dispatch_get_main_queue(), ^{ [self promoteSwitcherCard:bundleID]; });
+        });
     } @catch (__unused NSException *exception) { }
 }
 
@@ -468,7 +488,8 @@ static int PXApplicationPID(NSString *bundleID)
                 SEL initializer = NSSelectorFromString(@"initWithScene:debugDescription:");
                 SEL contextInitializer = NSSelectorFromString(@"_initWithDefaultValues");
                 SEL bindContext = NSSelectorFromString(@"_setPresentationContext:");
-                if (layers.count && [hostClass instancesRespondToSelector:initializer] &&
+                if (!strongSelf.hostView &&
+                    [hostClass instancesRespondToSelector:initializer] &&
                     [hostClass instancesRespondToSelector:bindContext] &&
                     [contextClass instancesRespondToSelector:contextInitializer]) {
                     id context = ((id (*)(id, SEL))objc_msgSend)([contextClass alloc],
@@ -487,15 +508,17 @@ static int PXApplicationPID(NSString *bundleID)
                             strongSelf.hostView = host;
                             [strongSelf.canvas addSubview:host];
                             [strongSelf layoutHost];
-                            [host layoutIfNeeded];
-                            [strongSelf relocateExistingKeyboard:host];
-                            if (coldStart)
-                                [strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID];
-                            completion(YES);
-                            retry = nil;
-                            return;
                         }
                     }
+                }
+                if (layers.count && strongSelf.hostView) {
+                    [strongSelf.hostView layoutIfNeeded];
+                    [strongSelf relocateExistingKeyboard:strongSelf.hostView];
+                    if (coldStart)
+                        [strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID];
+                    completion(YES);
+                    retry = nil;
+                    return;
                 }
             }
         } @catch (__unused NSException *exception) {
@@ -517,6 +540,7 @@ static int PXApplicationPID(NSString *bundleID)
 {
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     self.generation += 1;
+    self.latestSwitcherBundleID = nil;
     if (self.keyboardSlot) self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel;
     self.keyboardHostView = nil;
     self.keyboardSlot.userInteractionEnabled = NO;

@@ -118,6 +118,8 @@ public final class PXPanelEntry: NSObject {
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
     private var resizeStartRadius: CGFloat = 0
+    private var resizeLink: CADisplayLink?
+    private var resizePreview: (scale: CGFloat, x: CGFloat, y: CGFloat)?
     private var moveStartFrame: CGRect?
     private var needsHostRefresh = false
     private var deviceLocked = false
@@ -373,9 +375,10 @@ public final class PXPanelEntry: NSObject {
         hostWindow = window
         hostCard = card
         layoutHostControls()
-        card.alpha = 0
-        card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
         window.isUserInteractionEnabled = false
+        card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.24,
+                       delay: 0, options: .beginFromCurrentState) { card.transform = .identity }
         PXSceneBridge.shared().openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
@@ -386,12 +389,7 @@ public final class PXPanelEntry: NSObject {
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else { self.closeHost(animated: false); return }
                 window?.isUserInteractionEnabled = true
-                UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3,
-                               delay: 0, usingSpringWithDamping: 0.88,
-                               initialSpringVelocity: 0, options: .beginFromCurrentState) {
-                    card.alpha = 1
-                    card.transform = .identity
-                } completion: { [weak self] _ in self?.layoutHostControls() }
+                self.layoutHostControls()
             }
         }
     }
@@ -471,6 +469,9 @@ public final class PXPanelEntry: NSObject {
                                       y: window.frame.minY, width: card.bounds.width,
                                       height: card.bounds.height)
             resizeStartRadius = card.layer.cornerRadius
+            resizeLink?.invalidate()
+            resizeLink = CADisplayLink(target: self, selector: #selector(applyResizePreview))
+            resizeLink?.add(to: .main, forMode: .common)
         }
         guard let start = resizeStartFrame else { return }
         if gesture.state == .changed || gesture.state == .ended {
@@ -487,12 +488,14 @@ public final class PXPanelEntry: NSObject {
             let size = CGSize(width: start.width * scale, height: start.height * scale)
             let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
             if gesture.state == .changed {
-                window.transform = CGAffineTransform(scaleX: scale, y: scale)
-                window.center = CGPoint(x: x - scale * (gripMargin - window.bounds.midX),
-                                        y: start.minY + scale * window.bounds.midY)
-                card.layer.cornerRadius = resizeStartRadius / scale
+                resizePreview = (scale, x, start.minY)
             } else {
+                resizeLink?.invalidate()
+                resizeLink = nil
+                resizePreview = nil
                 UIView.performWithoutAnimation {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
                     window.transform = .identity
                     window.frame = CGRect(x: x - gripMargin, y: start.minY,
                                           width: size.width + 2 * gripMargin,
@@ -503,19 +506,37 @@ public final class PXPanelEntry: NSObject {
                     card.layoutIfNeeded()
                     layoutHostControls()
                     PXSceneBridge.shared().layoutHost()
+                    CATransaction.commit()
                 }
             }
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
+            resizeLink?.invalidate()
+            resizeLink = nil
+            resizePreview = nil
             if gesture.state != .ended {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
                 window.transform = .identity
                 window.frame = CGRect(x: start.minX - gripMargin, y: start.minY,
                                       width: start.width + 2 * gripMargin,
                                       height: start.height + gripBottom)
                 card.layer.cornerRadius = resizeStartRadius
+                CATransaction.commit()
             }
             resizeStartFrame = nil
         }
+    }
+
+    @objc private func applyResizePreview() {
+        guard let window = hostWindow, let card = hostCard, let preview = resizePreview else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        window.transform = CGAffineTransform(scaleX: preview.scale, y: preview.scale)
+        window.center = CGPoint(x: preview.x - preview.scale * (gripMargin - window.bounds.midX),
+                                y: preview.y + preview.scale * window.bounds.midY)
+        card.layer.cornerRadius = resizeStartRadius / preview.scale
+        CATransaction.commit()
     }
 
     @objc private func moveHost(_ gesture: UIPanGestureRecognizer) {
@@ -534,6 +555,9 @@ public final class PXPanelEntry: NSObject {
 
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
+        resizeLink?.invalidate()
+        resizeLink = nil
+        resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }
         hostMoveGrip?.removeFromSuperview()
         window.isUserInteractionEnabled = false

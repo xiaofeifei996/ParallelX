@@ -22,6 +22,8 @@ assert "#selector(resizeHost(_:))" in panel
 assert "if gesture.state == .began { fullscreenTapped() }" in panel
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
+assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
+assert 'card.layer.cornerRadius = resizeStartRadius / preview.scale' in panel
 assert 'PXCornerGrip' not in panel and 'path.addQuadCurve' not in panel
 assert 'corner.isOpaque = false' in panel
 assert 'corner.backgroundColor = debug ?' in panel
@@ -84,6 +86,9 @@ assert 'self.canvas.window.windowLevel + 1' in bridge
 assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in bridge
 assert 'self.relocatingKeyboard' in bridge
 assert 'keepHostedProcessAlive' in bridge
+assert 'applicationDisplayItemWithBundleIdentifier:sceneIdentifier:' in bridge
+assert 'addAppLayoutForDisplayItem:completion:' in bridge
+assert 'displayItemWithType:bundleIdentifier:uniqueIdentifier:' not in bridge
 assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge
 assert 'com.moxuan.parallelx.transition.log' not in bridge
