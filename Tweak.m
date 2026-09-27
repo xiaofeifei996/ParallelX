@@ -41,7 +41,7 @@ static NSString *PXRequestBundleID(id request)
 {
     for (NSString *selector in @[@"bundleIdentifier", @"targetBundleIdentifier",
                                 @"applicationBundleIdentifier", @"applicationIdentifier",
-                                @"application", @"targetApplication"]) {
+                                @"application", @"targetApplication", @"target"]) {
         NSString *bundleID = PXBundleID(PXValue(request, selector));
         if (bundleID.length) return bundleID;
     }
@@ -65,12 +65,13 @@ static NSString *PXSourceBundleID(id source, NSDictionary *values)
     NSString *bundleID = PXBundleID(source);
     if (!bundleID.length) bundleID = PXBundleID(PXValue(source, @"clientProcess"));
     if (!bundleID.length) bundleID = PXBundleID(PXValue(source, @"process"));
-    if (bundleID.length) return bundleID;
+    if (bundleID.length && ![bundleID hasPrefix:@"com.apple."]) return bundleID;
     void *symbol = dlsym(RTLD_DEFAULT, "FBSOpenApplicationOptionKeyPayloadOptions");
     id key = symbol ? *(__unsafe_unretained id *)symbol : nil;
     id payload = [key isKindOfClass:NSString.class] ? values[key] : nil;
-    return [payload isKindOfClass:NSDictionary.class]
+    NSString *payloadID = [payload isKindOfClass:NSDictionary.class]
         ? PXBundleID(payload[UIApplicationLaunchOptionsSourceApplicationKey]) : nil;
+    return payloadID ?: PXBundleID(values[UIApplicationLaunchOptionsSourceApplicationKey]) ?: bundleID;
 }
 
 static BOOL PXExternalTarget(id options, id target, id source, NSString **bundleOut)
