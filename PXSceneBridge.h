@@ -29,6 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
                  suspended:(BOOL)suspended
                 completion:(void (^)(BOOL success))completion;
 - (BOOL)performShortcut:(NSString *)identifier;
+- (BOOL)performConfiguredAction:(NSDictionary *)entry;
 - (BOOL)setBrightnessLevel:(float)level;
 - (BOOL)shortcutIsActive:(NSString *)identifier;
 - (nullable NSString *)recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank;

@@ -274,3 +274,22 @@ assert 'externalOpenApplication:' in (root / 'Tweak.m').read_text(encoding='utf-
 assert 'externalPendingBundleID' in panel
 assert 'func completeOpening()' in panel
 assert 'withRenderingMode(.alwaysOriginal)' in panel
+
+catalog = (root / 'PXAppCatalog.m').read_text(encoding='utf-8')
+action_picker = (root / 'prefs' / 'PXActionPickerController.swift').read_text(encoding='utf-8')
+assert 'sqlite3_open_v2' in catalog and 'SQLITE_OPEN_READONLY' in catalog
+assert 'fetchApplicationShortcutItemsOfTypes:forBundleIdentifier:withCompletionHandler:' in catalog
+assert 'setUserInfo:' in catalog and 'entry[@"userInfo"]' in catalog
+assert 'WFSpringBoardWorkflowRunnerClient' in bridge and 'initWithWorkflowIdentifier:' in bridge
+assert 'UIHandleApplicationShortcutAction' in bridge and 'initWithSBSShortcutItem:' in bridge
+assert 'px.custom.' in panel and 'customActions' in picker
+assert 'groupMenuActive' in panel and 'selectedGroupAction' in panel
+assert 'cancel.text = "取消"' in panel and 'scroll.contentOffset.y = offset' in panel
+assert 'groupScrollLink?.invalidate()' in panel
+assert 'multiple && indexPath.section == 0' in action_picker
+assert 'chosen.insert(chosen.remove(at: sourceIndexPath.row)' in action_picker
+assert 'shade.frame = bounds' in panel
+assert 'doubleTap.numberOfTapsRequired = 2' in panel
+assert 'UIResponder.keyboardDidHideNotification' in panel
+assert '!keyboardFrame.isNull' in panel
+assert 'PXKeyboardFrameChanged' in bridge

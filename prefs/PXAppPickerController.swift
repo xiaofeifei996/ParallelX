@@ -9,6 +9,13 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     private var selected: [String] = []
     private var available: [(id: String, name: String)] = []
     private var urls: [[String: String]] = []
+    private var customActions: [[String: Any]] = []
+    private var extraItems: [(id: String, name: String)] {
+        (urls.map { $0 as [String: Any] } + customActions).compactMap {
+            guard let id = $0["id"] as? String, let title = $0["title"] as? String else { return nil }
+            return (id, title)
+        }
+    }
     private var symbols: [String: String] = [:]
     private var icons: [String: UIImage] = [:]
     private let shortcuts: [(id: String, name: String, symbol: String)] = [
@@ -21,7 +28,9 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
         ("px.action.brightness", "调节亮度 · 选中后长按并上下拖动", "sun.max.fill"),
         ("px.action.restart", "重新打开应用", "arrow.clockwise"),
-        ("px.action.search", "搜索", "magnifyingglass")
+        ("px.action.search", "搜索", "magnifyingglass"),
+        ("px.add.workflow", "添加快捷指令 · 单个或集合", "square.stack.3d.up"),
+        ("px.add.quick", "添加应用快捷方式", "app.badge")
     ]
 
     public override func viewDidLoad() {
@@ -30,6 +39,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         view.backgroundColor = .systemGroupedBackground
         selected = UserDefaults(suiteName: domain)?.stringArray(forKey: "applications") ?? []
         urls = UserDefaults(suiteName: domain)?.array(forKey: "urlShortcuts") as? [[String: String]] ?? []
+        customActions = UserDefaults(suiteName: domain)?.array(forKey: "customActions") as? [[String: Any]] ?? []
         symbols = UserDefaults(suiteName: domain)?.dictionary(forKey: "shortcutSymbols") as? [String: String] ?? [:]
         apps = PXInstalledApplications().compactMap { item in
             guard let id = item["id"], let name = item["name"] else { return nil }
@@ -67,13 +77,10 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         let defaults = UserDefaults(suiteName: domain)
         defaults?.set(selected, forKey: "applications")
         defaults?.set(urls, forKey: "urlShortcuts")
+        defaults?.set(customActions, forKey: "customActions")
         defaults?.set(symbols, forKey: "shortcutSymbols")
         defaults?.set(Dictionary(uniqueKeysWithValues:
-            apps.map { ($0.id, $0.name) } + shortcuts.map { ($0.id, $0.name) } +
-                urls.compactMap { entry -> (String, String)? in
-                    guard let id = entry["id"], let name = entry["title"] else { return nil }
-                    return (id, name)
-                }),
+            apps.map { ($0.id, $0.name) } + shortcuts.map { ($0.id, $0.name) } + extraItems.map { ($0.id, $0.name) }),
                       forKey: "applicationNames")
     }
 
@@ -92,28 +99,29 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if search.searchBar.text?.isEmpty == false && section < 2 { return 0 }
-        return section == 0 ? selected.count : section == 1 ? shortcuts.count + urls.count + (urls.count < 10 ? 1 : 0) : available.count
+        return section == 0 ? selected.count : section == 1 ? shortcuts.count + extraItems.count + (urls.count < 10 ? 1 : 0) : available.count
     }
 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "app") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "app")
         let urlStart = shortcuts.count
-        let isAddURL = indexPath.section == 1 && indexPath.row == urlStart + urls.count
+        let isAddURL = indexPath.section == 1 && indexPath.row == urlStart + extraItems.count
         let app = isAddURL ? (id: "", name: "添加 URL · 最多 10 个") : indexPath.section == 0
             ? apps.first(where: { $0.id == selected[indexPath.row] }) ??
                 shortcuts.first(where: { $0.id == selected[indexPath.row] }).map { (id: $0.id, name: $0.name) } ??
-                urls.first(where: { $0["id"] == selected[indexPath.row] }).map {
-                    (id: $0["id"] ?? "", name: $0["title"] ?? "URL")
-                } ?? (id: selected[indexPath.row], name: selected[indexPath.row])
+                extraItems.first(where: { $0.id == selected[indexPath.row] }) ?? (id: selected[indexPath.row], name: selected[indexPath.row])
             : indexPath.section == 1
                 ? indexPath.row < urlStart
                     ? (id: shortcuts[indexPath.row].id, name: shortcuts[indexPath.row].name)
-                    : (id: urls[indexPath.row - urlStart]["id"] ?? "", name: urls[indexPath.row - urlStart]["title"] ?? "URL")
+                    : extraItems[indexPath.row - urlStart]
                 : available[indexPath.row]
         cell.textLabel?.text = app.name
         cell.detailTextLabel?.text = urls.first(where: { $0["id"] == app.id })?["url"] ?? app.id
+        if let entry = customActions.first(where: { $0["id"] as? String == app.id }) {
+            cell.detailTextLabel?.text = entry["kind"] as? String == "group" ? "长按展开集合，滑动选择，松手运行" : "松手运行"
+        }
         cell.detailTextLabel?.textColor = .secondaryLabel
-        let fallback = shortcuts.first(where: { $0.id == app.id })?.symbol ?? (isAddURL ? "plus.circle" : "link")
+        let fallback = shortcuts.first(where: { $0.id == app.id })?.symbol ?? (isAddURL ? "plus.circle" : app.id.hasPrefix("px.custom.") ? "square.stack.3d.up" : "link")
         if app.id.hasPrefix("px.") || isAddURL {
             cell.imageView?.image = (UIImage(systemName: symbols[app.id] ?? fallback) ?? UIImage(systemName: fallback))?
                 .applyingSymbolConfiguration(.init(pointSize: 24))
@@ -130,6 +138,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         }
         cell.imageView?.tintColor = .label
         cell.accessoryType = selected.contains(app.id) ? .checkmark : .none
+        if app.id.hasPrefix("px.add.") { cell.accessoryType = .disclosureIndicator }
         cell.showsReorderControl = indexPath.section == 0
         return cell
     }
@@ -137,9 +146,11 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if indexPath.section == 0 { selected.remove(at: indexPath.row) }
         else if indexPath.section == 1 {
-            if indexPath.row == shortcuts.count + urls.count { addOrEditURL(at: nil); return }
+            if indexPath.row == shortcuts.count + extraItems.count { addOrEditURL(at: nil); return }
             let id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
-                urls[indexPath.row - shortcuts.count]["id"] ?? ""
+                extraItems[indexPath.row - shortcuts.count].id
+            if id == "px.add.workflow" { chooseWorkflowMode(); return }
+            if id == "px.add.quick" { configureActions(kind: "apps"); return }
             if selected.contains(id) { selected.removeAll { $0 == id } }
             else { selected.append(id) }
         } else { selected.append(available[indexPath.row].id) }
@@ -196,11 +207,11 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                           point: CGPoint) -> UIContextMenuConfiguration? {
         let id: String
         if indexPath.section == 0 { id = selected[indexPath.row] }
-        else if indexPath.section == 1 && indexPath.row < shortcuts.count + urls.count {
+        else if indexPath.section == 1 && indexPath.row < shortcuts.count + extraItems.count {
             id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
-                urls[indexPath.row - shortcuts.count]["id"] ?? ""
+                extraItems[indexPath.row - shortcuts.count].id
         } else { return nil }
-        guard id.hasPrefix("px.") else { return nil }
+        guard id.hasPrefix("px."), !id.hasPrefix("px.add.") else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             guard let self = self else { return nil }
             var actions: [UIAction] = [UIAction(title: "自定义 SF Symbols 图标", image: UIImage(systemName: "paintbrush")) { [weak self] _ in
@@ -235,6 +246,20 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                     self.saveSelection(); self.table.reloadData()
                 })
             }
+            if let index = self.customActions.firstIndex(where: { $0["id"] as? String == id }) {
+                if self.customActions[index]["kind"] as? String == "group" {
+                    actions.append(UIAction(title: "编辑集合与排序", image: UIImage(systemName: "list.bullet")) { [weak self] _ in
+                        self?.configureActions(kind: "workflow", multiple: true, editingID: id)
+                    })
+                }
+                actions.append(UIAction(title: "删除快捷方式", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
+                    guard let self = self else { return }
+                    self.customActions.removeAll { $0["id"] as? String == id }
+                    self.selected.removeAll { $0 == id }
+                    self.symbols.removeValue(forKey: id)
+                    self.saveSelection(); self.table.reloadData()
+                })
+            }
             return UIMenu(children: actions)
         }
     }
@@ -243,6 +268,51 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         let alert = UIAlertController(title: "图标不存在", message: "请输入 iOS 15 支持的 SF Symbols 名称。", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "确定", style: .default))
         present(alert, animated: true)
+    }
+
+    private func chooseWorkflowMode() {
+        let menu = UIAlertController(title: "添加快捷指令", message: "单个指令占一个位置；集合中的多个指令共用一个位置。", preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "单个快捷指令", style: .default) { [weak self] _ in self?.configureActions(kind: "workflow") })
+        menu.addAction(UIAlertAction(title: "多个快捷指令集合", style: .default) { [weak self] _ in self?.configureActions(kind: "workflow", multiple: true) })
+        menu.addAction(UIAlertAction(title: "取消", style: .cancel))
+        menu.popoverPresentationController?.sourceView = view
+        menu.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        present(menu, animated: true)
+    }
+
+    private func configureActions(kind: String, multiple: Bool = false, editingID: String? = nil) {
+        let picker = PXActionPickerController()
+        picker.kind = kind
+        picker.multiple = multiple
+        let old = customActions.first { $0["id"] as? String == editingID } ?? [:]
+        picker.chosen = old["items"] as? [[String: Any]] ?? []
+        picker.onSave = { [weak self, weak picker] items in
+            guard let self = self, !items.isEmpty else { return }
+            let persist: (String) -> Void = { title in
+                var entry: [String: Any] = multiple ? ["kind": "group", "items": items] : items[0]
+                let id = editingID ?? "px.custom.\(UUID().uuidString)"
+                entry["id"] = id
+                entry["title"] = title
+                if let index = self.customActions.firstIndex(where: { $0["id"] as? String == id }) { self.customActions[index] = entry }
+                else { self.customActions.append(entry); self.selected.append(id) }
+                self.saveSelection(); self.table.reloadData()
+                self.navigationController?.popToViewController(self, animated: true)
+            }
+            if multiple {
+                let alert = UIAlertController(title: "集合名称", message: nil, preferredStyle: .alert)
+                alert.addTextField { $0.text = old["title"] as? String ?? "快捷指令集合" }
+                alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+                alert.addAction(UIAlertAction(title: "保存", style: .default) { _ in
+                    let title = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if !title.isEmpty { persist(title) }
+                })
+                picker?.present(alert, animated: true)
+            } else {
+                let title = items[0]["title"] as? String ?? "快捷方式"
+                persist((items[0]["appTitle"] as? String).map { "\($0) · \(title)" } ?? title)
+            }
+        }
+        navigationController?.pushViewController(picker, animated: true)
     }
 
     public func tableView(_ tableView: UITableView,

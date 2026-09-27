@@ -1,4 +1,5 @@
 #import "PXSceneBridge.h"
+#import "PXAppCatalog.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <string.h>
@@ -154,6 +155,17 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 {
     for (PXSceneBridge *bridge in PXBridges.allObjects)
         [bridge relocateKeyboardView:view];
+    // A system-owned keyboard need not be reparented by ParallelX to be visible.
+    CGRect frame = view.window && !view.hidden && view.alpha > 0.01
+        ? [view convertRect:view.bounds toView:nil] : CGRectNull;
+    frame = CGRectIntersection(frame, UIScreen.mainScreen.bounds);
+    if (CGRectIsEmpty(frame) || frame.size.height < 30) frame = CGRectNull;
+    static char frameKey;
+    NSValue *previous = objc_getAssociatedObject(view, &frameKey);
+    if (previous && CGRectEqualToRect(previous.CGRectValue, frame)) return;
+    objc_setAssociatedObject(view, &frameKey, [NSValue valueWithCGRect:frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardFrameChanged" object:view
+        userInfo:@{@"frame":[NSValue valueWithCGRect:frame]}];
 }
 
 + (instancetype)sharedBridge
@@ -655,6 +667,52 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             dispatch_async(dispatch_get_main_queue(), ^{ [self promoteSwitcherCard:bundleID]; });
         });
     } @catch (__unused NSException *exception) { }
+}
+
+- (BOOL)performConfiguredAction:(NSDictionary *)entry
+{
+    @try {
+        if ([entry[@"kind"] isEqual:@"workflow"]) {
+            NSString *identifier = entry[@"workflow"];
+            if (![identifier isKindOfClass:NSString.class] || ![[NSUUID alloc] initWithUUIDString:identifier]) return NO;
+            if (!dlopen("/System/Library/PrivateFrameworks/VoiceShortcutClient.framework/VoiceShortcutClient", RTLD_LAZY)) return NO;
+            Class runnerClass = NSClassFromString(@"WFSpringBoardWorkflowRunnerClient");
+            SEL initializer = NSSelectorFromString(@"initWithWorkflowIdentifier:");
+            if (![runnerClass instancesRespondToSelector:initializer]) return NO;
+            id runner = ((id (*)(id, SEL, id))objc_msgSend)([runnerClass alloc], initializer, identifier);
+            SEL start = NSSelectorFromString(@"start");
+            if (![runner respondsToSelector:start]) return NO;
+            ((void (*)(id, SEL))objc_msgSend)(runner, start);
+            return YES;
+        }
+        if (![entry[@"kind"] isEqual:@"quick"]) return NO;
+        id item = PXApplicationActionItem(entry);
+        if (!item) return NO;
+        SEL activate = NSSelectorFromString(@"activateShortcut:withBundleIdentifier:forIconView:");
+        Class iconClass = NSClassFromString(@"SBIconView");
+        if ([iconClass respondsToSelector:activate]) {
+            ((void (*)(id, SEL, id, id, id))objc_msgSend)(iconClass, activate, item, entry[@"app"], nil);
+            return YES;
+        }
+        dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices", RTLD_LAZY);
+        Class actionClass = NSClassFromString(@"UIHandleApplicationShortcutAction");
+        Class optionsClass = NSClassFromString(@"FBSOpenApplicationOptions");
+        Class serviceClass = NSClassFromString(@"FBSOpenApplicationService");
+        SEL initialize = NSSelectorFromString(@"initWithSBSShortcutItem:");
+        SEL optionsSelector = NSSelectorFromString(@"optionsWithDictionary:");
+        SEL open = NSSelectorFromString(@"openApplication:withOptions:completion:");
+        if (![actionClass instancesRespondToSelector:initialize] || ![optionsClass respondsToSelector:optionsSelector] ||
+            ![serviceClass instancesRespondToSelector:open]) return NO;
+        id action = ((id (*)(id, SEL, id))objc_msgSend)([actionClass alloc], initialize, item);
+        if (!action) return NO;
+        SEL mode = NSSelectorFromString(@"activationMode");
+        BOOL suspended = [item respondsToSelector:mode] && ((NSUInteger (*)(id, SEL))objc_msgSend)(item, mode) == 1;
+        id options = ((id (*)(id, SEL, id))objc_msgSend)(optionsClass, optionsSelector,
+            @{@"__ActivateSuspended":@(suspended), @"__Actions":@[action], @"__PromptUnlockDevice":@YES,
+              @"__LaunchOrigin":@"__SBLaunchOriginShortcutItem"});
+        ((void (*)(id, SEL, id, id, id))objc_msgSend)([serviceClass new], open, entry[@"app"], options, nil);
+        return YES;
+    } @catch (__unused NSException *exception) { return NO; }
 }
 
 - (void)relocateKeyboardView:(UIView *)view

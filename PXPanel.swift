@@ -18,7 +18,12 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
 ]
 
 private func isShortcut(_ id: String) -> Bool {
-    id.hasPrefix("px.action.") || id.hasPrefix("px.url.") || id.hasPrefix("px.recent.")
+    id.hasPrefix("px.action.") || id.hasPrefix("px.url.") || id.hasPrefix("px.recent.") || id.hasPrefix("px.custom.")
+}
+
+private func configuredAction(_ id: String) -> [String: Any]? {
+    (UserDefaults(suiteName: preferenceDomain)?.array(forKey: "customActions") as? [[String: Any]])?
+        .first { $0["id"] as? String == id }
 }
 
 private func applicationID(_ id: String) -> String? {
@@ -38,7 +43,8 @@ private func panelIcon(_ id: String) -> UIImage? {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let key = id.hasPrefix("px.recent.") ? "px.action.recent" : id
         let custom = (defaults?.dictionary(forKey: "shortcutSymbols") as? [String: String])?[key]
-        let fallback = shortcuts.first(where: { $0.id == key })?.symbol ?? "link"
+        let fallback = shortcuts.first(where: { $0.id == key })?.symbol ??
+            (id.hasPrefix("px.custom.") ? "square.stack.3d.up" : "link")
         return UIImage(systemName: custom ?? fallback) ?? UIImage(systemName: fallback)
     }
     return PXApplicationIcon(id)
@@ -62,6 +68,7 @@ private final class PXHandleWindow: UIWindow {
 private final class PXKeyboardDismissLayer: UIControl {
     var excludedRects: [CGRect] = [] {
         didSet {
+            shade.frame = bounds
             let area = CGRect(x: 0, y: 0, width: bounds.width,
                               height: max(0, excludedRects.dropFirst().first?.minY ?? bounds.height))
             let path = UIBezierPath(rect: area)
@@ -79,7 +86,7 @@ private final class PXKeyboardDismissLayer: UIControl {
         shade.fillRule = .evenOdd
         shade.fillColor = UIColor.gray.withAlphaComponent(0.08).cgColor
         layer.addSublayer(shade)
-        accessibilityLabel = "点击关闭分屏"
+        accessibilityLabel = "双击关闭分屏"
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -161,6 +168,14 @@ private final class PXPanelViewController: UIViewController {
     private var lastSelectionPoint = CGPoint.zero
     private var holdFeedbackTask: DispatchWorkItem?
     private var fullscreenReadyView: UIView?
+    private var groupMenu: UIView?
+    private var groupScroll: UIScrollView?
+    private var groupRows: [UILabel] = []
+    private var groupItems: [[String: Any]] = []
+    private var groupSelected: Int?
+    private var groupScrollLink: CADisplayLink?
+    private var groupLastTick: CFTimeInterval = 0
+    var groupMenuActive: Bool { groupMenu != nil }
     private var page = 0
     private var pageCapacity = 1
     private var lastSize = CGSize.zero
@@ -373,13 +388,16 @@ private final class PXPanelViewController: UIViewController {
                 selectionFeedback.selectionChanged()
                 selectionFeedback.prepare()
                 let id = apps[next].id
-                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" {
+                let group = configuredAction(id)
+                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" || group?["kind"] as? String == "group" {
                     holdFeedback.prepare()
                     let task = DispatchWorkItem { [weak self] in
                         guard let self = self, self.selectedIndex == next else { return }
                         self.holdFeedback.impactOccurred()
                         if id == "px.action.brightness" {
                             self.onBrightnessHold?(self.lastSelectionPoint)
+                        } else if group?["kind"] as? String == "group" {
+                            self.showGroupMenu(group?["items"] as? [[String: Any]] ?? [], at: self.lastSelectionPoint)
                         } else if applicationID(id) != nil {
                             self.animateFullscreenReady()
                         }
@@ -443,7 +461,92 @@ private final class PXPanelViewController: UIViewController {
         holdFeedbackTask?.cancel()
         fullscreenReadyView?.removeFromSuperview()
         fullscreenReadyView = nil
+        groupScrollLink?.invalidate()
+        groupScrollLink = nil
     }
+
+    private func showGroupMenu(_ items: [[String: Any]], at point: CGPoint) {
+        guard !items.isEmpty else { return }
+        cancelSelectionFeedback()
+        groupItems = items
+        buttons.forEach { $0.alpha = 0 }
+        selectionPreview.alpha = 0
+        pageControl.alpha = 0
+        let menu = UIView()
+        menu.backgroundColor = .secondarySystemBackground
+        menu.layer.cornerRadius = 18
+        menu.layer.cornerCurve = .continuous
+        menu.clipsToBounds = true
+        let width = min(260, view.bounds.width - 32)
+        let availableHeight = max(96, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - 32)
+        let height = min(availableHeight, CGFloat(items.count) * 48 + 48)
+        menu.frame = CGRect(x: min(view.bounds.width - width - 16, max(16, point.x - width / 2)),
+                            y: min(view.bounds.height - view.safeAreaInsets.bottom - height - 16,
+                                   max(view.safeAreaInsets.top + 16, point.y - height / 2)), width: width, height: height)
+        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: width, height: height - 48))
+        scroll.isUserInteractionEnabled = false
+        scroll.contentSize = CGSize(width: width, height: CGFloat(items.count) * 48)
+        menu.addSubview(scroll)
+        groupRows = items.enumerated().map { index, entry in
+            let label = UILabel(frame: CGRect(x: 0, y: CGFloat(index) * 48, width: width, height: 48))
+            label.text = "  \(entry["title"] as? String ?? "快捷指令")"
+            label.font = .preferredFont(forTextStyle: .body)
+            label.textColor = .label
+            scroll.addSubview(label)
+            return label
+        }
+        let cancel = UILabel(frame: CGRect(x: 0, y: height - 48, width: width, height: 48))
+        cancel.text = "取消"
+        cancel.textAlignment = .center
+        cancel.textColor = .systemRed
+        cancel.backgroundColor = .tertiarySystemBackground
+        menu.addSubview(cancel)
+        view.addSubview(menu)
+        groupMenu = menu
+        groupScroll = scroll
+        menu.alpha = 0
+        menu.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.18) {
+            menu.alpha = 1; menu.transform = .identity
+        }
+        updateGroupSelection(at: point)
+        // Frame-driven scrolling runs only while this menu is held, never while idle.
+        let link = CADisplayLink(target: self, selector: #selector(scrollGroupMenu(_:)))
+        groupLastTick = 0
+        groupScrollLink = link
+        link.add(to: .main, forMode: .common)
+    }
+
+    func updateGroupSelection(at point: CGPoint) {
+        lastSelectionPoint = point
+        guard let menu = groupMenu, let scroll = groupScroll else { return }
+        let local = menu.convert(point, from: view)
+        let row = Int(floor((local.y + scroll.contentOffset.y) / 48))
+        let next: Int? = local.x >= -24 && local.x <= menu.bounds.width + 24 &&
+            local.y >= 0 && local.y < scroll.bounds.height && groupItems.indices.contains(row) ? row : nil
+        if next != groupSelected {
+            selectionFeedback.selectionChanged()
+            groupSelected = next
+        }
+        for (index, label) in groupRows.enumerated() {
+            label.backgroundColor = index == next ? .systemGray4 : .clear
+        }
+    }
+
+    @objc private func scrollGroupMenu(_ link: CADisplayLink) {
+        defer { groupLastTick = link.timestamp }
+        guard groupLastTick > 0, let menu = groupMenu, let scroll = groupScroll else { return }
+        let point = menu.convert(lastSelectionPoint, from: view)
+        guard point.x >= -24, point.x <= menu.bounds.width + 24, point.y >= 0, point.y < scroll.bounds.height else { return }
+        let speed: CGFloat = point.y < 32 ? -180 : point.y > scroll.bounds.height - 32 ? 180 : 0
+        guard speed != 0 else { return }
+        let offset = min(max(0, scroll.contentSize.height - scroll.bounds.height),
+                         max(0, scroll.contentOffset.y + speed * CGFloat(min(0.05, link.timestamp - groupLastTick))))
+        scroll.contentOffset.y = offset
+        updateGroupSelection(at: lastSelectionPoint)
+    }
+
+    var selectedGroupAction: [String: Any]? { groupSelected.map { groupItems[$0] } }
 
     func showBrightness(_ value: CGFloat) {
         cancelSelectionFeedback()
@@ -481,6 +584,7 @@ private final class PXPanelViewController: UIViewController {
             self.pageControl.alpha = 0
             self.selectionPreview.alpha = 0
             self.brightnessOverlay.alpha = 0
+            self.groupMenu?.alpha = 0
         } completion: { _ in completion() }
     }
 }
@@ -651,6 +755,7 @@ public final class PXPanelEntry: NSObject {
     private var handleDragStartY: CGFloat = 0
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
     private var keyboardDismissLayer: PXKeyboardDismissLayer?
+    private var observedKeyboardFrame = CGRect.null
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -660,6 +765,10 @@ public final class PXPanelEntry: NSObject {
         shared.installHandle()
         NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
             name: Notification.Name("PXKeyboardStateChanged"), object: nil)
+        for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardDidChangeFrameNotification,
+                     UIResponder.keyboardDidHideNotification] {
+            NotificationCenter.default.addObserver(shared, selector: #selector(keyboardFrameChanged(_:)), name: name, object: nil)
+        }
         NotificationCenter.default.addObserver(shared,
             selector: #selector(lockStateChanged), name: Notification.Name("PXLockStateChanged"), object: nil)
     }
@@ -807,11 +916,21 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
 
+    @objc private func keyboardFrameChanged(_ notification: Notification) {
+        if notification.name == UIResponder.keyboardDidHideNotification { observedKeyboardFrame = .null }
+        else if let frame = (notification.userInfo?["frame"] ?? notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]) as? NSValue {
+            let visible = frame.cgRectValue.intersection(UIScreen.main.bounds)
+            observedKeyboardFrame = visible.isEmpty || visible.height < 30 ? .null : visible
+        }
+        refreshKeyboardDismissLayer()
+    }
+
     @objc private func refreshKeyboardDismissLayer() {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
             defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
-        guard enabled, !deviceLocked, hostWindow != nil, activeBridge.isKeyboardRelocated(),
+        let keyboardFrame = activeBridge.isKeyboardRelocated() ? activeBridge.relocatedKeyboardFrame() : observedKeyboardFrame
+        guard enabled, !deviceLocked, hostWindow != nil, !keyboardFrame.isNull,
               let root = handleWindow?.rootViewController?.view, let card = hostCard else {
             keyboardDismissLayer?.removeFromSuperview()
             keyboardDismissLayer = nil
@@ -819,12 +938,14 @@ public final class PXPanelEntry: NSObject {
         }
         let layer = keyboardDismissLayer ?? PXKeyboardDismissLayer(frame: root.bounds)
         if keyboardDismissLayer == nil {
-            layer.addTarget(self, action: #selector(outsideKeyboardTapped), for: .touchUpInside)
+            let doubleTap = UITapGestureRecognizer(target: self, action: #selector(outsideKeyboardTapped))
+            doubleTap.numberOfTapsRequired = 2
+            layer.addGestureRecognizer(doubleTap)
             root.insertSubview(layer, at: 0)
             keyboardDismissLayer = layer
         }
         layer.frame = root.bounds
-        layer.excludedRects = [card.convert(card.bounds, to: root), activeBridge.relocatedKeyboardFrame()] +
+        layer.excludedRects = [card.convert(card.bounds, to: root), keyboardFrame] +
             (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).map { $0.convert($0.bounds, to: root) }
     }
 
@@ -920,6 +1041,10 @@ public final class PXPanelEntry: NSObject {
                 return
             }
             guard handleDragMode == 1 else { return }
+            if let controller = panel, controller.groupMenuActive {
+                controller.updateGroupSelection(at: gesture.location(in: controller.view))
+                return
+            }
             if let start = brightnessStart, let controller = panel {
                 let y = gesture.location(in: controller.view).y
                 let value = min(1, max(0, start.value + (start.y - y) / (root.bounds.height * 0.405)))
@@ -938,6 +1063,12 @@ public final class PXPanelEntry: NSObject {
                 }
             }
         case .ended:
+            if let controller = panel, controller.groupMenuActive {
+                controller.updateGroupSelection(at: gesture.location(in: controller.view))
+                let entry = controller.selectedGroupAction
+                hidePanel { [weak self] in if let entry = entry { self?.runConfiguredAction(entry) } }
+                return
+            }
             if brightnessStart != nil {
                 brightnessStart = nil
                 hidePanel()
@@ -1014,6 +1145,10 @@ public final class PXPanelEntry: NSObject {
 
     private func performShortcut(_ id: String) {
         if id == "px.action.brightness" { return }
+        if let entry = configuredAction(id) {
+            if entry["kind"] as? String != "group" { runConfiguredAction(entry) }
+            return
+        }
         if id == "px.action.restart" {
             restartCurrentApplication()
         } else if id == "px.action.search" {
@@ -1045,6 +1180,17 @@ public final class PXPanelEntry: NSObject {
                 self?.presentHost(bundleID, wasFullscreen: false)
             }) else { return }
         if splitID != nil { closeHost(animated: false) }
+    }
+
+    private func runConfiguredAction(_ entry: [String: Any]) {
+        if entry["kind"] as? String == "quick", let bundleID = entry["app"] as? String {
+            if hostedBundleID == bundleID { closeHost(animated: false) }
+            if let dock = dockedHosts.first(where: { $0.bundleID == bundleID }) { removeDock(dock, fullscreenHandoff: true) }
+        }
+        guard !PXSceneBridge.shared().performConfiguredAction(entry) else { return }
+        let alert = UIAlertController(title: "无法运行快捷方式", message: "请确认快捷指令或应用操作仍然存在，并在设置中重新选择。", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        handleWindow?.rootViewController?.present(alert, animated: true)
     }
 
     private func showSearch() {
