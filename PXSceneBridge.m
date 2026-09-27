@@ -22,6 +22,36 @@ static id PXCall(id object, NSString *name)
         ? ((id (*)(id, SEL))objc_msgSend)(object, selector) : nil;
 }
 
+static void PXProbeFullscreenRuntime(NSString *bundleID)
+{
+    NSMutableString *report = [NSMutableString stringWithFormat:@"ParallelX fullscreen runtime probe\napp=%@\n", bundleID];
+    for (NSString *name in @[@"SBApplicationController", @"SBApplication", @"SBUIController",
+                            @"SBMainWorkspace", @"SBMainWorkspaceTransitionRequest"]) {
+        Class cls = NSClassFromString(name);
+        [report appendFormat:@"\n%@ present=%d\n", name, cls != Nil];
+        if (!cls) continue;
+        for (int kind = 0; kind < 2; kind++) {
+            Class owner = kind ? object_getClass(cls) : cls;
+            unsigned count = 0;
+            Method *methods = class_copyMethodList(owner, &count);
+            for (unsigned i = 0; i < count; i++) {
+                NSString *selector = NSStringFromSelector(method_getName(methods[i]));
+                NSString *lower = selector.lowercaseString;
+                if ([lower containsString:@"activat"] || [lower containsString:@"animat"] ||
+                    [lower containsString:@"transition"] || [lower containsString:@"request"] ||
+                    [lower containsString:@"flag"] || [lower containsString:@"sharedinstance"] ||
+                    [lower containsString:@"applicationwithbundle"]) {
+                    [report appendFormat:@"%@ %@ %s\n", kind ? @"+" : @"-", selector,
+                        method_getTypeEncoding(methods[i]) ?: "?"];
+                }
+            }
+            free(methods);
+        }
+    }
+    [report writeToFile:@"/var/mobile/Library/Preferences/com.moxuan.parallelx.fullscreen-probe.log"
+               atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
 static id PXIvar(id object, const char *name)
 {
     if (!object) return nil;
@@ -204,6 +234,7 @@ static int PXApplicationPID(NSString *bundleID)
 - (BOOL)openFullscreenApplication:(NSString *)bundleID
 {
     if (bundleID.length == 0) return NO;
+    PXProbeFullscreenRuntime(bundleID);
     SEL selector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
     id springBoard = UIApplication.sharedApplication;
     NSMethodSignature *signature = [springBoard methodSignatureForSelector:selector];
