@@ -170,7 +170,7 @@ assert 'bool(forKey: "clearOnLock")' in panel
 assert 'for dock in Array(dockedHosts) { removeDock(dock) }' in panel
 assert 'recordDockTouch("park \\(bundleID)' in panel
 assert 'recordDockTouch("layout \\(dock.bundleID)' in panel
-assert 'handleWindow?.windowLevel = dockedHosts.isEmpty ? .statusBar - 1 : .alert' in panel
+assert 'overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)' in panel
 picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
 assert 'navigationItem.searchController = search' in picker
 assert 'localizedCaseInsensitiveContains(query)' in picker

@@ -563,7 +563,7 @@ public final class PXPanelEntry: NSObject {
         panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = dockedHosts.isEmpty ? .statusBar + 1 : .alert + 1
+        window.windowLevel = .statusBar + 1
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
         controller.apps = selectedApps()
@@ -902,6 +902,7 @@ public final class PXPanelEntry: NSObject {
               let bundleID = hostedBundleID,
               let controls = handleWindow?.rootViewController?.view else { return false }
         let overlay = UIView(frame: window.frame)
+        overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)
         overlay.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(restoreDockTapped(_:))))
         for direction in [UISwipeGestureRecognizer.Direction.up, .left, .right] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(dockSwiped(_:)))
@@ -933,7 +934,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func layoutDocks() {
-        handleWindow?.windowLevel = dockedHosts.isEmpty ? .statusBar - 1 : .alert
         let screen = activeScene()?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let count = max(1, dockedHosts.count)
         let top = max(50, activeScene()?.windows.first?.safeAreaInsets.top ?? 50) + 12
