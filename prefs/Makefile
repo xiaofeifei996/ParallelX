@@ -5,7 +5,7 @@ THEOS_PACKAGE_SCHEME = roothide
 include $(THEOS)/makefiles/common.mk
 
 BUNDLE_NAME = ParallelXPrefs
-ParallelXPrefs_FILES = PXRootListController.m PXAppPickerController.swift PXCornerRadiusController.swift PXDockController.swift PXGestureAreaController.swift PXLauncherController.swift ../PXAppCatalog.m
+ParallelXPrefs_FILES = PXRootListController.m PXAppPickerController.swift PXExternalBlacklistController.swift PXCornerRadiusController.swift PXDockController.swift PXGestureAreaController.swift PXLauncherController.swift ../PXAppCatalog.m
 ParallelXPrefs_FRAMEWORKS = UIKit
 ParallelXPrefs_INSTALL_PATH = /Library/PreferenceBundles
 ParallelXPrefs_CFLAGS = -fobjc-arc

@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)layoutHost;
 - (void)setHostedInteractionEnabled:(BOOL)enabled;
 - (CGSize)hostedSourceSize;
+- (BOOL)isKeyboardRelocated;
+- (CGRect)relocatedKeyboardFrame;
 - (BOOL)hasSceneForApplication:(NSString *)bundleID;
 - (nullable UIImage *)launchImageForApplication:(NSString *)bundleID size:(CGSize)size;
 - (nullable NSString *)frontmostBundleID;

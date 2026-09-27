@@ -45,9 +45,14 @@ private func panelPreviewIcon(_ id: String) -> UIImage? {
 }
 
 private final class PXHandleWindow: UIWindow {
+    var captureOutsideKeyboard: ((CGPoint) -> Bool)?
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
-        return result === self || result === rootViewController?.view ? nil : result
+        if result === self || result === rootViewController?.view {
+            return captureOutsideKeyboard?(point) == true ? rootViewController?.view : nil
+        }
+        return result
     }
 }
 
@@ -550,7 +555,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
 }
 
 @objc(PXPanelEntry)
-public final class PXPanelEntry: NSObject {
+public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
     private static let shared = PXPanelEntry()
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
@@ -702,6 +707,16 @@ public final class PXPanelEntry: NSObject {
         let root = UIViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
+        window.captureOutsideKeyboard = { [weak self, weak window] point in
+            guard let self = self, let window = window, self.hostWindow != nil,
+                  self.activeBridge.isKeyboardRelocated() else { return false }
+            let screenPoint = window.convert(point, to: nil)
+            return self.hostWindow?.frame.contains(screenPoint) == false &&
+                !self.activeBridge.relocatedKeyboardFrame().contains(point)
+        }
+        let outsideTap = UITapGestureRecognizer(target: self, action: #selector(outsideKeyboardTapped))
+        outsideTap.delegate = self
+        root.view.addGestureRecognizer(outsideTap)
         let pill = UIView(frame: .zero)
         pill.backgroundColor = .secondarySystemBackground
         pill.layer.cornerCurve = .continuous
@@ -723,6 +738,13 @@ public final class PXPanelEntry: NSObject {
         handleWindow = window
         updateHandleAppearance()
     }
+
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                                  shouldReceive touch: UITouch) -> Bool {
+        touch.view === handleWindow?.rootViewController?.view
+    }
+
+    @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
 
     private func updateHandleAppearance() {
         guard let window = handleWindow, let pill = handle else { return }
@@ -859,13 +881,6 @@ public final class PXPanelEntry: NSObject {
                         }
                         else { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
                     } else { openHost(bundleID) }
-                }
-            } else if panelDragProgress >= 0.8 {
-                panel?.completeOpening()
-                let current = panelWindow
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
-                    guard self?.panelWindow === current else { return }
-                    self?.hidePanel()
                 }
             } else { hidePanel() }
         case .cancelled, .failed:
@@ -1175,8 +1190,9 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
-        guard dockedHosts.count < min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
-            .integer(forKey: "dockCount") ?? 2)) else { return }
+        let limit = min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
+            .integer(forKey: "dockCount") ?? 2))
+        if dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }
         parkMain(side: sender.tag)
     }
 
@@ -1233,17 +1249,14 @@ public final class PXPanelEntry: NSObject {
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
+            let scale = width / max(1, dock.originalCardFrame.width)
+            let cardOffset = CGPoint(x: dock.originalCardFrame.midX - dock.window.bounds.midX,
+                                     y: dock.originalCardFrame.midY - dock.window.bounds.midY)
             UIView.animate(withDuration: 0.30, delay: 0, usingSpringWithDamping: 0.86,
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
-                dock.window.frame = frame
-                dock.card.frame = CGRect(origin: .zero, size: frame.size)
-                let radius = dock.originalCornerRadius * width / max(1, dock.originalCardFrame.width)
-                dock.card.layer.cornerRadius = radius
-                dock.card.subviews.first?.layer.cornerRadius = radius
-                dock.card.layer.shadowPath = UIBezierPath(roundedRect: dock.card.bounds,
-                                                          cornerRadius: radius).cgPath
-                dock.card.layoutIfNeeded()
-                dock.bridge.layoutHost()
+                dock.window.transform = CGAffineTransform(scaleX: scale, y: scale)
+                dock.window.center = CGPoint(x: frame.midX - cardOffset.x * scale,
+                                             y: frame.midY - cardOffset.y * scale)
             }
         }
     }
@@ -1299,15 +1312,8 @@ public final class PXPanelEntry: NSObject {
                                   height: height + gripTop + gripBottom)
         UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.86,
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
-            dock.window.frame = targetWindow
-            dock.card.frame = dock.originalCardFrame
-            dock.card.layer.cornerRadius = dock.originalCornerRadius
-            dock.card.subviews.first?.layer.cornerRadius = dock.originalCornerRadius
-            dock.card.layer.shadowPath = UIBezierPath(roundedRect: dock.card.bounds,
-                                                      cornerRadius: dock.originalCornerRadius).cgPath
-            dock.card.layoutIfNeeded()
-            self.activeBridge.layoutHost()
-            self.layoutHostControls()
+            dock.window.transform = .identity
+            dock.window.center = CGPoint(x: targetWindow.midX, y: targetWindow.midY)
             dock.card.layer.shadowOpacity = 0
         } completion: { [weak self, weak dock] _ in
             guard let self = self, let dock = dock, self.hostWindow === dock.window else { return }

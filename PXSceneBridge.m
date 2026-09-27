@@ -493,6 +493,16 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     return self.sourceSize;
 }
 
+- (BOOL)isKeyboardRelocated
+{
+    return self.keyboardSlot.superview != nil && self.keyboardHostView.superview == self.keyboardSlot;
+}
+
+- (CGRect)relocatedKeyboardFrame
+{
+    return [self isKeyboardRelocated] ? self.keyboardSlot.frame : CGRectNull;
+}
+
 - (BOOL)foregroundScene:(id)scene
 {
     id settings = PXCall(scene, @"settings");
@@ -597,7 +607,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     return NO;
 }
 
-- (void)registerColdSceneInSwitcher:(id)scene bundleID:(NSString *)bundleID
+- (void)registerSceneInSwitcher:(id)scene bundleID:(NSString *)bundleID
 {
     NSString *sceneID = PXCall(scene, @"identifier");
     if (![sceneID isKindOfClass:NSString.class] || sceneID.length == 0) return;
@@ -759,12 +769,10 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                     [strongSelf.hostView layoutIfNeeded];
                     [strongSelf relocateExistingKeyboard:strongSelf.hostView];
                     completion(YES);
-                    if (coldStart) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            if (strongSelf.generation == generation)
-                                [strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID];
-                        });
-                    }
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (strongSelf.generation == generation)
+                            [strongSelf registerSceneInSwitcher:scene bundleID:bundleID];
+                    });
                     retry = nil;
                     return;
                 }

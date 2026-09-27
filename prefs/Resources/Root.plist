@@ -12,6 +12,7 @@
         { cell = PSGroupCell; label = "外部打开"; footerText = "点击通知或其他应用中的链接时，将目标应用放入分屏；系统应用及不支持的启动请求仍按原方式打开。"; },
         { cell = PSSwitchCell; label = "通知跳转分屏"; defaults = "com.moxuan.parallelx"; key = "notificationSplitEnabled"; default = 1; },
         { cell = PSSwitchCell; label = "URL 跳转分屏"; defaults = "com.moxuan.parallelx"; key = "urlSplitEnabled"; default = 1; },
+        { cell = PSLinkCell; label = "URL 分屏黑名单"; id = urlBlacklist; },
         { cell = PSGroupCell; label = "锁屏"; footerText = "开启后，锁屏时关闭主分屏和所有角落小窗；关闭时维持原来的解锁恢复行为。"; },
         { cell = PSSwitchCell; label = "锁屏时清理分屏和小窗"; defaults = "com.moxuan.parallelx"; key = "clearOnLock"; default = 0; },
         { cell = PSGroupCell; label = "截图"; },

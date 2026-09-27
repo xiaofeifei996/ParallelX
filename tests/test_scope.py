@@ -145,8 +145,9 @@ assert 'MSHookMessageEx(scene, update' in entry
 assert 'protectedSettings:settings forAnyScene:scene' in entry
 assert 'PXSceneBridge relocateAnyKeyboardView:view' in entry
 assert 'private func layoutDocks()' in panel and 'private func restoreDock(' in panel
-assert 'dock.card.layer.shadowPath = UIBezierPath(roundedRect: dock.card.bounds' in panel
-assert 'dock.card.layer.cornerRadius = radius' in panel
+assert 'dock.window.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
+assert 'dock.window.transform = .identity' in panel
+assert 'dock.card.frame = CGRect(origin: .zero, size: frame.size)' not in panel
 assert 'if hostWindow != nil { parkMain(side: dock.side) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
@@ -206,7 +207,12 @@ assert 'keepHostedProcessAlive' in bridge
 assert 'applicationDisplayItemWithBundleIdentifier:sceneIdentifier:' in bridge
 assert 'addAppLayoutForDisplayItem:completion:' in bridge
 assert 'createApplicationProcessForBundleID:' not in bridge
-assert bridge.index('completion(YES);') < bridge.index('[strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID]')
+assert bridge.index('completion(YES);') < bridge.index('[strongSelf registerSceneInSwitcher:scene bundleID:bundleID]')
+assert 'if (strongSelf.generation == generation)\n                            [strongSelf registerSceneInSwitcher:scene bundleID:bundleID];' in bridge
+assert 'deadline: .now() + 0.16' not in panel
+assert 'if dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }' in panel
+assert 'captureOutsideKeyboard' in panel and 'isKeyboardRelocated()' in panel
+assert 'urlSplitExcluded' in entry and 'URL 分屏黑名单' in root_plist
 assert 'displayItemWithType:bundleIdentifier:uniqueIdentifier:' not in bridge
 assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge

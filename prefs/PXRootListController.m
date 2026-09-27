@@ -31,6 +31,7 @@
     else if ([identifier isEqualToString:@"radius"]) [self openRadius];
     else if ([identifier isEqualToString:@"dock"]) [self openDock];
     else if ([identifier isEqualToString:@"gestures"]) [self openGestureArea];
+    else if ([identifier isEqualToString:@"urlBlacklist"]) [self openURLBlacklist];
     else { [super tableView:tableView didSelectRowAtIndexPath:indexPath]; return; }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
@@ -68,6 +69,13 @@
 {
     Class controllerClass = NSClassFromString(@"PXLauncherController");
     if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
+    [self.navigationController pushViewController:[controllerClass new] animated:YES];
+}
+
+- (void)openURLBlacklist
+{
+    Class controllerClass = NSClassFromString(@"PXExternalBlacklistController");
+    if (![controllerClass isSubclassOfClass:UIViewController.class]) return;
     [self.navigationController pushViewController:[controllerClass new] animated:YES];
 }
 
