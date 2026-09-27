@@ -378,13 +378,16 @@ public final class PXPanelEntry: NSObject {
             let path = "/var/mobile/Library/Preferences/com.moxuan.parallelx.touch.log"
             let data = Data(line.utf8)
             if !FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
+                guard FileManager.default.createFile(atPath: path, contents: nil) else {
+                    NSLog("ParallelX touch probe could not create %@", path)
+                    return
+                }
             }
             if let file = FileHandle(forWritingAtPath: path) {
                 file.seekToEndOfFile()
                 file.write(data)
                 file.closeFile()
-            }
+            } else { NSLog("ParallelX touch probe could not open %@", path) }
         }
     }
 
@@ -912,6 +915,7 @@ public final class PXPanelEntry: NSObject {
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 moveGrip: hostMoveGrip, overlay: overlay)
         dockedHosts.append(dock)
+        recordDockTouch("park \(bundleID) overlay=\(overlay.frame)")
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
         hostWindow = nil
         hostCard = nil
