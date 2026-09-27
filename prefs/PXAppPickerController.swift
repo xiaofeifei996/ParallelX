@@ -1,14 +1,16 @@
 import UIKit
 
 @objc(PXAppPickerController)
-public final class PXAppPickerController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+public final class PXAppPickerController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
     private let domain = "com.moxuan.parallelx"
     private let table = UITableView(frame: .zero, style: .insetGrouped)
+    private let search = UISearchController(searchResultsController: nil)
     private var apps: [(id: String, name: String)] = []
     private var selected: [String] = []
     private var available: [(id: String, name: String)] = []
     private var urls: [[String: String]] = []
     private var symbols: [String: String] = [:]
+    private var icons: [String: UIImage] = [:]
     private let shortcuts: [(id: String, name: String, symbol: String)] = [
         ("px.action.dark", "深色模式", "moon.fill"),
         ("px.action.record", "屏幕录制 · 再次选择停止", "record.circle"),
@@ -38,11 +40,24 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         table.rowHeight = 56
         table.allowsSelectionDuringEditing = true
         view.addSubview(table)
+        search.searchResultsUpdater = self
+        search.obscuresBackgroundDuringPresentation = false
+        search.searchBar.placeholder = "搜索应用名称或标识"
+        navigationItem.searchController = search
+        navigationItem.hidesSearchBarWhenScrolling = false
         navigationItem.rightBarButtonItem = editButtonItem
     }
 
     private func refreshAvailable() {
-        available = apps.filter { !selected.contains($0.id) }
+        let query = search.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        available = apps.filter { !selected.contains($0.id) &&
+            (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) ||
+             $0.id.localizedCaseInsensitiveContains(query)) }
+    }
+
+    public func updateSearchResults(for searchController: UISearchController) {
+        refreshAvailable()
+        table.reloadData()
     }
 
     private func saveSelection() {
@@ -67,12 +82,14 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     public func numberOfSections(in tableView: UITableView) -> Int { 3 }
 
     public func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        section == 0 ? "已添加 · 编辑可拖动排序" :
+        if search.searchBar.text?.isEmpty == false && section < 2 { return nil }
+        return section == 0 ? "已添加 · 编辑可拖动排序" :
             section == 1 ? "快捷操作 · 长按可自定义图标与选项" : "可添加应用"
     }
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        section == 0 ? selected.count : section == 1 ? shortcuts.count + urls.count + (urls.count < 10 ? 1 : 0) : available.count
+        if search.searchBar.text?.isEmpty == false && section < 2 { return 0 }
+        return section == 0 ? selected.count : section == 1 ? shortcuts.count + urls.count + (urls.count < 10 ? 1 : 0) : available.count
     }
 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -94,9 +111,20 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         cell.detailTextLabel?.text = urls.first(where: { $0["id"] == app.id })?["url"] ?? app.id
         cell.detailTextLabel?.textColor = .secondaryLabel
         let fallback = shortcuts.first(where: { $0.id == app.id })?.symbol ?? (isAddURL ? "plus.circle" : "link")
-        cell.imageView?.image = (app.id.hasPrefix("px.") || isAddURL)
-            ? UIImage(systemName: symbols[app.id] ?? fallback) ?? UIImage(systemName: fallback)
-            : PXApplicationIcon(app.id)
+        if app.id.hasPrefix("px.") || isAddURL {
+            cell.imageView?.image = (UIImage(systemName: symbols[app.id] ?? fallback) ?? UIImage(systemName: fallback))?
+                .applyingSymbolConfiguration(.init(pointSize: 24))
+        } else if let cached = icons[app.id] { cell.imageView?.image = cached }
+        else {
+            if let rawIcon = PXApplicationIcon(app.id) {
+                let size = CGSize(width: 32, height: 32)
+                let icon = UIGraphicsImageRenderer(size: size).image { _ in
+                    rawIcon.draw(in: CGRect(origin: .zero, size: size))
+                }
+                icons[app.id] = icon
+                cell.imageView?.image = icon
+            } else { cell.imageView?.image = nil }
+        }
         cell.imageView?.tintColor = .label
         cell.accessoryType = selected.contains(app.id) ? .checkmark : .none
         cell.showsReorderControl = indexPath.section == 0

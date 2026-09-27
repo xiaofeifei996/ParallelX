@@ -166,6 +166,15 @@ assert 'hostTopCorners' in panel and '#selector(dockTapped(_:))' in panel
 assert 'PXDockController.swift' in (root / 'prefs' / 'Makefile').read_text(encoding='utf-8')
 assert 'com.apple.springboard.lockstate' in entry
 assert 'guard !deviceLocked, needsHostRefresh' in panel
+assert 'bool(forKey: "clearOnLock")' in panel
+assert 'for dock in Array(dockedHosts) { removeDock(dock) }' in panel
+picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
+assert 'navigationItem.searchController = search' in picker
+assert 'localizedCaseInsensitiveContains(query)' in picker
+assert 'CGSize(width: 32, height: 32)' in picker
+root_plist = (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')
+assert 'cell = PSLinkCell; label = "应用、快捷操作与排序"' in root_plist
+assert 'key = "clearOnLock"' in root_plist
 assert 'self.canvas.window.windowLevel + 1' in bridge
 assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in bridge
 assert 'self.relocatingKeyboard' in bridge

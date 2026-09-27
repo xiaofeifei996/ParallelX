@@ -34,8 +34,10 @@ private func panelIcon(_ id: String) -> UIImage? {
 }
 
 private final class PXHandleWindow: UIWindow {
+    var onHitTest: ((CGPoint, UIView?) -> Void)?
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
+        onHitTest?(point, result)
         return result === self || result === rootViewController?.view ? nil : result
     }
 }
@@ -344,6 +346,7 @@ private final class PXPanelViewController: UIViewController {
 @objc(PXPanelEntry)
 public final class PXPanelEntry: NSObject {
     private static let shared = PXPanelEntry()
+    private static let touchProbeQueue = DispatchQueue(label: "com.moxuan.parallelx.touch-probe")
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
     private var hostWindow: UIWindow?
@@ -369,6 +372,22 @@ public final class PXPanelEntry: NSObject {
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
     private var handleDragStartY: CGFloat = 0
 
+    private func recordDockTouch(_ message: String) {
+        let line = "\(Date()) \(message)\n"
+        Self.touchProbeQueue.async {
+            let path = "/var/mobile/Library/Preferences/com.moxuan.parallelx.touch.log"
+            let data = Data(line.utf8)
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
+            }
+            if let file = FileHandle(forWritingAtPath: path) {
+                file.seekToEndOfFile()
+                file.write(data)
+                file.closeFile()
+            }
+        }
+    }
+
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
             selector: #selector(sceneActivated), name: UIScene.didActivateNotification, object: nil)
@@ -392,6 +411,11 @@ public final class PXPanelEntry: NSObject {
         guard locked != deviceLocked else { return }
         deviceLocked = locked
         if locked {
+            if UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "clearOnLock") == true {
+                closeHost(animated: false)
+                for dock in Array(dockedHosts) { removeDock(dock) }
+                return
+            }
             hostWindow?.isHidden = true
             if hostWindow != nil {
                 needsHostRefresh = true
@@ -460,6 +484,12 @@ public final class PXPanelEntry: NSObject {
         if handleWindow != nil { updateHandleAppearance(); return }
         guard let scene = activeScene() else { return }
         let window = PXHandleWindow(windowScene: scene)
+        window.onHitTest = { [weak self] point, hit in
+            guard let self = self,
+                  let dock = self.dockedHosts.first(where: { $0.overlay.frame.contains(point) }) else { return }
+            let viewName = hit.map { String(describing: type(of: $0)) } ?? "nil"
+            self.recordDockTouch("hit \(dock.bundleID) overlay=\(hit === dock.overlay) view=\(viewName)")
+        }
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar - 1
         window.backgroundColor = .clear
@@ -930,11 +960,13 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func restoreDockTapped(_ sender: UITapGestureRecognizer) {
         guard let dock = dockedHosts.first(where: { $0.overlay === sender.view }) else { return }
+        recordDockTouch("tap \(dock.bundleID)")
         restoreDock(dock)
     }
 
     @objc private func dockSwiped(_ sender: UISwipeGestureRecognizer) {
         guard let dock = dockedHosts.first(where: { $0.overlay === sender.view }) else { return }
+        recordDockTouch("swipe \(dock.bundleID) direction=\(sender.direction.rawValue)")
         if sender.direction == .up {
             removeDock(dock)
         } else {

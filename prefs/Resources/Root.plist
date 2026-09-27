@@ -2,13 +2,16 @@
     title = "ParallelX";
     items = (
         { cell = PSGroupCell; label = "应用与面板"; },
-        { cell = PSButtonCell; label = "应用、快捷操作与排序"; action = openPicker; },
-        { cell = PSButtonCell; label = "面板与手柄"; action = openLauncher; },
+        { cell = PSLinkCell; label = "应用、快捷操作与排序"; id = picker; },
+        { cell = PSLinkCell; label = "面板与手柄"; id = launcher; },
         { cell = PSGroupCell; label = "窗口"; },
-        { cell = PSButtonCell; label = "圆角与阴影"; action = openRadius; },
-        { cell = PSButtonCell; label = "角落小窗"; action = openDock; },
+        { cell = PSLinkCell; label = "圆角与阴影"; id = radius; },
+        { cell = PSLinkCell; label = "角落小窗"; id = dock; },
         { cell = PSGroupCell; label = "交互"; },
-        { cell = PSButtonCell; label = "底部手势区域"; action = openGestureArea; },
+        { cell = PSLinkCell; label = "底部手势区域"; id = gestures; },
+        { cell = PSGroupCell; label = "锁屏"; footerText = "开启后，锁屏时关闭主分屏和所有角落小窗；关闭时维持原来的解锁恢复行为。"; },
+        { cell = PSSwitchCell; label = "锁屏时清理分屏和小窗"; defaults = "com.moxuan.parallelx"; key = "clearOnLock"; default = 0; },
+        { cell = PSGroupCell; label = "截图"; },
         { cell = PSSwitchCell; label = "截图时隐藏手柄"; defaults = "com.moxuan.parallelx"; key = "hideForScreenshot"; default = 0; },
         { cell = PSGroupCell; footerText = "从右侧手柄滑出面板选择应用。点击分屏上方角落可停靠小窗；小窗可点击切换、上滑关闭、左右滑动换边。仅供 iOS 15 RootHide 测试。"; }
     );
