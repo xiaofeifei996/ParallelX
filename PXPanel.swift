@@ -11,33 +11,6 @@ private final class PXHandleWindow: UIWindow {
     }
 }
 
-private final class PXCornerGrip: UIView {
-    var arcCenter = CGPoint.zero { didSet { setNeedsDisplay() } }
-    var arcRadius: CGFloat = 20 { didSet { setNeedsDisplay() } }
-
-    override func draw(_ rect: CGRect) {
-        let middle: CGFloat = tag < 0 ? 3 * .pi / 4 : .pi / 4
-        let half = min(CGFloat(0.52), 14 / arcRadius)
-        func point(_ angle: CGFloat, radius: CGFloat) -> CGPoint {
-            CGPoint(x: arcCenter.x + radius * cos(angle),
-                    y: arcCenter.y + radius * sin(angle))
-        }
-        let path = UIBezierPath()
-        path.move(to: point(middle - half, radius: arcRadius))
-        path.addQuadCurve(to: point(middle + half, radius: arcRadius),
-                          controlPoint: point(middle, radius: arcRadius / cos(half)))
-        path.lineWidth = 5
-        path.lineCapStyle = .round
-        UIColor.secondaryLabel.setStroke()
-        path.stroke()
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        setNeedsDisplay()
-    }
-}
-
 private final class PXHostViewController: UIViewController {
     var onLayout: (() -> Void)?
 
@@ -136,7 +109,7 @@ public final class PXPanelEntry: NSObject {
     private var panelWindow: UIWindow?
     private var hostWindow: UIWindow?
     private var hostCard: UIView?
-    private var hostCorners: [PXCornerGrip] = []
+    private var hostCorners: [UIView] = []
     private var hostMoveGrip: UIView?
     private weak var hostCanvas: UIView?
     private weak var previousKeyWindow: UIWindow?
@@ -337,11 +310,14 @@ public final class PXPanelEntry: NSObject {
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
         card.addSubview(spinner)
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let debug = defaults?.bool(forKey: "gestureDebug") == true
         for side in [-1, 1] {
-            let corner = PXCornerGrip(frame: .zero)
+            let corner = UIView(frame: .zero)
             corner.tag = side
             corner.isOpaque = false
-            corner.backgroundColor = .clear
+            corner.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) :
+                UIColor(white: 1, alpha: 0.02)
             corner.isUserInteractionEnabled = true
             corner.isAccessibilityElement = true
             corner.accessibilityLabel = "拖动调整窗口大小"
@@ -351,8 +327,8 @@ public final class PXPanelEntry: NSObject {
             hostCorners.append(corner)
         }
         let moveGrip = UIView(frame: .zero)
-        let defaults = UserDefaults(suiteName: preferenceDomain)
-        if defaults?.bool(forKey: "gestureDebug") == true {
+        moveGrip.backgroundColor = UIColor(white: 1, alpha: 0.02)
+        if debug {
             moveGrip.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.25)
             moveGrip.layer.borderColor = UIColor.systemBlue.cgColor
             moveGrip.layer.borderWidth = 1
@@ -425,9 +401,6 @@ public final class PXPanelEntry: NSObject {
             let midpoint = CGPoint(x: center.x + arcRadius * cos(middle),
                                    y: center.y + arcRadius * sin(middle))
             corner.frame = CGRect(x: midpoint.x - 22, y: midpoint.y - 22, width: 44, height: 44)
-            corner.arcCenter = CGPoint(x: center.x - corner.frame.minX,
-                                       y: center.y - corner.frame.minY)
-            corner.arcRadius = arcRadius
         }
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))

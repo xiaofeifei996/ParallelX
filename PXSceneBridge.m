@@ -175,12 +175,19 @@ static int PXApplicationPID(NSString *bundleID)
 {
     if (!completion) return;
     NSString *currentID = [self frontmostBundleID];
-    BOOL shouldReturnHome = wasFullscreen || [currentID isEqualToString:bundleID];
+    BOOL shouldReturnHome = wasFullscreen && [currentID isEqualToString:bundleID];
     void (^finish)(BOOL) = ^(BOOL success){
         if (NSThread.isMainThread) completion(success);
         else dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
     };
     if (!shouldReturnHome || bundleID.length == 0) {
+        finish(YES);
+        return;
+    }
+    id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
+    SEL press = NSSelectorFromString(@"performSinglePressUpActions");
+    if ([actions respondsToSelector:press]) {
+        ((void (*)(id, SEL))objc_msgSend)(actions, press);
         finish(YES);
         return;
     }
@@ -190,12 +197,7 @@ static int PXApplicationPID(NSString *bundleID)
     if (!signature || signature.numberOfArguments != 3 ||
         signature.methodReturnType[0] != 'v' ||
         [signature getArgumentTypeAtIndex:2][0] != '@') {
-        id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
-        SEL press = NSSelectorFromString(@"performSinglePressUpActions");
-        if ([actions respondsToSelector:press]) {
-            ((void (*)(id, SEL))objc_msgSend)(actions, press);
-            finish(YES);
-        } else finish(NO);
+        finish(NO);
         return;
     }
     ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, nil);
