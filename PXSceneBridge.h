@@ -3,6 +3,8 @@
 NS_ASSUME_NONNULL_BEGIN
 @interface PXSceneBridge : NSObject
 + (instancetype)sharedBridge;
++ (nullable id)protectedSettings:(id)settings forAnyScene:(id)scene;
++ (void)relocateAnyKeyboardView:(UIView *)view;
 - (void)openApplication:(NSString *)bundleID
                 inView:(UIView *)canvas
        keyboardOverlay:(UIView *)keyboardOverlay

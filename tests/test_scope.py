@@ -55,7 +55,7 @@ for count in (3, 5, 7, 12):
     spacing = 62
     radius = spacing / (2 * sin(pi / (2 * (count - 1))))
     assert 2 * radius * sin(pi / (2 * (count - 1))) >= spacing - 1e-6
-assert "PXSceneBridge.shared().close()" in panel
+assert 'bridge.close()' in panel
 assert "let width = screen.width * 0.78" in panel
 assert "let height = width * screen.height / screen.width" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
@@ -140,7 +140,11 @@ assert 'updateSettings:withTransitionContext:completion:' in bridge
 assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSettings:withTransitionContext:completion:', '')
 entry = (root / "Tweak.m").read_text(encoding="utf-8")
 assert 'MSHookMessageEx(scene, update' in entry
-assert 'protectedSettings:settings forScene:scene' in entry
+assert 'protectedSettings:settings forAnyScene:scene' in entry
+assert 'PXSceneBridge relocateAnyKeyboardView:view' in entry
+assert 'private func layoutDocks()' in panel and 'private func restoreDock(' in panel
+assert 'hostTopCorners' in panel and '#selector(dockTapped(_:))' in panel
+assert 'PXDockController.swift' in (root / 'prefs' / 'Makefile').read_text(encoding='utf-8')
 assert 'com.apple.springboard.lockstate' in entry
 assert 'guard !deviceLocked, needsHostRefresh' in panel
 assert 'self.canvas.window.windowLevel + 1' in bridge

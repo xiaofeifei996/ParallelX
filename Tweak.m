@@ -13,13 +13,13 @@ static void (*PXOriginalKeyboardLayout)(id, SEL);
 static void PXKeyboardLayout(id view, SEL selector)
 {
     PXOriginalKeyboardLayout(view, selector);
-    [[PXSceneBridge sharedBridge] relocateKeyboardView:view];
+    [PXSceneBridge relocateAnyKeyboardView:view];
 }
 
 static void PXSceneUpdate(id scene, SEL selector, id settings, id context, id completion)
 {
     id protected = nil;
-    @try { protected = [[PXSceneBridge sharedBridge] protectedSettings:settings forScene:scene]; }
+    @try { protected = [PXSceneBridge protectedSettings:settings forAnyScene:scene]; }
     @catch (__unused NSException *exception) { }
     PXOriginalSceneUpdate(scene, selector, protected ?: settings, context, completion);
 }
@@ -27,7 +27,7 @@ static void PXSceneUpdate(id scene, SEL selector, id settings, id context, id co
 static void PXSceneUpdateWithoutCompletion(id scene, SEL selector, id settings, id context)
 {
     id protected = nil;
-    @try { protected = [[PXSceneBridge sharedBridge] protectedSettings:settings forScene:scene]; }
+    @try { protected = [PXSceneBridge protectedSettings:settings forAnyScene:scene]; }
     @catch (__unused NSException *exception) { }
     PXOriginalSceneUpdateWithoutCompletion(scene, selector, protected ?: settings, context);
 }
@@ -38,7 +38,7 @@ static void PXKeyboardDidMove(id view, SEL selector)
     __weak UIView *candidate = view;
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *keyboard = candidate;
-        if (keyboard) [[PXSceneBridge sharedBridge] relocateKeyboardView:keyboard];
+        if (keyboard) [PXSceneBridge relocateAnyKeyboardView:keyboard];
     });
 }
 

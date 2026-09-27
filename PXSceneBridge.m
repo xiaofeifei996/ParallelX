@@ -126,6 +126,32 @@ static int PXApplicationPID(NSString *bundleID)
 
 @implementation PXSceneBridge
 
+static NSHashTable<PXSceneBridge *> *PXBridges;
+
+- (instancetype)init
+{
+    if ((self = [super init])) {
+        if (!PXBridges) PXBridges = [NSHashTable weakObjectsHashTable];
+        [PXBridges addObject:self];
+    }
+    return self;
+}
+
++ (id)protectedSettings:(id)settings forAnyScene:(id)scene
+{
+    for (PXSceneBridge *bridge in PXBridges.allObjects) {
+        id protected = [bridge protectedSettings:settings forScene:scene];
+        if (protected) return protected;
+    }
+    return nil;
+}
+
++ (void)relocateAnyKeyboardView:(UIView *)view
+{
+    for (PXSceneBridge *bridge in PXBridges.allObjects)
+        [bridge relocateKeyboardView:view];
+}
+
 + (instancetype)sharedBridge
 {
     static PXSceneBridge *bridge;

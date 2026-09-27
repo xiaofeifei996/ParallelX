@@ -54,6 +54,40 @@ private final class PXHostViewController: UIViewController {
     }
 }
 
+private final class PXDockedHost {
+    let window: UIWindow
+    let card: UIView
+    let canvas: UIView
+    let bridge: PXSceneBridge
+    let bundleID: String
+    let side: Int
+    let sourceSize: CGSize
+    let originalFrame: CGRect
+    let originalCardFrame: CGRect
+    let corners: [UIView]
+    let topCorners: [UIView]
+    let moveGrip: UIView?
+    let overlay: UIView
+
+    init(window: UIWindow, card: UIView, canvas: UIView, bridge: PXSceneBridge,
+         bundleID: String, side: Int, corners: [UIView], topCorners: [UIView],
+         moveGrip: UIView?, overlay: UIView) {
+        self.window = window
+        self.card = card
+        self.canvas = canvas
+        self.bridge = bridge
+        self.bundleID = bundleID
+        self.side = side
+        self.sourceSize = bridge.hostedSourceSize()
+        self.originalFrame = window.frame
+        self.originalCardFrame = card.frame
+        self.corners = corners
+        self.topCorners = topCorners
+        self.moveGrip = moveGrip
+        self.overlay = overlay
+    }
+}
+
 private final class PXPanelViewController: UIViewController {
     var apps: [(id: String, name: String)] = []
     var handleCenterY: CGFloat = 0
@@ -313,6 +347,9 @@ public final class PXPanelEntry: NSObject {
     private var hostWindow: UIWindow?
     private var hostCard: UIView?
     private var hostCorners: [UIView] = []
+    private var hostTopCorners: [UIView] = []
+    private var dockedHosts: [PXDockedHost] = []
+    private var activeBridge: PXSceneBridge = .shared()
     private var hostMoveGrip: UIView?
     private weak var hostCanvas: UIView?
     private var panel: PXPanelViewController?
@@ -348,9 +385,21 @@ public final class PXPanelEntry: NSObject {
             hostWindow?.isHidden = true
             if hostWindow != nil {
                 needsHostRefresh = true
-                PXSceneBridge.shared().close()
+                activeBridge.close()
             }
-        } else { refreshHost() }
+            for dock in dockedHosts { dock.window.isHidden = true; dock.bridge.close() }
+        } else {
+            refreshHost()
+            guard let controls = handleWindow?.rootViewController?.view else { return }
+            for dock in dockedHosts {
+                dock.bridge.openApplication(dock.bundleID, in: dock.canvas,
+                                            keyboardOverlay: controls) { [weak self, weak dock] success in
+                    guard let dock = dock, self?.dockedHosts.contains(where: { $0 === dock }) == true else { return }
+                    if success { dock.window.isHidden = false; dock.bridge.layoutHost() }
+                    else { self?.dockedHosts.removeAll { $0 === dock }; dock.window.isHidden = true }
+                }
+            }
+        }
     }
 
     @objc private func sceneDeactivated(_ notification: Notification) {
@@ -362,6 +411,7 @@ public final class PXPanelEntry: NSObject {
     @objc private func sceneActivated(_ notification: Notification) {
         installHandle()
         if (notification.object as? UIWindowScene) === hostWindow?.windowScene { refreshHost() }
+        if !dockedHosts.isEmpty { layoutDocks() }
     }
 
     private func refreshHost() {
@@ -369,11 +419,11 @@ public final class PXPanelEntry: NSObject {
               let bundleID = hostedBundleID, let canvas = hostCanvas,
               let controls = handleWindow?.rootViewController?.view else { return }
         needsHostRefresh = false
-        PXSceneBridge.shared().openApplication(bundleID, in: canvas,
+        activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             if success {
-                PXSceneBridge.shared().layoutHost()
+                self.activeBridge.layoutHost()
                 self.hostCard?.alpha = 1
                 self.hostCard?.transform = .identity
                 window?.isUserInteractionEnabled = true
@@ -529,6 +579,10 @@ public final class PXPanelEntry: NSObject {
                     hidePanel()
                     if fullscreen {
                         if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped() }
+                        else if let dock = dockedHosts.first(where: { $0.bundleID == bundleID }) {
+                            restoreDock(dock)
+                            fullscreenTapped()
+                        }
                         else { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
                     } else { openHost(bundleID) }
                 }
@@ -558,6 +612,10 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func openHost(_ bundleID: String) {
+        if let dock = dockedHosts.first(where: { $0.bundleID == bundleID }) {
+            restoreDock(dock)
+            return
+        }
         let wasFullscreen = panelFrontmostBundleID == bundleID
         panelFrontmostBundleID = nil
         presentHost(bundleID, wasFullscreen: wasFullscreen)
@@ -637,7 +695,7 @@ public final class PXPanelEntry: NSObject {
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
         card.addSubview(spinner)
-        let coldStart = !PXSceneBridge.shared().hasScene(forApplication: bundleID)
+        let coldStart = !activeBridge.hasScene(forApplication: bundleID)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
         for side in [-1, 1] {
             let corner = UIView(frame: .zero)
@@ -652,6 +710,19 @@ public final class PXPanelEntry: NSObject {
                                                                action: #selector(resizeHost(_:))))
             root.view.addSubview(corner)
             hostCorners.append(corner)
+            let top = UIControl(frame: .zero)
+            top.tag = side
+            top.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) :
+                UIColor(white: 1, alpha: 0.02)
+            top.isAccessibilityElement = true
+            top.accessibilityLabel = side < 0 ? "停靠到左上角" : "停靠到右上角"
+            let mark = UIImageView(image: UIImage(systemName: "arrow.down.right.and.arrow.up.left"))
+            mark.frame = CGRect(x: 12, y: 12, width: 20, height: 20)
+            mark.tintColor = .secondaryLabel
+            top.addSubview(mark)
+            top.addTarget(self, action: #selector(dockTapped(_:)), for: .touchUpInside)
+            root.view.addSubview(top)
+            hostTopCorners.append(top)
         }
         let moveGrip = UIView(frame: .zero)
         moveGrip.backgroundColor = UIColor(white: 1, alpha: 0.02)
@@ -684,7 +755,7 @@ public final class PXPanelEntry: NSObject {
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
             card.transform = .identity
         }
-        PXSceneBridge.shared().openApplication(bundleID, in: canvas,
+        activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
@@ -695,14 +766,14 @@ public final class PXPanelEntry: NSObject {
                 }
             }
             self.matchHostAspect()
-            PXSceneBridge.shared().prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
+            self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else { self.closeHost(animated: false); return }
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
             }
         }
-        if coldStart, let image = PXSceneBridge.shared().launchImage(forApplication: bundleID, size: card.bounds.size),
+        if coldStart, let image = activeBridge.launchImage(forApplication: bundleID, size: card.bounds.size),
            hostWindow === window {
             let preview = UIImageView(image: image)
             preview.tag = 0x50584c
@@ -718,7 +789,7 @@ public final class PXPanelEntry: NSObject {
 
     private func matchHostAspect() {
         guard let window = hostWindow, let card = hostCard else { return }
-        let source = PXSceneBridge.shared().hostedSourceSize()
+        let source = activeBridge.hostedSourceSize()
         guard source.width > 0, source.height > 0 else { return }
         let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let width = min(screen.width * 0.78,
@@ -730,7 +801,7 @@ public final class PXPanelEntry: NSObject {
         card.frame = CGRect(x: gripMargin, y: gripTop, width: width, height: height)
         card.layoutIfNeeded()
         layoutHostControls()
-        PXSceneBridge.shared().layoutHost()
+        activeBridge.layoutHost()
     }
 
     private func layoutHostControls() {
@@ -757,11 +828,98 @@ public final class PXPanelEntry: NSObject {
                                    y: center.y + arcRadius * sin(middle))
             corner.frame = CGRect(x: midpoint.x - 22, y: midpoint.y - 22, width: 44, height: 44)
         }
+        for corner in hostTopCorners {
+            corner.frame = CGRect(x: corner.tag < 0 ? frame.minX - 12 : frame.maxX - 32,
+                                  y: frame.minY - 12, width: 44, height: 44)
+        }
         let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
         let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
         let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
         hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
                                      width: width, height: height)
+    }
+
+    @objc private func dockTapped(_ sender: UIControl) {
+        guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
+              let bundleID = hostedBundleID,
+              dockedHosts.count < min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
+                  .integer(forKey: "dockCount") ?? 2)) else { return }
+        let overlay = UIControl(frame: .zero)
+        overlay.addTarget(self, action: #selector(restoreDockTapped(_:)), for: .touchUpInside)
+        window.rootViewController?.view.addSubview(overlay)
+        let dock = PXDockedHost(window: window, card: card, canvas: canvas,
+                                bridge: activeBridge, bundleID: bundleID, side: sender.tag,
+                                corners: hostCorners, topCorners: hostTopCorners,
+                                moveGrip: hostMoveGrip, overlay: overlay)
+        dockedHosts.append(dock)
+        (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
+        hostWindow = nil
+        hostCard = nil
+        hostCanvas = nil
+        hostCorners = []
+        hostTopCorners = []
+        hostMoveGrip = nil
+        hostedBundleID = nil
+        activeBridge = PXSceneBridge()
+        layoutDocks()
+    }
+
+    private func layoutDocks() {
+        let screen = activeScene()?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        let count = max(1, dockedHosts.count)
+        let top = max(50, activeScene()?.windows.first?.safeAreaInsets.top ?? 50) + 12
+        let available = max(120, screen.height - top - 40 - CGFloat(count - 1) * 12)
+        let requested = CGFloat(UserDefaults(suiteName: preferenceDomain)?
+            .object(forKey: "dockWidth") as? Int ?? 110)
+        for (index, dock) in dockedHosts.enumerated() {
+            let ratio = dock.sourceSize.height / max(1, dock.sourceSize.width)
+            let width = min(max(64, requested), available / CGFloat(count) / max(1, ratio))
+            let height = width * ratio
+            let preceding = dockedHosts.prefix(index).reduce(CGFloat.zero) { sum, item in
+                let r = item.sourceSize.height / max(1, item.sourceSize.width)
+                return sum + min(max(64, requested), available / CGFloat(count) / max(1, r)) * r + 12
+            }
+            let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
+                               y: top + preceding, width: width, height: height)
+            UIView.animate(withDuration: 0.38, delay: 0, usingSpringWithDamping: 0.86,
+                           initialSpringVelocity: 0, options: .beginFromCurrentState) {
+                dock.window.frame = frame
+                dock.card.frame = CGRect(origin: .zero, size: frame.size)
+                dock.overlay.frame = dock.window.bounds
+                dock.card.layoutIfNeeded()
+                dock.bridge.layoutHost()
+            }
+        }
+    }
+
+    @objc private func restoreDockTapped(_ sender: UIControl) {
+        guard let window = sender.window,
+              let dock = dockedHosts.first(where: { $0.window === window }) else { return }
+        restoreDock(dock)
+    }
+
+    private func restoreDock(_ dock: PXDockedHost) {
+        closeHost(animated: false)
+        dockedHosts.removeAll { $0 === dock }
+        dock.overlay.removeFromSuperview()
+        activeBridge = dock.bridge
+        hostWindow = dock.window
+        hostCard = dock.card
+        hostCanvas = dock.canvas
+        hostCorners = dock.corners
+        hostTopCorners = dock.topCorners
+        hostMoveGrip = dock.moveGrip
+        hostedBundleID = dock.bundleID
+        (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
+        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.86,
+                       initialSpringVelocity: 0, options: .beginFromCurrentState) {
+            dock.window.frame = dock.originalFrame
+            dock.card.frame = dock.originalCardFrame
+            dock.card.layoutIfNeeded()
+            self.activeBridge.layoutHost()
+            self.layoutHostControls()
+        }
+        layoutDocks()
     }
 
     @objc private func closeTapped() { closeHost(animated: true) }
@@ -793,7 +951,7 @@ public final class PXPanelEntry: NSObject {
             card.layer.shadowOpacity = 0
         } completion: { [weak self, weak window] _ in
             guard let self = self, let window = window, self.hostWindow === window else { return }
-            guard PXSceneBridge.shared().openFullscreenApplication(bundleID) else {
+            guard self.activeBridge.openFullscreenApplication(bundleID) else {
                 card.transform = .identity
                 card.frame = cardFrame
                 card.layer.cornerRadius = cornerRadius
@@ -873,7 +1031,7 @@ public final class PXPanelEntry: NSObject {
                     card.layer.cornerRadius = resizeStartRadius
                     card.layoutIfNeeded()
                     layoutHostControls()
-                    PXSceneBridge.shared().layoutHost()
+                    activeBridge.layoutHost()
                     CATransaction.commit()
                 }
             }
@@ -928,20 +1086,23 @@ public final class PXPanelEntry: NSObject {
         resizeLink = nil
         resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }
+        hostTopCorners.forEach { $0.removeFromSuperview() }
         hostMoveGrip?.removeFromSuperview()
         window.isUserInteractionEnabled = false
         hostWindow = nil
         hostCard = nil
         hostCanvas = nil
         hostCorners = []
+        hostTopCorners = []
         hostMoveGrip = nil
         hostedBundleID = nil
         resizeStartFrame = nil
         moveStartFrame = nil
         needsHostRefresh = false
+        let bridge = activeBridge
         let finish = { [weak self] in
             window.isHidden = true
-            if self?.hostWindow == nil { PXSceneBridge.shared().close() }
+            if self?.hostWindow == nil { bridge.close() }
             window.rootViewController = nil
         }
         if animated, let card = closingCard {

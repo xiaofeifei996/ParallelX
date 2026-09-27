@@ -9,6 +9,8 @@
         { cell = PSButtonCell; label = "面板、手柄与选择手势"; action = openLauncher; },
         { cell = PSGroupCell; label = "窗口外观"; footerText = "调整圆角和阴影；更改在下次打开窗口时生效。"; },
         { cell = PSButtonCell; label = "圆角与阴影"; action = openRadius; },
+        { cell = PSGroupCell; label = "角落小窗"; footerText = "点击分屏窗口左上角或右上角可停靠。点击小窗恢复；多个小窗从上往下排列。"; },
+        { cell = PSButtonCell; label = "小窗尺寸与数量"; action = openDock; },
         { cell = PSGroupCell; label = "手势"; footerText = "底部手势区默认透明；打开调试显示后可看到实际触发范围。"; },
         { cell = PSButtonCell; label = "底部手势区域"; action = openGestureArea; },
         { cell = PSGroupCell; footerText = "从右侧手柄滑出半圆面板选择应用。窗口下方透明区域可拖动、双击关闭、长按全屏；两侧下角可等比缩放。仅供 iOS 15 RootHide 测试。"; }
