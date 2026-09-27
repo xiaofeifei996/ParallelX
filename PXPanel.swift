@@ -478,7 +478,8 @@ public final class PXPanelEntry: NSObject {
             let translation = gesture.translation(in: handleWindow)
             let horizontal = (gesture.view?.tag == -1 ? -translation.x : translation.x) / start.width
             let vertical = translation.y / start.height
-            let change = abs(horizontal) > abs(vertical) ? horizontal : vertical
+            // Project both axes continuously; switching the dominant axis snaps the size.
+            let change = (horizontal + vertical) / 2
             let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
             let horizontalRoom = gesture.view?.tag == -1 ?
                 start.maxX - screen.minX - 12 : screen.maxX - start.minX - 12

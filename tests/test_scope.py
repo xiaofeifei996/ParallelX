@@ -24,6 +24,8 @@ assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
 assert 'card.layer.cornerRadius = resizeStartRadius / preview.scale' in panel
+assert 'let change = (horizontal + vertical) / 2' in panel
+assert 'abs(horizontal) > abs(vertical)' not in panel
 assert 'PXCornerGrip' not in panel and 'path.addQuadCurve' not in panel
 assert 'corner.isOpaque = false' in panel
 assert 'corner.backgroundColor = debug ?' in panel
