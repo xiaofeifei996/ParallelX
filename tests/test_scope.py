@@ -15,7 +15,7 @@ assert "PXSceneBridge.shared().close()" in panel
 assert "let width = screen.width * 0.78" in panel
 assert "let height = 44 + width * screen.height / screen.width" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
-assert panel.index("card.frame = window.bounds") < panel.index("let clip = UIView(frame:")
+assert panel.index("root.view.addSubview(card)") < panel.index("let clip = UIView(frame:")
 assert "if success { self.matchHostAspect() }" in panel
 assert "height: 44 + (start.height - 44) * scale" in panel
 assert "#selector(resizeHost(_:))" in panel
@@ -23,8 +23,12 @@ assert "#selector(fullscreenTapped)" in panel
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'corner.addSubview(line)' in panel and 'for side in [-1, 1]' in panel
+assert 'root.view.addSubview(corner)' in panel
+assert 'root.view.addSubview(moveGrip)' in panel
+assert 'let window = PXHandleWindow(windowScene: scene)' in panel
+assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
 assert '"↙"' not in panel and '"↘"' not in panel
-assert 'prepareWindow(for: bundleID)' in panel
+assert 'prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
 assert 'screen.maxX' not in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
 assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
@@ -36,6 +40,9 @@ assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
 assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSettings:withTransitionContext:completion:', '')
+entry = (root / "Tweak.m").read_text(encoding="utf-8")
+assert 'MSHookMessageEx(scene, update' in entry
+assert 'protectedSettings:settings forScene:scene' in entry
 assert 'com.moxuan.parallelx.scene.log' not in bridge
 assert not list(root.rglob("*.dylib")), "The project must not carry Myrtle binaries"
 assert 'com.apple.springboard' in (root / "ParallelX.plist").read_text(encoding="utf-8")

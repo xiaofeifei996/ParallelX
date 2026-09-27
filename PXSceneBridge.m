@@ -72,6 +72,7 @@ static BOOL PXUpdateScene(id scene, id settings)
 
 @interface PXSceneBridge ()
 @property(nonatomic, strong) id scene;
+@property(nonatomic, copy) NSString *bundleID;
 @property(nonatomic, strong) UIView *hostView;
 @property(nonatomic, strong) id presentationContext;
 @property(nonatomic, weak) UIView *canvas;
@@ -132,7 +133,16 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
 }
 
+- (NSString *)frontmostBundleID
+{
+    id frontmost = PXCall(UIApplication.sharedApplication,
+                          @"_accessibilityFrontMostApplication");
+    id bundleID = PXCall(frontmost, @"bundleIdentifier");
+    return [bundleID isKindOfClass:NSString.class] ? bundleID : nil;
+}
+
 - (void)prepareWindowForBundleID:(NSString *)bundleID
+            wasFullscreen:(BOOL)wasFullscreen
                       completion:(dispatch_block_t)completion
 {
     if (!completion) return;
@@ -140,11 +150,7 @@ static BOOL PXUpdateScene(id scene, id settings)
         if (NSThread.isMainThread) completion();
         else dispatch_async(dispatch_get_main_queue(), completion);
     };
-    id frontmost = PXCall(UIApplication.sharedApplication,
-                          @"_accessibilityFrontMostApplication");
-    NSString *currentID = PXCall(frontmost, @"bundleIdentifier");
-    if (![currentID isKindOfClass:NSString.class] ||
-        ![currentID isEqualToString:bundleID]) {
+    if (!wasFullscreen || bundleID.length == 0) {
         finish();
         return;
     }
@@ -195,6 +201,21 @@ static BOOL PXUpdateScene(id scene, id settings)
     return YES;
 }
 
+- (id)protectedSettings:(id)settings forScene:(id)scene
+{
+    if (!scene || scene != self.scene || !self.canvas ||
+        ![settings respondsToSelector:@selector(mutableCopy)]) return nil;
+    id mutable = [settings mutableCopy];
+    if (!PXSetBool(mutable, @"setBackgrounded:", NO)) return nil;
+    PXSetBool(mutable, @"setForeground:", YES);
+    PXSetBool(mutable, @"setAllowsSelection:", YES);
+    SEL deactivation = NSSelectorFromString(@"setDeactivationReasons:");
+    NSMethodSignature *signature = [mutable methodSignatureForSelector:deactivation];
+    if (signature && signature.numberOfArguments == 3)
+        ((void (*)(id, SEL, NSUInteger))objc_msgSend)(mutable, deactivation, 0);
+    return mutable;
+}
+
 - (NSArray *)mainLayersForScene:(id)scene
 {
     id manager = PXCall(scene, @"layerManager");
@@ -220,11 +241,13 @@ static BOOL PXUpdateScene(id scene, id settings)
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     [self close];
     NSUInteger generation = self.generation;
-    if (bundleID.length == 0 || !canvas || ![self launchSuspended:bundleID]) {
+    if (bundleID.length == 0 || !canvas ||
+        (![self sceneForBundleID:bundleID] && ![self launchSuspended:bundleID])) {
         completion(NO);
         return;
     }
     self.canvas = canvas;
+    self.bundleID = bundleID;
     __weak typeof(self) weakSelf = self;
     __block NSUInteger attempts = 0;
     __block id preparedScene = nil;
@@ -294,7 +317,10 @@ static BOOL PXUpdateScene(id scene, id settings)
     self.generation += 1;
     UIView *host = self.hostView;
     self.hostView = nil;
+    id scene = self.scene;
+    NSString *bundleID = self.bundleID;
     self.scene = nil;
+    self.bundleID = nil;
     self.canvas = nil;
     self.sourceSize = CGSizeZero;
     SEL invalidate = NSSelectorFromString(@"invalidate");
@@ -306,6 +332,14 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
     [host removeFromSuperview];
     self.presentationContext = nil;
+    if (scene && ![[self frontmostBundleID] isEqualToString:bundleID]) {
+        id settings = PXCall(scene, @"settings");
+        id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+        if (mutable && PXSetBool(mutable, @"setBackgrounded:", YES)) {
+            PXSetBool(mutable, @"setForeground:", NO);
+            PXUpdateScene(scene, mutable);
+        }
+    }
 }
 
 @end

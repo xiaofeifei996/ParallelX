@@ -1,6 +1,8 @@
 import UIKit
 
 private let preferenceDomain = "com.moxuan.parallelx"
+private let gripMargin: CGFloat = 28
+private let gripBottom: CGFloat = 40
 
 private final class PXHandleWindow: UIWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -97,10 +99,12 @@ public final class PXPanelEntry: NSObject {
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
     private var hostWindow: UIWindow?
+    private var hostCard: UIView?
     private weak var previousKeyWindow: UIWindow?
     private var panel: PXPanelViewController?
     private var handle: UIView?
     private var hostedBundleID: String?
+    private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
     private var moveStartFrame: CGRect?
 
@@ -154,6 +158,7 @@ public final class PXPanelEntry: NSObject {
 
     private func beginPanel() {
         guard panelWindow == nil, let scene = handleWindow?.windowScene else { return }
+        panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .alert + 2
@@ -228,7 +233,9 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func openHost(_ bundleID: String) {
-        PXSceneBridge.shared().prepareWindow(for: bundleID) { [weak self] in
+        let wasFullscreen = panelFrontmostBundleID == bundleID
+        panelFrontmostBundleID = nil
+        PXSceneBridge.shared().prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self] in
             self?.presentHost(bundleID)
         }
     }
@@ -240,22 +247,24 @@ public final class PXPanelEntry: NSObject {
         let screen = scene.coordinateSpace.bounds
         let width = screen.width * 0.78
         let height = 44 + width * screen.height / screen.width
-        let frame = CGRect(x: (screen.width - width) / 2,
+        let cardFrame = CGRect(x: (screen.width - width) / 2,
                            y: (screen.height - height) / 2,
                            width: width, height: height)
-        let window = UIWindow(windowScene: scene)
-        window.frame = frame
+        let window = PXHandleWindow(windowScene: scene)
+        window.frame = CGRect(x: cardFrame.minX - gripMargin, y: cardFrame.minY,
+                              width: width + 2 * gripMargin, height: height + gripBottom)
         window.windowLevel = .alert + 1
         window.backgroundColor = .clear
         let root = UIViewController()
-        let card = root.view!
+        root.view.backgroundColor = .clear
+        window.rootViewController = root
+        let card = UIView(frame: CGRect(x: gripMargin, y: 0, width: width, height: height))
         card.backgroundColor = .secondarySystemBackground
         let savedRadius = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "cornerRadius") as? NSNumber
         card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
         card.layer.cornerCurve = .continuous
         card.clipsToBounds = true
-        window.rootViewController = root
-        card.frame = window.bounds
+        root.view.addSubview(card)
         let toolbarWidth = width * 0.78
         let bar = UIView(frame: CGRect(x: (width - toolbarWidth) / 2, y: 4,
                                        width: toolbarWidth, height: 36))
@@ -295,12 +304,12 @@ public final class PXPanelEntry: NSObject {
         spinner.startAnimating()
         card.addSubview(spinner)
         for side in [-1, 1] {
-            let corner = UIView(frame: CGRect(x: side < 0 ? 0 : width - 36,
-                                              y: height - 36, width: 36, height: 36))
+            let corner = UIView(frame: CGRect(x: side < 0 ? 0 : window.bounds.width - 44,
+                                              y: height - 20, width: 44, height: 44))
             corner.tag = side
             corner.autoresizingMask = side < 0 ? [.flexibleTopMargin] :
                                               [.flexibleLeftMargin, .flexibleTopMargin]
-            let line = UIView(frame: CGRect(x: 7, y: 16, width: 23, height: 5))
+            let line = UIView(frame: CGRect(x: 10, y: 19, width: 24, height: 5))
             line.backgroundColor = .secondaryLabel
             line.layer.cornerRadius = 2.5
             line.transform = CGAffineTransform(rotationAngle: side < 0 ?
@@ -311,13 +320,13 @@ public final class PXPanelEntry: NSObject {
             corner.accessibilityLabel = "拖动调整窗口大小"
             corner.addGestureRecognizer(UIPanGestureRecognizer(target: self,
                                                                action: #selector(resizeHost(_:))))
-            card.addSubview(corner)
+            root.view.addSubview(corner)
         }
-        let moveGrip = UIView(frame: CGRect(x: (width - 90) / 2, y: height - 28,
-                                            width: 90, height: 28))
+        let moveGrip = UIView(frame: CGRect(x: (window.bounds.width - 160) / 2, y: height,
+                                            width: 160, height: gripBottom))
         moveGrip.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin,
                                      .flexibleTopMargin]
-        let moveLine = UIView(frame: CGRect(x: 15, y: 17, width: 60, height: 5))
+        let moveLine = UIView(frame: CGRect(x: 45, y: 10, width: 70, height: 5))
         moveLine.backgroundColor = .secondaryLabel
         moveLine.layer.cornerRadius = 2.5
         moveGrip.addSubview(moveLine)
@@ -325,11 +334,12 @@ public final class PXPanelEntry: NSObject {
         moveGrip.accessibilityLabel = "拖动分屏窗口"
         moveGrip.addGestureRecognizer(UIPanGestureRecognizer(target: self,
                                                               action: #selector(moveHost(_:))))
-        card.addSubview(moveGrip)
+        root.view.addSubview(moveGrip)
         window.isHidden = false
         card.alpha = 0
         card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
         hostWindow = window
+        hostCard = card
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3,
                        delay: 0, usingSpringWithDamping: 0.88,
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
@@ -345,16 +355,17 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func matchHostAspect() {
-        guard let window = hostWindow, let card = window.rootViewController?.view else { return }
+        guard let window = hostWindow, let card = hostCard else { return }
         let source = PXSceneBridge.shared().hostedSourceSize()
         guard source.width > 0, source.height > 0 else { return }
         let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let width = min(screen.width * 0.78,
                         (screen.height - 80 - 44) * source.width / source.height)
         let height = 44 + width * source.height / source.width
-        window.frame = CGRect(x: screen.midX - width / 2, y: screen.midY - height / 2,
-                              width: width, height: height)
-        card.frame = window.bounds
+        window.frame = CGRect(x: screen.midX - width / 2 - gripMargin,
+                              y: screen.midY - height / 2,
+                              width: width + 2 * gripMargin, height: height + gripBottom)
+        card.frame = CGRect(x: gripMargin, y: 0, width: width, height: height)
         card.layoutIfNeeded()
         PXSceneBridge.shared().layoutHost()
     }
@@ -368,8 +379,12 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func resizeHost(_ gesture: UIPanGestureRecognizer) {
-        guard let window = hostWindow, let card = window.rootViewController?.view else { return }
-        if gesture.state == .began { resizeStartFrame = window.frame }
+        guard let window = hostWindow, let card = hostCard else { return }
+        if gesture.state == .began {
+            resizeStartFrame = CGRect(x: window.frame.minX + gripMargin,
+                                      y: window.frame.minY, width: card.bounds.width,
+                                      height: card.bounds.height)
+        }
         guard let start = resizeStartFrame else { return }
         if gesture.state == .changed || gesture.state == .ended {
             let translation = gesture.translation(in: handleWindow)
@@ -385,8 +400,10 @@ public final class PXPanelEntry: NSObject {
             let size = CGSize(width: start.width * scale,
                               height: 44 + (start.height - 44) * scale)
             let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
-            window.frame = CGRect(x: x, y: start.minY, width: size.width, height: size.height)
-            card.frame = window.bounds
+            window.frame = CGRect(x: x - gripMargin, y: start.minY,
+                                  width: size.width + 2 * gripMargin,
+                                  height: size.height + gripBottom)
+            card.frame = CGRect(x: gripMargin, y: 0, width: size.width, height: size.height)
             card.layoutIfNeeded()
             PXSceneBridge.shared().layoutHost()
         }
@@ -411,6 +428,7 @@ public final class PXPanelEntry: NSObject {
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
         hostWindow = nil
+        hostCard = nil
         hostedBundleID = nil
         resizeStartFrame = nil
         moveStartFrame = nil
