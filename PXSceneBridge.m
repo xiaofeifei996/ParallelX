@@ -70,11 +70,36 @@ static BOOL PXUpdateScene(id scene, id settings)
     return YES;
 }
 
+static int PXApplicationPID(NSString *bundleID)
+{
+    id controller = PXCall(NSClassFromString(@"SBApplicationController"), @"sharedInstance");
+    id app = nil;
+    for (NSString *name in @[@"applicationWithBundleIdentifier:",
+                              @"applicationWithDisplayIdentifier:"]) {
+        SEL selector = NSSelectorFromString(name);
+        if ([controller respondsToSelector:selector]) {
+            app = ((id (*)(id, SEL, id))objc_msgSend)(controller, selector, bundleID);
+            if (app) break;
+        }
+    }
+    id state = app;
+    for (NSUInteger attempt = 0; attempt < 2 && state; attempt++) {
+        SEL pidSelector = NSSelectorFromString(@"pid");
+        if ([state respondsToSelector:pidSelector]) {
+            int pid = ((int (*)(id, SEL))objc_msgSend)(state, pidSelector);
+            if (pid > 0) return pid;
+        }
+        state = PXCall(state, @"processState");
+    }
+    return 0;
+}
+
 @interface PXSceneBridge ()
 @property(nonatomic, strong) id scene;
 @property(nonatomic, copy) NSString *bundleID;
 @property(nonatomic, strong) UIView *hostView;
 @property(nonatomic, strong) id presentationContext;
+@property(nonatomic, strong) id processAssertion;
 @property(nonatomic, weak) UIView *canvas;
 @property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) NSUInteger generation;
@@ -201,6 +226,37 @@ static BOOL PXUpdateScene(id scene, id settings)
     return YES;
 }
 
+- (void)keepHostedProcessAlive
+{
+    if (self.processAssertion || self.bundleID.length == 0) return;
+    int pid = PXApplicationPID(self.bundleID);
+    Class targetClass = NSClassFromString(@"RBSTarget");
+    Class attributeClass = NSClassFromString(@"RBSLegacyAttribute");
+    Class assertionClass = NSClassFromString(@"RBSAssertion");
+    SEL targetSelector = NSSelectorFromString(@"targetWithPid:");
+    SEL attributeSelector = NSSelectorFromString(@"attributeWithReason:flags:");
+    SEL initSelector = NSSelectorFromString(@"initWithExplanation:target:attributes:");
+    if (pid <= 0 || ![targetClass respondsToSelector:targetSelector] ||
+        ![attributeClass respondsToSelector:attributeSelector] ||
+        ![assertionClass instancesRespondToSelector:initSelector]) return;
+    @try {
+        id target = ((id (*)(id, SEL, int))objc_msgSend)(targetClass,
+            targetSelector, pid);
+        // Background UI must stay renderable while another app is full screen.
+        NSUInteger flags = 1 | 2 | 8 | 32;
+        id attribute = ((id (*)(id, SEL, NSUInteger, NSUInteger))objc_msgSend)(
+            attributeClass, attributeSelector, 7, flags);
+        if (!target || !attribute) return;
+        id assertion = ((id (*)(id, SEL, id, id, id))objc_msgSend)([assertionClass alloc],
+            initSelector,
+            @"ParallelX visible window", target, @[attribute]);
+        if (![assertion respondsToSelector:NSSelectorFromString(@"acquireWithError:")]) return;
+        NSError *error = nil;
+        if (((BOOL (*)(id, SEL, NSError **))objc_msgSend)(assertion,
+            NSSelectorFromString(@"acquireWithError:"), &error)) self.processAssertion = assertion;
+    } @catch (__unused NSException *exception) { }
+}
+
 - (id)protectedSettings:(id)settings forScene:(id)scene
 {
     if (!scene || scene != self.scene || !self.canvas ||
@@ -263,6 +319,7 @@ static BOOL PXUpdateScene(id scene, id settings)
             if (scene && scene != preparedScene &&
                 [strongSelf foregroundScene:scene])
                 preparedScene = scene;
+            if (scene == preparedScene) [strongSelf keepHostedProcessAlive];
             if (scene && scene == preparedScene) {
                 NSArray *layers = [strongSelf mainLayersForScene:scene];
                 Class hostClass = NSClassFromString(@"_UISceneLayerHostContainerView");
@@ -332,6 +389,12 @@ static BOOL PXUpdateScene(id scene, id settings)
         ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
     [host removeFromSuperview];
     self.presentationContext = nil;
+    id assertion = self.processAssertion;
+    self.processAssertion = nil;
+    @try {
+        if ([assertion respondsToSelector:NSSelectorFromString(@"invalidate")])
+            ((void (*)(id, SEL))objc_msgSend)(assertion, NSSelectorFromString(@"invalidate"));
+    } @catch (__unused NSException *exception) { }
     if (scene && ![[self frontmostBundleID] isEqualToString:bundleID]) {
         id settings = PXCall(scene, @"settings");
         id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;

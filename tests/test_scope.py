@@ -43,6 +43,8 @@ assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSett
 entry = (root / "Tweak.m").read_text(encoding="utf-8")
 assert 'MSHookMessageEx(scene, update' in entry
 assert 'protectedSettings:settings forScene:scene' in entry
+assert 'keepHostedProcessAlive' in bridge
+assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge
 assert not list(root.rglob("*.dylib")), "The project must not carry Myrtle binaries"
 assert 'com.apple.springboard' in (root / "ParallelX.plist").read_text(encoding="utf-8")
