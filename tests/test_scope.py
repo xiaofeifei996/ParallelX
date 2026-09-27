@@ -64,6 +64,10 @@ assert "private func refreshHost()" in panel
 assert "height: start.height * scale" in panel
 assert "#selector(resizeHost(_:))" in panel
 assert "if gesture.state == .began { fullscreenTapped() }" in panel
+fullscreen = panel.split('@objc private func fullscreenTapped()', 1)[1].split('@objc private func moveGripHeld', 1)[0]
+assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApplication(bundleID)')
+assert 'window.windowLevel = .alert + 1' in fullscreen
+assert 'card.frame = cardFrame' in fullscreen
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel

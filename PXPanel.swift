@@ -769,12 +769,15 @@ public final class PXPanelEntry: NSObject {
     @objc private func fullscreenTapped() {
         guard let bundleID = hostedBundleID, let window = hostWindow,
               let card = hostCard, let scene = window.windowScene else { return }
+        let windowFrame = window.frame
+        let cardFrame = card.frame
+        let cornerRadius = card.layer.cornerRadius
+        let shadowOpacity = card.layer.shadowOpacity
         let oldFrame = CGRect(x: window.frame.minX + card.frame.minX,
                               y: window.frame.minY + card.frame.minY,
                               width: card.bounds.width, height: card.bounds.height)
-        guard PXSceneBridge.shared().openFullscreenApplication(bundleID) else { return }
-        hostCorners.forEach { $0.removeFromSuperview() }
-        hostMoveGrip?.removeFromSuperview()
+        hostCorners.forEach { $0.isHidden = true }
+        hostMoveGrip?.isHidden = true
         window.isUserInteractionEnabled = false
         window.frame = scene.coordinateSpace.bounds
         card.frame = oldFrame
@@ -789,7 +792,25 @@ public final class PXPanelEntry: NSObject {
             card.subviews.first?.layer.cornerRadius = 0
             card.layer.shadowOpacity = 0
         } completion: { [weak self, weak window] _ in
-            if self?.hostWindow === window { self?.closeHost(animated: false) }
+            guard let self = self, let window = window, self.hostWindow === window else { return }
+            window.windowLevel = .alert + 1
+            guard PXSceneBridge.shared().openFullscreenApplication(bundleID) else {
+                window.windowLevel = .statusBar - 2
+                card.transform = .identity
+                card.frame = cardFrame
+                card.layer.cornerRadius = cornerRadius
+                card.subviews.first?.layer.cornerRadius = cornerRadius
+                card.layer.shadowOpacity = shadowOpacity
+                window.frame = windowFrame
+                window.isUserInteractionEnabled = true
+                self.hostCorners.forEach { $0.isHidden = false }
+                self.hostMoveGrip?.isHidden = false
+                self.layoutHostControls()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak window] in
+                if self?.hostWindow === window { self?.closeHost(animated: false) }
+            }
         }
     }
 
