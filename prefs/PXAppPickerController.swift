@@ -19,7 +19,9 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         ("px.action.screenshot", "截屏", "camera.viewfinder"),
         ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
         ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
-        ("px.action.brightness", "调节亮度 · 选中后长按并上下拖动", "sun.max.fill")
+        ("px.action.brightness", "调节亮度 · 选中后长按并上下拖动", "sun.max.fill"),
+        ("px.action.restart", "重新打开应用", "arrow.clockwise"),
+        ("px.action.search", "搜索", "magnifyingglass")
     ]
 
     public override func viewDidLoad() {

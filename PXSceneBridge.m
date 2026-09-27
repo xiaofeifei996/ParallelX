@@ -4,6 +4,8 @@
 #import <string.h>
 #import <dlfcn.h>
 #import <math.h>
+#import <signal.h>
+#import <unistd.h>
 
 @interface PXKeyboardSlot : UIView
 @end
@@ -265,6 +267,38 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
     if (opened) self.fullscreenHandoff = YES;
     return opened;
+}
+
+- (BOOL)restartApplication:(NSString *)bundleID
+                 suspended:(BOOL)suspended
+                completion:(void (^)(BOOL success))completion
+{
+    if (bundleID.length == 0 || [bundleID isEqualToString:@"com.apple.springboard"] ||
+        !completion) return NO;
+    int pid = PXApplicationPID(bundleID);
+    if (pid <= 1 || pid == getpid() || kill(pid, SIGKILL) != 0) return NO;
+    __block NSUInteger attempts = 0;
+    __weak typeof(self) weakSelf = self;
+    __block void (^retry)(void) = nil;
+    retry = ^{
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) { retry = nil; return; }
+        if (PXApplicationPID(bundleID) != pid) {
+            BOOL launched = suspended ? [strongSelf launchSuspended:bundleID] :
+                                         [strongSelf openFullscreenApplication:bundleID];
+            completion(launched);
+            retry = nil;
+        } else if (++attempts >= 20) {
+            completion(NO);
+            retry = nil;
+        } else {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+                           dispatch_get_main_queue(), retry);
+        }
+    };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+                   dispatch_get_main_queue(), retry);
+    return YES;
 }
 
 - (BOOL)performShortcut:(NSString *)identifier

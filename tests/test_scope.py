@@ -75,7 +75,8 @@ close_host = panel.split('private func closeHost(animated: Bool)', 1)[1]
 assert close_host.index('window.isHidden = true\n            if self?.hostWindow == nil') < close_host.index('window.rootViewController = nil\n        }')
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
-assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
+assert 'resizePreview = (scale, x, start.minY)\n                applyResizePreview()' in panel
+assert 'card.layer.shadowOpacity = 0' in panel.split('private func resizeHost', 1)[1]
 assert 'card.layer.cornerRadius = resizeStartRadius / preview.scale' in panel
 assert 'let change = (horizontal + vertical) / 2' in panel
 assert 'abs(horizontal) > abs(vertical)' not in panel
@@ -181,6 +182,13 @@ assert 'onBrightnessHold' in panel and 'start.value + (start.y - y)' in panel
 assert 'setBrightnessLevel:(float)level' in bridge
 picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
 assert 'px.action.brightness' in panel and 'px.action.brightness' in picker
+assert all(action in panel and action in picker for action in ('px.action.restart', 'px.action.search'))
+assert 'kill(pid, SIGKILL)' in bridge and 'pid == getpid()' in bridge
+assert 'private func showSearch()' in panel and 'private func hideSearch()' in panel
+assert 'root.view.addSubview(top)' in panel and 'top.addSubview(mark)' not in panel
+assert 'screen.midX - width / 2 - gripMargin' in panel.split('private func restoreDock', 1)[1]
+assert 'root.bounds.height * 0.405' in panel
+assert 'PXApplicationIconLarge(id)' in panel
 assert 'navigationItem.searchController = search' in picker
 assert 'localizedCaseInsensitiveContains(query)' in picker
 assert 'CGSize(width: 32, height: 32)' in picker

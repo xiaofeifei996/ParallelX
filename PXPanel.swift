@@ -12,7 +12,9 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.screenshot", "截屏", "camera.viewfinder"),
     ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
     ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
-    ("px.action.brightness", "调节亮度", "sun.max.fill")
+    ("px.action.brightness", "调节亮度", "sun.max.fill"),
+    ("px.action.restart", "重新打开应用", "arrow.clockwise"),
+    ("px.action.search", "搜索", "magnifyingglass")
 ]
 
 private func isShortcut(_ id: String) -> Bool {
@@ -32,6 +34,14 @@ private func panelIcon(_ id: String) -> UIImage? {
         return UIImage(systemName: custom ?? fallback) ?? UIImage(systemName: fallback)
     }
     return PXApplicationIcon(id)
+}
+
+private func panelPreviewIcon(_ id: String) -> UIImage? {
+    if id.hasPrefix("px.recent.") {
+        let parts = id.split(separator: ".", maxSplits: 3)
+        if parts.count == 4 { return PXApplicationIconLarge(String(parts[3])) }
+    }
+    return isShortcut(id) ? panelIcon(id) : PXApplicationIconLarge(id)
 }
 
 private final class PXHandleWindow: UIWindow {
@@ -305,7 +315,7 @@ private final class PXPanelViewController: UIViewController {
             holdFeedbackTask?.cancel()
             if let selectedIndex = selectedIndex,
                let old = buttons.first(where: { $0.tag == selectedIndex }) {
-                UIView.animate(withDuration: 0.16) { old.subviews.first?.transform = .identity }
+                UIView.animate(withDuration: 0.13) { old.subviews.first?.transform = .identity }
             }
             selectedIndex = next
             selectedSince = (next.map { isShortcut(apps[$0].id) } ?? true) ? nil : CACurrentMediaTime()
@@ -324,15 +334,18 @@ private final class PXPanelViewController: UIViewController {
                     holdFeedbackTask = task
                     DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
                 }
-                selectionPreview.image = panelIcon(id)?.withConfiguration(
-                    UIImage.SymbolConfiguration(pointSize: 52, weight: .medium)) ?? UIImage(systemName: "app")
-                let symbol = !id.hasPrefix("px.recent.") || id.split(separator: ".", maxSplits: 3).count < 4
-                selectionPreview.contentMode = isShortcut(id) && symbol ? .center : .scaleAspectFill
+                let symbol = isShortcut(id) && (!id.hasPrefix("px.recent.") ||
+                    id.split(separator: ".", maxSplits: 3).count < 4)
+                let preview = panelPreviewIcon(id)
+                selectionPreview.image = (symbol ? preview?.withConfiguration(
+                    UIImage.SymbolConfiguration(pointSize: 52, weight: .medium)) : preview) ??
+                    UIImage(systemName: "app")
+                selectionPreview.contentMode = symbol ? .center : .scaleAspectFill
                 selectionPreview.tintColor = PXSceneBridge.shared().shortcutIsActive(id) ? .white : .label
                 selectionPreview.backgroundColor = PXSceneBridge.shared().shortcutIsActive(id) ?
                     UIColor(white: 0.42, alpha: 1) : .systemGray5
                 selectionPreview.transform = CGAffineTransform(scaleX: 0.76, y: 0.76)
-                UIView.animate(withDuration: 0.28, delay: 0,
+                UIView.animate(withDuration: 0.23, delay: 0,
                                usingSpringWithDamping: 0.72, initialSpringVelocity: 0,
                                options: .beginFromCurrentState) {
                     hit.subviews.first?.transform = CGAffineTransform(scaleX: 1.12, y: 1.12)
@@ -340,7 +353,7 @@ private final class PXPanelViewController: UIViewController {
                     self.selectionPreview.alpha = self.progress
                 }
             } else {
-                UIView.animate(withDuration: 0.12) { self.selectionPreview.alpha = 0 }
+                UIView.animate(withDuration: 0.10) { self.selectionPreview.alpha = 0 }
             }
         }
         return next.map { apps[$0].id }
@@ -372,10 +385,10 @@ private final class PXPanelViewController: UIViewController {
 
     func animateClosed(completion: @escaping () -> Void) {
         cancelSelectionFeedback()
-        let duration = UIAccessibility.isReduceMotionEnabled ? 0 : 0.25
+        let duration = UIAccessibility.isReduceMotionEnabled ? 0 : 0.20
         let outer = buttonRings.max() ?? 0
         for (index, button) in buttons.enumerated() {
-            UIView.animate(withDuration: duration, delay: Double(outer - buttonRings[index]) * 0.035,
+            UIView.animate(withDuration: duration, delay: Double(outer - buttonRings[index]) * 0.028,
                            options: [.curveEaseIn, .beginFromCurrentState]) {
                 button.alpha = 0
                 button.transform = CGAffineTransform(translationX: self.handleCenterX - button.center.x,
@@ -383,7 +396,7 @@ private final class PXPanelViewController: UIViewController {
                     .scaledBy(x: 0.72, y: 0.72)
             }
         }
-        UIView.animate(withDuration: duration + Double(outer) * 0.035) {
+        UIView.animate(withDuration: duration + Double(outer) * 0.028) {
             self.shade.alpha = 0
             self.pageControl.alpha = 0
             self.selectionPreview.alpha = 0
@@ -392,11 +405,130 @@ private final class PXPanelViewController: UIViewController {
     }
 }
 
+private final class PXSearchViewController: UIViewController, UITableViewDataSource, UITextFieldDelegate {
+    var onSelect: ((String) -> Void)?
+    var onDismiss: (() -> Void)?
+    private let backdrop = UIView()
+    private let card = UIView()
+    private let field = UISearchTextField()
+    private let table = UITableView()
+    private let apps = PXInstalledApplications().compactMap { item -> (id: String, name: String)? in
+        guard let id = item["id"], let name = item["name"] else { return nil }
+        return (id, name)
+    }
+    private var matches: [(id: String, name: String)] = []
+    private var keyboardTop: CGFloat?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.08)
+        backdrop.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(dismissSearch)))
+        view.addSubview(backdrop)
+        card.backgroundColor = .secondarySystemBackground
+        card.layer.cornerRadius = 22
+        card.layer.cornerCurve = .continuous
+        card.clipsToBounds = true
+        view.addSubview(card)
+        field.placeholder = "搜索应用"
+        field.returnKeyType = .search
+        field.delegate = self
+        field.addTarget(self, action: #selector(filterApps), for: .editingChanged)
+        card.addSubview(field)
+        table.backgroundColor = .clear
+        table.separatorStyle = .none
+        table.dataSource = self
+        table.rowHeight = 60
+        table.keyboardDismissMode = .none
+        card.addSubview(table)
+        matches = apps
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        backdrop.frame = view.bounds
+        let bottom = keyboardTop ?? view.bounds.height - view.safeAreaInsets.bottom
+        let height = min(330, max(190, bottom * 0.45))
+        card.frame = CGRect(x: 12, y: bottom - height - 8,
+                            width: view.bounds.width - 24, height: height)
+        field.frame = CGRect(x: 16, y: 12, width: card.bounds.width - 32, height: 40)
+        table.frame = CGRect(x: 12, y: 60, width: card.bounds.width - 24,
+                             height: card.bounds.height - 68)
+    }
+
+    func focus() { field.becomeFirstResponder() }
+
+    @objc private func keyboardChanged(_ note: Notification) {
+        guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        keyboardTop = max(0, view.convert(rect, from: nil).minY)
+        UIView.animate(withDuration: 0.22) { self.view.setNeedsLayout(); self.view.layoutIfNeeded() }
+    }
+
+    @objc private func filterApps() {
+        let query = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        matches = query.isEmpty ? apps : apps.filter {
+            $0.name.localizedCaseInsensitiveContains(query) || $0.id.localizedCaseInsensitiveContains(query)
+        }
+        table.reloadData()
+    }
+
+    @objc private func dismissSearch() { onDismiss?() }
+
+    @objc private func openResult(_ sender: UIButton) {
+        guard matches.indices.contains(sender.tag) else { return }
+        onSelect?(matches[sender.tag].id)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        if let first = matches.first { onSelect?(first.id) }
+        return true
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        (matches.count + 1) / 2
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "results") ??
+            UITableViewCell(style: .default, reuseIdentifier: "results")
+        cell.selectionStyle = .none
+        cell.backgroundColor = .clear
+        cell.contentView.subviews.forEach { $0.removeFromSuperview() }
+        let row = UIStackView(frame: CGRect(x: 0, y: 3, width: tableView.bounds.width, height: 54))
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
+        for index in (indexPath.row * 2)..<min(matches.count, indexPath.row * 2 + 2) {
+            let app = matches[index]
+            let button = UIButton(type: .system)
+            button.tag = index
+            button.setTitle(app.name, for: .normal)
+            button.setImage(PXApplicationIcon(app.id), for: .normal)
+            button.imageView?.contentMode = .scaleAspectFit
+            button.titleLabel?.font = .systemFont(ofSize: 14)
+            button.contentHorizontalAlignment = .left
+            button.backgroundColor = .tertiarySystemBackground
+            button.layer.cornerRadius = 12
+            button.addTarget(self, action: #selector(openResult(_:)), for: .touchUpInside)
+            row.addArrangedSubview(button)
+        }
+        if matches.count == indexPath.row * 2 + 1 { row.addArrangedSubview(UIView()) }
+        cell.contentView.addSubview(row)
+        return cell
+    }
+}
+
 @objc(PXPanelEntry)
 public final class PXPanelEntry: NSObject {
     private static let shared = PXPanelEntry()
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
+    private var searchWindow: UIWindow?
+    private weak var searchPreviousKeyWindow: UIWindow?
     private var hostWindow: UIWindow?
     private var hostCard: UIView?
     private var hostCorners: [UIView] = []
@@ -411,7 +543,6 @@ public final class PXPanelEntry: NSObject {
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
     private var resizeStartRadius: CGFloat = 0
-    private var resizeLink: CADisplayLink?
     private var resizePreview: (scale: CGFloat, x: CGFloat, y: CGFloat)?
     private var moveStartFrame: CGRect?
     private var needsHostRefresh = false
@@ -637,7 +768,7 @@ public final class PXPanelEntry: NSObject {
             guard handleDragMode == 1 else { return }
             if let start = brightnessStart, let controller = panel {
                 let y = gesture.location(in: controller.view).y
-                let value = min(1, max(0, start.value + (start.y - y) / (root.bounds.height * 0.45)))
+                let value = min(1, max(0, start.value + (start.y - y) / (root.bounds.height * 0.405)))
                 controller.updateBrightness(value)
                 _ = PXSceneBridge.shared().setBrightnessLevel(Float(value))
                 return
@@ -717,7 +848,11 @@ public final class PXPanelEntry: NSObject {
 
     private func performShortcut(_ id: String) {
         if id == "px.action.brightness" { return }
-        if id.hasPrefix("px.recent.") {
+        if id == "px.action.restart" {
+            restartCurrentApplication()
+        } else if id == "px.action.search" {
+            showSearch()
+        } else if id.hasPrefix("px.recent.") {
             let parts = id.split(separator: ".", maxSplits: 3)
             if parts.count == 4 { openHost(String(parts[3])) }
         } else if id == "px.action.screenshot" &&
@@ -740,6 +875,46 @@ public final class PXPanelEntry: NSObject {
         } else {
             _ = PXSceneBridge.shared().performShortcut(id)
         }
+    }
+
+    private func restartCurrentApplication() {
+        let splitID = hostedBundleID
+        guard let bundleID = splitID ?? PXSceneBridge.shared().frontmostBundleID(),
+              bundleID != "com.apple.springboard", !bundleID.isEmpty else { return }
+        let bridge = PXSceneBridge.shared()
+        guard bridge.restartApplication(bundleID, suspended: splitID != nil,
+            completion: { [weak self] success in
+                guard success, splitID != nil else { return }
+                self?.presentHost(bundleID, wasFullscreen: false)
+            }) else { return }
+        if splitID != nil { closeHost(animated: false) }
+    }
+
+    private func showSearch() {
+        guard searchWindow == nil, let scene = activeScene() else { return }
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        window.windowLevel = .statusBar + 2
+        window.backgroundColor = .clear
+        let controller = PXSearchViewController()
+        controller.onSelect = { [weak self] bundleID in
+            self?.hideSearch()
+            self?.openHost(bundleID)
+        }
+        controller.onDismiss = { [weak self] in self?.hideSearch() }
+        window.rootViewController = controller
+        searchPreviousKeyWindow = scene.windows.first(where: { $0.isKeyWindow })
+        searchWindow = window
+        window.makeKeyAndVisible()
+        controller.focus()
+    }
+
+    private func hideSearch() {
+        searchWindow?.rootViewController?.view.endEditing(true)
+        searchWindow?.isHidden = true
+        searchWindow?.rootViewController = nil
+        searchWindow = nil
+        searchPreviousKeyWindow?.makeKey()
     }
 
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
@@ -811,10 +986,6 @@ public final class PXPanelEntry: NSObject {
                 UIColor(white: 1, alpha: 0.02)
             top.isAccessibilityElement = true
             top.accessibilityLabel = side < 0 ? "停靠到左上角" : "停靠到右上角"
-            let mark = UIImageView(image: UIImage(systemName: "arrow.down.right.and.arrow.up.left"))
-            mark.frame = CGRect(x: 12, y: 12, width: 20, height: 20)
-            mark.tintColor = .secondaryLabel
-            top.addSubview(mark)
             top.addTarget(self, action: #selector(dockTapped(_:)), for: .touchUpInside)
             root.view.addSubview(top)
             hostTopCorners.append(top)
@@ -845,7 +1016,7 @@ public final class PXPanelEntry: NSObject {
         window.isUserInteractionEnabled = false
         card.transform = CGAffineTransform(scaleX: wasFullscreen ? 1.1 : 0.84,
                                             y: wasFullscreen ? 1.1 : 0.84)
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.5,
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.4,
                        delay: 0, usingSpringWithDamping: 0.84,
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
             card.transform = .identity
@@ -856,7 +1027,7 @@ public final class PXPanelEntry: NSObject {
             spinner.stopAnimating()
             guard success else { self.closeHost(animated: false); return }
             if let preview = card.subviews.first(where: { $0.tag == 0x50584c }) {
-                UIView.animate(withDuration: 0.18, animations: { preview.alpha = 0 }) { _ in
+                UIView.animate(withDuration: 0.15, animations: { preview.alpha = 0 }) { _ in
                     preview.removeFromSuperview()
                 }
             }
@@ -993,7 +1164,7 @@ public final class PXPanelEntry: NSObject {
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
-            UIView.animate(withDuration: 0.38, delay: 0, usingSpringWithDamping: 0.86,
+            UIView.animate(withDuration: 0.30, delay: 0, usingSpringWithDamping: 0.86,
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 dock.window.frame = frame
                 dock.card.frame = CGRect(origin: .zero, size: frame.size)
@@ -1050,9 +1221,16 @@ public final class PXPanelEntry: NSObject {
         hostMoveGrip = dock.moveGrip
         hostedBundleID = dock.bundleID
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
-        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.86,
+        let screen = dock.window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        let width = dock.originalCardFrame.width
+        let height = dock.originalCardFrame.height
+        let targetWindow = CGRect(x: screen.midX - width / 2 - gripMargin,
+                                  y: screen.midY - height / 2 - gripTop,
+                                  width: width + 2 * gripMargin,
+                                  height: height + gripTop + gripBottom)
+        UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.86,
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
-            dock.window.frame = dock.originalFrame
+            dock.window.frame = targetWindow
             dock.card.frame = dock.originalCardFrame
             dock.card.layer.cornerRadius = dock.originalCornerRadius
             dock.card.subviews.first?.layer.cornerRadius = dock.originalCornerRadius
@@ -1086,7 +1264,7 @@ public final class PXPanelEntry: NSObject {
         window.isUserInteractionEnabled = false
         window.frame = scene.coordinateSpace.bounds
         card.frame = oldFrame
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.48,
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.40,
                        delay: 0, usingSpringWithDamping: 0.88,
                        initialSpringVelocity: 0, options: .beginFromCurrentState) {
             let screen = scene.coordinateSpace.bounds
@@ -1141,9 +1319,7 @@ public final class PXPanelEntry: NSObject {
                                       y: window.frame.minY + gripTop, width: card.bounds.width,
                                       height: card.bounds.height)
             resizeStartRadius = card.layer.cornerRadius
-            resizeLink?.invalidate()
-            resizeLink = CADisplayLink(target: self, selector: #selector(applyResizePreview))
-            resizeLink?.add(to: .main, forMode: .common)
+            card.layer.shadowOpacity = 0
         }
         guard let start = resizeStartFrame else { return }
         if gesture.state == .changed || gesture.state == .ended {
@@ -1162,9 +1338,8 @@ public final class PXPanelEntry: NSObject {
             let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
             if gesture.state == .changed {
                 resizePreview = (scale, x, start.minY)
+                applyResizePreview()
             } else {
-                resizeLink?.invalidate()
-                resizeLink = nil
                 resizePreview = nil
                 UIView.performWithoutAnimation {
                     CATransaction.begin()
@@ -1177,15 +1352,13 @@ public final class PXPanelEntry: NSObject {
                                         width: size.width, height: size.height)
                     card.layer.cornerRadius = resizeStartRadius
                     card.layoutIfNeeded()
-                    layoutHostControls()
                     activeBridge.layoutHost()
+                    layoutHostControls()
                     CATransaction.commit()
                 }
             }
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
-            resizeLink?.invalidate()
-            resizeLink = nil
             resizePreview = nil
             if gesture.state != .ended {
                 CATransaction.begin()
@@ -1198,6 +1371,7 @@ public final class PXPanelEntry: NSObject {
                 CATransaction.commit()
             }
             resizeStartFrame = nil
+            layoutHostControls()
         }
     }
 
@@ -1229,8 +1403,6 @@ public final class PXPanelEntry: NSObject {
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
         let closingCard = hostCard
-        resizeLink?.invalidate()
-        resizeLink = nil
         resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }
         hostTopCorners.forEach { $0.removeFromSuperview() }
@@ -1253,7 +1425,7 @@ public final class PXPanelEntry: NSObject {
             window.rootViewController = nil
         }
         if animated, let card = closingCard {
-            UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.34,
+            UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.28,
                            delay: 0, usingSpringWithDamping: 0.88,
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 card.alpha = 0

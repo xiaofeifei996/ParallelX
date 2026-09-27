@@ -53,3 +53,16 @@ UIImage *PXApplicationIcon(NSString *bundleID)
         return nil;
     }
 }
+
+UIImage *PXApplicationIconLarge(NSString *bundleID)
+{
+    if (bundleID.length == 0) return nil;
+    @try {
+        return [UIImage _applicationIconImageForBundleIdentifier:bundleID
+                                                         format:10
+                                                          scale:UIScreen.mainScreen.scale]
+            ?: PXApplicationIcon(bundleID);
+    } @catch (__unused NSException *exception) {
+        return PXApplicationIcon(bundleID);
+    }
+}
