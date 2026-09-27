@@ -127,6 +127,7 @@ private final class PXPanelViewController: UIViewController {
     private var selectedSince: CFTimeInterval?
     private var lastSelectionPoint = CGPoint.zero
     private var holdFeedbackTask: DispatchWorkItem?
+    private var fullscreenReadyView: UIView?
     private var page = 0
     private var pageCapacity = 1
     private var lastSize = CGSize.zero
@@ -236,7 +237,7 @@ private final class PXPanelViewController: UIViewController {
     }
 
     private func layoutPage() {
-        holdFeedbackTask?.cancel()
+        cancelSelectionFeedback()
         selectedIndex = nil
         selectedSince = nil
         selectionPreview.alpha = 0
@@ -327,6 +328,8 @@ private final class PXPanelViewController: UIViewController {
         let next = hit?.tag
         if next != selectedIndex {
             holdFeedbackTask?.cancel()
+            fullscreenReadyView?.removeFromSuperview()
+            fullscreenReadyView = nil
             if let selectedIndex = selectedIndex,
                let old = buttons.first(where: { $0.tag == selectedIndex }) {
                 UIView.animate(withDuration: 0.13) { old.subviews.first?.transform = .identity }
@@ -343,7 +346,10 @@ private final class PXPanelViewController: UIViewController {
                         guard let self = self, self.selectedIndex == next else { return }
                         if id == "px.action.brightness" {
                             self.onBrightnessHold?(self.lastSelectionPoint)
-                        } else { self.holdFeedback.impactOccurred() }
+                        } else {
+                            self.holdFeedback.impactOccurred()
+                            self.animateFullscreenReady()
+                        }
                     }
                     holdFeedbackTask = task
                     DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
@@ -377,7 +383,34 @@ private final class PXPanelViewController: UIViewController {
         selectedSince.map { CACurrentMediaTime() - $0 } ?? 0
     }
 
-    func cancelSelectionFeedback() { holdFeedbackTask?.cancel() }
+    private func animateFullscreenReady() {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        let trail = UIView(frame: view.bounds.insetBy(dx: 8, dy: 8))
+        trail.isUserInteractionEnabled = false
+        trail.backgroundColor = .clear
+        trail.layer.cornerRadius = 40
+        trail.layer.cornerCurve = .continuous
+        trail.layer.borderWidth = 3
+        trail.layer.borderColor = UIColor.label.withAlphaComponent(0.22).cgColor
+        trail.transform = CGAffineTransform(translationX: selectionPreview.center.x - view.bounds.midX,
+                                            y: selectionPreview.center.y - view.bounds.midY)
+            .scaledBy(x: 110 / trail.bounds.width, y: 110 / trail.bounds.height)
+        view.addSubview(trail)
+        fullscreenReadyView = trail
+        UIView.animate(withDuration: 0.32, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+            trail.transform = .identity
+            trail.alpha = 0
+        } completion: { [weak self, weak trail] _ in
+            trail?.removeFromSuperview()
+            if self?.fullscreenReadyView === trail { self?.fullscreenReadyView = nil }
+        }
+    }
+
+    func cancelSelectionFeedback() {
+        holdFeedbackTask?.cancel()
+        fullscreenReadyView?.removeFromSuperview()
+        fullscreenReadyView = nil
+    }
 
     func showBrightness(_ value: CGFloat) {
         cancelSelectionFeedback()
@@ -595,6 +628,12 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
             selector: #selector(lockStateChanged), name: Notification.Name("PXLockStateChanged"), object: nil)
     }
 
+    @objc public static func updateCaptureVisibility() {
+        let hide = UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "hideForScreenshot") == true
+        if let handle = shared.handle { PXSceneBridge.setCaptureHidden(hide, for: handle) }
+        if let view = shared.panel?.view { PXSceneBridge.setCaptureHidden(hide, for: view) }
+    }
+
     @objc public static func applicationActivated(_ bundleID: String) {
         DispatchQueue.main.async {
             for dock in shared.dockedHosts.filter({ $0.bundleID == bundleID }) {
@@ -710,6 +749,9 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         window.captureOutsideKeyboard = { [weak self, weak window] point in
             guard let self = self, let window = window, self.hostWindow != nil,
                   self.activeBridge.isKeyboardRelocated() else { return false }
+            let defaults = UserDefaults(suiteName: preferenceDomain)
+            guard defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
+                defaults?.bool(forKey: "closeOutsideWithKeyboard") == true else { return false }
             let screenPoint = window.convert(point, to: nil)
             return self.hostWindow?.frame.contains(screenPoint) == false &&
                 !self.activeBridge.relocatedKeyboardFrame().contains(point)
@@ -761,6 +803,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         pill.subviews.first?.frame = CGRect(x: (width - 4) / 2,
                                            y: (height - markHeight) / 2,
                                            width: 4, height: markHeight)
+        Self.updateCaptureVisibility()
     }
 
     private func selectedApps() -> [(id: String, name: String)] {
@@ -809,6 +852,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         window.isUserInteractionEnabled = false
         panel = controller
         panelWindow = window
+        Self.updateCaptureVisibility()
     }
 
     @objc private func dragHandle(_ gesture: UIPanGestureRecognizer) {
@@ -927,15 +971,6 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         } else if id.hasPrefix("px.recent.") {
             let parts = id.split(separator: ".", maxSplits: 3)
             if parts.count == 4 { openHost(String(parts[3])) }
-        } else if id == "px.action.screenshot" &&
-                    UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "hideForScreenshot") == true {
-            handleWindow?.isHidden = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                _ = PXSceneBridge.shared().performShortcut(id)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    if self?.deviceLocked == false { self?.handleWindow?.isHidden = false }
-                }
-            }
         } else if id.hasPrefix("px.url."),
                   let entries = UserDefaults(suiteName: preferenceDomain)?.array(forKey: "urlShortcuts") as? [[String: String]],
                   let text = entries.first(where: { $0["id"] == id })?["url"],
@@ -1000,9 +1035,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let screen = scene.coordinateSpace.bounds
         let width = screen.width * 0.78
         let height = width * screen.height / screen.width
-        let cardFrame = CGRect(x: (screen.width - width) / 2,
-                           y: (screen.height - height) / 2,
-                           width: width, height: height)
+        let cardFrame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
         let window = PXHandleWindow(windowScene: scene)
         window.frame = CGRect(x: cardFrame.minX - gripMargin, y: cardFrame.minY - gripTop,
                               width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
@@ -1145,13 +1178,21 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let width = min(screen.width * 0.78,
                         (screen.height - 80) * source.width / source.height)
         let height = width * source.height / source.width
-        window.frame = CGRect(x: screen.midX - width / 2 - gripMargin,
-                              y: screen.midY - height / 2 - gripTop,
+        let frame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
+        window.frame = CGRect(x: frame.minX - gripMargin,
+                              y: frame.minY - gripTop,
                               width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
         card.frame = CGRect(x: gripMargin, y: gripTop, width: width, height: height)
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
+    }
+
+    private func initialCardFrame(in screen: CGRect, size: CGSize) -> CGRect {
+        let saved = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "initialRightInset") as? NSNumber
+        let inset = min(max(0, screen.width - size.width), max(0, CGFloat(saved?.doubleValue ?? 12)))
+        return CGRect(x: screen.maxX - size.width - inset,
+                      y: screen.midY - size.height / 2, width: size.width, height: size.height)
     }
 
     private func layoutHostControls() {
@@ -1306,8 +1347,9 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let screen = dock.window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let width = dock.originalCardFrame.width
         let height = dock.originalCardFrame.height
-        let targetWindow = CGRect(x: screen.midX - width / 2 - gripMargin,
-                                  y: screen.midY - height / 2 - gripTop,
+        let frame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
+        let targetWindow = CGRect(x: frame.minX - gripMargin,
+                                  y: frame.minY - gripTop,
                                   width: width + 2 * gripMargin,
                                   height: height + gripTop + gripBottom)
         UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.86,

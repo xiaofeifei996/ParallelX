@@ -498,6 +498,20 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     return self.keyboardSlot.superview != nil && self.keyboardHostView.superview == self.keyboardSlot;
 }
 
++ (void)setCaptureHidden:(BOOL)hidden forView:(UIView *)view
+{
+    CALayer *layer = view.layer;
+    SEL getter = NSSelectorFromString(@"disableUpdateMask");
+    SEL setter = NSSelectorFromString(@"setDisableUpdateMask:");
+    if (![layer respondsToSelector:getter] || ![layer respondsToSelector:setter]) return;
+    @try {
+        unsigned int mask = [[layer valueForKey:@"disableUpdateMask"] unsignedIntValue];
+        // Exclude only these layers, never the relocated keyboard sharing their window.
+        mask = hidden ? mask | 0x12 : mask & ~0x12;
+        [layer setValue:@(mask) forKey:@"disableUpdateMask"];
+    } @catch (__unused NSException *exception) { }
+}
+
 - (CGRect)relocatedKeyboardFrame
 {
     return [self isKeyboardRelocated] ? self.keyboardSlot.frame : CGRectNull;

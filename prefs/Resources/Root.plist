@@ -5,18 +5,19 @@
         { cell = PSLinkCell; label = "应用、快捷操作与排序"; id = picker; },
         { cell = PSLinkCell; label = "面板与手柄"; id = launcher; },
         { cell = PSGroupCell; label = "窗口"; },
-        { cell = PSLinkCell; label = "圆角与阴影"; id = radius; },
+        { cell = PSLinkCell; label = "位置、圆角与阴影"; id = radius; },
         { cell = PSLinkCell; label = "角落小窗"; id = dock; },
         { cell = PSGroupCell; label = "交互"; },
         { cell = PSLinkCell; label = "底部手势区域"; id = gestures; },
+        { cell = PSSwitchCell; label = "有键盘时点击外部关闭分屏"; defaults = "com.moxuan.parallelx"; key = "closeOutsideWithKeyboard"; default = 1; },
         { cell = PSGroupCell; label = "外部打开"; footerText = "点击通知或其他应用中的链接时，将目标应用放入分屏；系统应用及不支持的启动请求仍按原方式打开。"; },
         { cell = PSSwitchCell; label = "通知跳转分屏"; defaults = "com.moxuan.parallelx"; key = "notificationSplitEnabled"; default = 1; },
         { cell = PSSwitchCell; label = "URL 跳转分屏"; defaults = "com.moxuan.parallelx"; key = "urlSplitEnabled"; default = 1; },
         { cell = PSLinkCell; label = "URL 分屏黑名单"; id = urlBlacklist; },
         { cell = PSGroupCell; label = "锁屏"; footerText = "开启后，锁屏时关闭主分屏和所有角落小窗；关闭时维持原来的解锁恢复行为。"; },
         { cell = PSSwitchCell; label = "锁屏时清理分屏和小窗"; defaults = "com.moxuan.parallelx"; key = "clearOnLock"; default = 0; },
-        { cell = PSGroupCell; label = "截图"; },
-        { cell = PSSwitchCell; label = "截图时隐藏手柄"; defaults = "com.moxuan.parallelx"; key = "hideForScreenshot"; default = 0; },
+        { cell = PSGroupCell; label = "截图与录屏"; footerText = "从系统或其他插件截图、录屏时排除手柄和面板，设备上仍可正常显示和操作；不隐藏分屏及键盘。"; },
+        { cell = PSSwitchCell; label = "截图/录屏中隐藏手柄和面板"; defaults = "com.moxuan.parallelx"; key = "hideForScreenshot"; default = 0; PostNotification = "com.moxuan.parallelx.capture-updated"; },
         { cell = PSGroupCell; footerText = "从右侧手柄滑出面板选择应用。点击分屏上方角落可停靠小窗；小窗可点击切换、上滑关闭、左右滑动换边。仅供 iOS 15 RootHide 测试。"; }
     );
 }

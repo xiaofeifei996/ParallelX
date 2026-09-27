@@ -7,6 +7,7 @@ public final class PXExternalBlacklistController: UITableViewController, UISearc
     private var apps: [(id: String, name: String)] = []
     private var visible: [(id: String, name: String)] = []
     private var excluded = Set<String>()
+    private var icons: [String: UIImage] = [:]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
@@ -44,6 +45,15 @@ public final class PXExternalBlacklistController: UITableViewController, UISearc
         cell.textLabel?.text = app.name
         cell.detailTextLabel?.text = app.id
         cell.detailTextLabel?.textColor = .secondaryLabel
+        if let cached = icons[app.id] { cell.imageView?.image = cached }
+        else if let raw = PXApplicationIcon(app.id) {
+            let size = CGSize(width: 32, height: 32)
+            let icon = UIGraphicsImageRenderer(size: size).image { _ in
+                raw.draw(in: CGRect(origin: .zero, size: size))
+            }
+            icons[app.id] = icon
+            cell.imageView?.image = icon
+        } else { cell.imageView?.image = UIImage(systemName: "app") }
         cell.accessoryType = excluded.contains(app.id) ? .checkmark : .none
         return cell
     }

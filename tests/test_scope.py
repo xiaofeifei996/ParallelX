@@ -26,7 +26,7 @@ assert 'if !isShortcut(id)' in panel
 assert 'recentApplicationSkipping(excluded, rank: rank)' in panel
 assert 'return (1...count).map { rank in' in panel
 assert 'id.hasPrefix("px.recent.")' in panel
-assert 'hideForScreenshot' in panel and 'handleWindow?.isHidden = true' in panel
+assert 'hideForScreenshot' in panel and 'PXSceneBridge.setCaptureHidden(hide, for: handle)' in panel
 assert 'hasScene(forApplication: bundleID)' in panel
 assert 'launchImage(forApplication: bundleID, size: card.bounds.size)' in panel
 assert 'urlShortcuts' in panel and 'shortcutSymbols' in panel
@@ -187,7 +187,7 @@ assert all(action in panel and action in picker for action in ('px.action.restar
 assert 'kill(pid, SIGKILL)' in bridge and 'pid == getpid()' in bridge
 assert 'private func showSearch()' in panel and 'private func hideSearch()' in panel
 assert 'root.view.addSubview(top)' in panel and 'top.addSubview(mark)' not in panel
-assert 'screen.midX - width / 2 - gripMargin' in panel.split('private func restoreDock', 1)[1]
+assert 'initialCardFrame(in: screen, size:' in panel.split('private func restoreDock', 1)[1]
 assert 'root.bounds.height * 0.405' in panel
 assert 'PXApplicationIconLarge(id)' in panel
 assert 'navigationItem.searchController = search' in picker
@@ -238,6 +238,20 @@ assert 'px.action.window' in picker
 assert 'px.action.recent' in picker and 'urls.count < 10' in picker
 assert 'px.action.kayoko' in picker
 assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')
+assert 'closeOutsideWithKeyboard' in panel and 'key = "closeOutsideWithKeyboard"' in root_plist
+assert panel.count('initialCardFrame(in: screen, size:') == 3
+assert 'initialRightInset' in panel
+assert 'mask = hidden ? mask | 0x12 : mask & ~0x12' in bridge
+assert 'com.moxuan.parallelx.capture-updated' in entry and 'PostNotification' in root_plist
+blacklist = (root / 'prefs' / 'PXExternalBlacklistController.swift').read_text(encoding='utf-8')
+assert 'PXApplicationIcon(app.id)' in blacklist and 'CGSize(width: 32, height: 32)' in blacklist
+assert 'self.animateFullscreenReady()' in panel
+assert 'fullscreenReadyView?.removeFromSuperview()' in panel
+assert 'guard !UIAccessibility.isReduceMotionEnabled else { return }' in panel
+for screen_width, card_width, saved_inset in ((390, 304.2, 12), (390, 304.2, 120), (320, 300, -5)):
+    inset = min(max(0, screen_width - card_width), max(0, saved_inset))
+    x = screen_width - card_width - inset
+    assert x >= 0 and x + card_width <= screen_width
 assert 'systemService:handleOpenApplicationRequest:withCompletion:' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert '_handleTrustedOpenRequestForApplication:options:activationSettings:origin:withResult:' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert 'FBSOpenApplicationOptionKeyActivateSuspended' in (root / 'Tweak.m').read_text(encoding='utf-8')

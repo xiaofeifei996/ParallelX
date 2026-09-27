@@ -276,6 +276,13 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (notify_get_state(lockToken, &initialLockState) == NOTIFY_STATUS_OK)
             PXDeviceLocked = initialLockState != 0;
         Class entry = NSClassFromString(@"PXPanelEntry");
+        static int captureToken;
+        notify_register_dispatch("com.moxuan.parallelx.capture-updated", &captureToken,
+            dispatch_get_main_queue(), ^(__unused int token) {
+                SEL refresh = NSSelectorFromString(@"updateCaptureVisibility");
+                if ([entry respondsToSelector:refresh])
+                    ((void (*)(id, SEL))objc_msgSend)(entry, refresh);
+            });
         SEL start = NSSelectorFromString(@"start");
         if ([entry respondsToSelector:start])
             ((void (*)(id, SEL))objc_msgSend)(entry, start);
