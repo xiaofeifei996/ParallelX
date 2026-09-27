@@ -563,7 +563,7 @@ public final class PXPanelEntry: NSObject {
         panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = .statusBar + 1
+        window.windowLevel = dockedHosts.isEmpty ? .statusBar + 1 : .alert + 1
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
         controller.apps = selectedApps()
@@ -933,6 +933,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func layoutDocks() {
+        handleWindow?.windowLevel = dockedHosts.isEmpty ? .statusBar - 1 : .alert
         let screen = activeScene()?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let count = max(1, dockedHosts.count)
         let top = max(50, activeScene()?.windows.first?.safeAreaInsets.top ?? 50) + 12
