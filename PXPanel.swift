@@ -793,13 +793,7 @@ public final class PXPanelEntry: NSObject {
             card.layer.shadowOpacity = 0
         } completion: { [weak self, weak window] _ in
             guard let self = self, let window = window, self.hostWindow === window else { return }
-            window.windowLevel = .alert + 1
-            self.handleWindow?.windowLevel = window.windowLevel + 1
-            self.exposeSystemHomeIndicator(in: scene, through: window)
             guard PXSceneBridge.shared().openFullscreenApplication(bundleID) else {
-                window.windowLevel = .statusBar - 2
-                window.layer.mask = nil
-                self.handleWindow?.windowLevel = .statusBar - 1
                 card.transform = .identity
                 card.frame = cardFrame
                 card.layer.cornerRadius = cornerRadius
@@ -812,31 +806,7 @@ public final class PXPanelEntry: NSObject {
                 self.layoutHostControls()
                 return
             }
-            // ponytail: the current launch API has no transition completion; replace this hold if one is found.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self, weak window] in
-                guard let self = self, self.hostWindow === window else { return }
-                self.closeHost(animated: false)
-            }
-        }
-    }
-
-    private func exposeSystemHomeIndicator(in scene: UIWindowScene, through overlay: UIWindow) {
-        var views: [UIView] = scene.windows.filter {
-            ["SBMainSwitcherWindow", "SBMainDisplaySceneLayoutWindow"]
-                .contains(NSStringFromClass(type(of: $0)))
-        }
-        while let view = views.popLast() {
-            if NSStringFromClass(type(of: view)) == "MTLumaDodgePillView" {
-                let opening = view.convert(view.bounds, to: overlay).insetBy(dx: -4, dy: -3)
-                let path = UIBezierPath(rect: overlay.bounds)
-                path.append(UIBezierPath(roundedRect: opening, cornerRadius: opening.height / 2))
-                let mask = CAShapeLayer()
-                mask.path = path.cgPath
-                mask.fillRule = .evenOdd
-                overlay.layer.mask = mask
-                return
-            }
-            views.append(contentsOf: view.subviews)
+            self.closeHost(animated: false)
         }
     }
 
@@ -938,7 +908,6 @@ public final class PXPanelEntry: NSObject {
 
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
-        handleWindow?.windowLevel = .statusBar - 1
         let closingCard = hostCard
         resizeLink?.invalidate()
         resizeLink = nil
@@ -956,8 +925,8 @@ public final class PXPanelEntry: NSObject {
         moveStartFrame = nil
         needsHostRefresh = false
         let finish = { [weak self] in
-            if self?.hostWindow == nil { PXSceneBridge.shared().close() }
             window.isHidden = true
+            if self?.hostWindow == nil { PXSceneBridge.shared().close() }
             window.rootViewController = nil
         }
         if animated, let card = closingCard {

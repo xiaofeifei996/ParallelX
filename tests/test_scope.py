@@ -66,15 +66,11 @@ assert "#selector(resizeHost(_:))" in panel
 assert "if gesture.state == .began { fullscreenTapped() }" in panel
 fullscreen = panel.split('@objc private func fullscreenTapped()', 1)[1].split('@objc private func moveGripHeld', 1)[0]
 assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApplication(bundleID)')
-assert 'window.windowLevel = .alert + 1' in fullscreen
 assert 'card.frame = cardFrame' in fullscreen
-assert 'deadline: .now() + 0.75' in fullscreen
-assert 'self.handleWindow?.windowLevel = window.windowLevel + 1' in fullscreen
-assert 'self.exposeSystemHomeIndicator(in: scene, through: window)' in fullscreen
-assert 'overlay.layer.mask = mask' in panel
-assert '["SBMainSwitcherWindow", "SBMainDisplaySceneLayoutWindow"]' in panel
-assert 'guard let source else { return }' not in panel
-assert 'handleWindow?.windowLevel = .statusBar - 1' in panel
+assert fullscreen.index('openFullscreenApplication(bundleID)') < fullscreen.index('self.closeHost(animated: false)')
+assert 'deadline: .now() + 0.75' not in fullscreen
+assert 'exposeSystemHomeIndicator' not in panel
+assert panel.index('window.isHidden = true\n            if self?.hostWindow == nil') < panel.index('window.rootViewController = nil\n        }')
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
