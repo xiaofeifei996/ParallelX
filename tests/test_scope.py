@@ -27,6 +27,7 @@ assert 'root.view.addSubview(corner)' in panel
 assert 'root.view.addSubview(moveGrip)' in panel
 assert 'private func layoutHostControls()' in panel
 assert 'root.onLayout = { [weak self] in self?.layoutHostControls() }' in panel
+assert 'let root = PXHostViewController()' in panel.split('private func presentHost')[1]
 assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1].split('private func layoutHostControls()')[0]
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel
 assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
