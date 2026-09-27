@@ -11,6 +11,11 @@ assert "firmware (<< 16.0)" in control
 assert "PXPanel.swift" in makefile and "PXSceneBridge.m" in makefile
 assert 'stringArray(forKey: "applications")' in panel
 assert 'dictionary(forKey: "applicationNames")' in panel
+assert 'launcherIconSize' in panel and 'launcherRing\\(index + 1)' in panel
+assert 'ring.radius * cos(theta)' in panel and 'ring.radius * sin(theta)' in panel
+assert 'pageCapacity = max(1, rings.reduce' in panel
+assert 'let centerX = view.bounds.maxX - size / 2 - 6' in panel
+assert 'sheet = UIVisualEffectView' not in panel
 assert "PXSceneBridge.shared().close()" in panel
 assert "let width = screen.width * 0.78" in panel
 assert "let height = width * screen.height / screen.width" in panel
@@ -102,3 +107,6 @@ assert "UISlider()" in radius and "UILongPressGestureRecognizer" in radius
 gesture = (root / "prefs" / "PXGestureAreaController.swift").read_text(encoding="utf-8")
 assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureOffset", "gestureDebug"))
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
+launcher = (root / "prefs" / "PXLauncherController.swift").read_text(encoding="utf-8")
+assert all(key in launcher for key in ("launcherIconSize", "launcherRing1", "launcherRing4"))
+assert "PXLauncherController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")

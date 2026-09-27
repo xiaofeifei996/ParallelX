@@ -33,4 +33,11 @@
     [self.navigationController pushViewController:[controllerClass new] animated:YES];
 }
 
+- (void)openLauncher
+{
+    Class controllerClass = NSClassFromString(@"PXLauncherController");
+    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
+    [self.navigationController pushViewController:[controllerClass new] animated:YES];
+}
+
 @end

@@ -25,74 +25,131 @@ private final class PXPanelViewController: UIViewController {
     var choose: ((String) -> Void)?
     var dismiss: (() -> Void)?
     private let shade = UIControl()
-    private let sheet = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
-    private let scroll = UIScrollView()
-    private var width: CGFloat = 154
+    private let pageControl = UIPageControl()
+    private var buttons: [UIButton] = []
+    private var page = 0
+    private var pageCapacity = 1
+    private var lastSize = CGSize.zero
+    private var progress: CGFloat = 0
+    private let defaults = UserDefaults(suiteName: preferenceDomain)
+    private var iconSize: CGFloat {
+        min(72, max(36, CGFloat(defaults?.object(forKey: "launcherIconSize") as? Int ?? 52)))
+    }
+    private var ringCounts: [Int] {
+        [3, 5, 7, 9].enumerated().map { index, fallback in
+            min(16, max(1, defaults?.object(forKey: "launcherRing\(index + 1)") as? Int ?? fallback))
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
-        shade.backgroundColor = UIColor.black.withAlphaComponent(0.22)
+        shade.backgroundColor = UIColor.black.withAlphaComponent(0.14)
         shade.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         view.addSubview(shade)
-        sheet.layer.cornerRadius = 23
-        sheet.layer.cornerCurve = .continuous
-        sheet.layer.maskedCorners = [.layerMinXMinYCorner, .layerMinXMaxYCorner]
-        sheet.clipsToBounds = true
-        view.addSubview(sheet)
-        scroll.showsVerticalScrollIndicator = false
-        sheet.contentView.addSubview(scroll)
-        for (index, app) in apps.enumerated() {
-            let button = UIButton(type: .system)
-            button.tag = index
-            button.accessibilityLabel = app.name
-            button.addTarget(self, action: #selector(appTapped(_:)), for: .touchUpInside)
-            let icon = UIImageView(image: PXApplicationIcon(app.id) ?? UIImage(systemName: "app"))
-            icon.contentMode = .scaleAspectFit
-            icon.frame = CGRect(x: 57, y: 7, width: 40, height: 40)
-            button.addSubview(icon)
-            let label = UILabel(frame: CGRect(x: 5, y: 49, width: 144, height: 20))
-            label.text = app.name
-            label.textAlignment = .center
-            label.font = .systemFont(ofSize: 11)
-            label.adjustsFontSizeToFitWidth = true
-            label.minimumScaleFactor = 0.72
-            button.addSubview(label)
-            scroll.addSubview(button)
+        pageControl.isUserInteractionEnabled = false
+        pageControl.hidesForSinglePage = true
+        view.addSubview(pageControl)
+        for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(changePage(_:)))
+            swipe.direction = direction
+            view.addGestureRecognizer(swipe)
         }
         if apps.isEmpty {
             let label = UILabel()
             label.text = "请先在设置中添加应用"
             label.textColor = .secondaryLabel
-            label.font = .systemFont(ofSize: 12)
+            label.font = .preferredFont(forTextStyle: .body)
             label.textAlignment = .center
-            label.numberOfLines = 2
-            label.frame = CGRect(x: 12, y: 18, width: width - 24, height: 56)
-            scroll.addSubview(label)
+            label.frame = CGRect(x: 20, y: view.bounds.midY - 30,
+                                 width: view.bounds.width - 40, height: 60)
+            label.autoresizingMask = [.flexibleWidth, .flexibleTopMargin, .flexibleBottomMargin]
+            view.addSubview(label)
         }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         shade.frame = view.bounds
-        let safeTop = view.safeAreaInsets.top + 24
-        let safeBottom = view.safeAreaInsets.bottom + 24
-        let height = min(CGFloat(max(apps.count, 1)) * 74 + 20,
-                         view.bounds.height - safeTop - safeBottom)
-        sheet.frame = CGRect(x: view.bounds.width - width,
-                             y: (view.bounds.height - height) / 2,
-                             width: width, height: height)
-        scroll.frame = sheet.bounds
-        scroll.contentSize = CGSize(width: width, height: CGFloat(apps.count) * 74 + 20)
-        for (index, button) in scroll.subviews.compactMap({ $0 as? UIButton }).enumerated() {
-            button.frame = CGRect(x: 0, y: CGFloat(index) * 74 + 10, width: width, height: 74)
-        }
+        pageControl.frame = CGRect(x: view.bounds.width - 110,
+                                   y: view.bounds.midY + min(300, view.bounds.height * 0.38),
+                                   width: 100, height: 26)
+        guard lastSize != view.bounds.size else { return }
+        lastSize = view.bounds.size
+        layoutPage()
     }
 
     func setProgress(_ progress: CGFloat) {
-        let value = min(1, max(0, progress))
-        shade.alpha = value
-        sheet.transform = CGAffineTransform(translationX: width * (1 - value), y: 0)
+        self.progress = min(1, max(0, progress))
+        shade.alpha = self.progress
+        for button in buttons {
+            button.alpha = self.progress
+            button.transform = CGAffineTransform(translationX: view.bounds.width * (1 - self.progress), y: 0)
+        }
+        pageControl.alpha = self.progress
+    }
+
+    private func layoutPage() {
+        buttons.forEach { $0.removeFromSuperview() }
+        buttons.removeAll()
+        let size = iconSize
+        let spacing = size + 10
+        let maxRadius = min(view.bounds.width - size - 16,
+                            view.bounds.height * 0.43 - size / 2)
+        let angle: CGFloat = 1.15
+        var rings: [(count: Int, radius: CGFloat)] = []
+        for (index, requested) in ringCounts.enumerated() {
+            let radius = size * 1.2 + CGFloat(index) * spacing
+            guard radius <= maxRadius else { break }
+            let fits = Int((2 * angle * radius / spacing).rounded(.down)) + 1
+            rings.append((min(requested, fits), radius))
+        }
+        pageCapacity = max(1, rings.reduce(0) { $0 + $1.count })
+        pageControl.numberOfPages = max(1, (apps.count + pageCapacity - 1) / pageCapacity)
+        page = min(page, pageControl.numberOfPages - 1)
+        pageControl.currentPage = page
+        var appIndex = page * pageCapacity
+        let end = min(apps.count, appIndex + pageCapacity)
+        let centerX = view.bounds.maxX - size / 2 - 6
+        for ring in rings {
+            let count = min(ring.count, end - appIndex)
+            guard count > 0 else { break }
+            for slot in 0..<count {
+                let theta = count == 1 ? 0 : -angle + 2 * angle * CGFloat(slot) / CGFloat(count - 1)
+                let center = CGPoint(x: centerX - ring.radius * cos(theta),
+                                     y: view.bounds.midY + ring.radius * sin(theta))
+                let button = UIButton(type: .custom)
+                button.frame = CGRect(x: center.x - size / 2, y: center.y - size / 2,
+                                      width: size, height: size)
+                button.tag = appIndex
+                button.accessibilityLabel = apps[appIndex].name
+                button.backgroundColor = .systemGray5
+                button.layer.cornerRadius = size / 2
+                button.layer.shadowColor = UIColor.black.cgColor
+                button.layer.shadowOpacity = 0.12
+                button.layer.shadowRadius = 5
+                button.layer.shadowOffset = CGSize(width: 0, height: 2)
+                let icon = UIImageView(image: PXApplicationIcon(apps[appIndex].id) ?? UIImage(systemName: "app"))
+                icon.frame = button.bounds.insetBy(dx: 4, dy: 4)
+                icon.contentMode = .scaleAspectFill
+                icon.layer.cornerRadius = (size - 8) / 2
+                icon.clipsToBounds = true
+                icon.isUserInteractionEnabled = false
+                button.addSubview(icon)
+                button.addTarget(self, action: #selector(appTapped(_:)), for: .touchUpInside)
+                view.addSubview(button)
+                buttons.append(button)
+                appIndex += 1
+            }
+        }
+        setProgress(progress)
+    }
+
+    @objc private func changePage(_ gesture: UISwipeGestureRecognizer) {
+        let next = page + (gesture.direction == .up ? 1 : -1)
+        guard next >= 0, next < pageControl.numberOfPages else { return }
+        page = next
+        layoutPage()
     }
 
     @objc private func closeTapped() { dismiss?() }
@@ -249,7 +306,7 @@ public final class PXPanelEntry: NSObject {
             beginPanel()
             fallthrough
         case .changed:
-            panel?.setProgress(distance / 154)
+            panel?.setProgress(distance / 180)
         case .ended:
             let speed = -gesture.velocity(in: root).x
             if distance > 45 || speed > 650 { showPanel() }
