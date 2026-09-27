@@ -68,6 +68,7 @@ fullscreen = panel.split('@objc private func fullscreenTapped()', 1)[1].split('@
 assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApplication(bundleID)')
 assert 'card.frame = cardFrame' in fullscreen
 assert fullscreen.index('openFullscreenApplication(bundleID)') < fullscreen.index('self.closeHost(animated: false)')
+assert 'readyTicks >= 2 || ticks >= 15' in fullscreen
 assert 'deadline: .now() + 0.75' not in fullscreen
 assert 'exposeSystemHomeIndicator' not in panel
 assert panel.index('window.isHidden = true\n            if self?.hostWindow == nil') < panel.index('window.rootViewController = nil\n        }')

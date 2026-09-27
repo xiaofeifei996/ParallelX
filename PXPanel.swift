@@ -806,7 +806,22 @@ public final class PXPanelEntry: NSObject {
                 self.layoutHostControls()
                 return
             }
-            self.closeHost(animated: false)
+            var ticks = 0
+            var readyTicks = 0
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self, weak window] timer in
+                guard let self = self, let window = window, self.hostWindow === window else {
+                    timer.invalidate()
+                    return
+                }
+                ticks += 1
+                readyTicks = PXSceneBridge.shared().frontmostBundleID() == bundleID
+                    ? readyTicks + 1 : 0
+                if readyTicks >= 2 || ticks >= 15 {
+                    timer.invalidate()
+                    self.closeHost(animated: false)
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
         }
     }
 
