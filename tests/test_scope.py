@@ -69,6 +69,9 @@ assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApp
 assert 'window.windowLevel = .alert + 1' in fullscreen
 assert 'card.frame = cardFrame' in fullscreen
 assert 'deadline: .now() + 0.75' in fullscreen
+assert 'self.handleWindow?.windowLevel = .alert + 2' in fullscreen
+assert 'root.addSubview(homeBar)' in fullscreen
+assert 'handleWindow?.windowLevel = .statusBar - 1' in panel.split('private func closeHost(animated: Bool)', 1)[1]
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
