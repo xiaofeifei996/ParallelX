@@ -1,4 +1,5 @@
 from pathlib import Path
+from math import pi, sin
 
 root = Path(__file__).resolve().parents[1]
 control = (root / "control").read_text(encoding="utf-8")
@@ -13,9 +14,18 @@ assert 'stringArray(forKey: "applications")' in panel
 assert 'dictionary(forKey: "applicationNames")' in panel
 assert 'launcherIconSize' in panel and 'launcherRing\\(index + 1)' in panel
 assert 'ring.radius * cos(theta)' in panel and 'ring.radius * sin(theta)' in panel
+assert 'let angle: CGFloat = .pi / 2' in panel
+assert 'let desiredRadius = requested == 1' in panel
 assert 'pageCapacity = max(1, rings.reduce' in panel
 assert 'let centerX = view.bounds.maxX - size / 2 - 6' in panel
 assert 'sheet = UIVisualEffectView' not in panel
+assert 'launcherDragDistance' in panel
+assert 'selectedApp(at: gesture.location(in: controller.view))' in panel
+assert 'showPanel()' not in panel
+for count in (3, 5, 7, 12):
+    spacing = 62
+    radius = spacing / (2 * sin(pi / (2 * (count - 1))))
+    assert 2 * radius * sin(pi / (2 * (count - 1))) >= spacing - 1e-6
 assert "PXSceneBridge.shared().close()" in panel
 assert "let width = screen.width * 0.78" in panel
 assert "let height = width * screen.height / screen.width" in panel

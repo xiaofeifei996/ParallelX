@@ -22,9 +22,7 @@ private final class PXHostViewController: UIViewController {
 
 private final class PXPanelViewController: UIViewController {
     var apps: [(id: String, name: String)] = []
-    var choose: ((String) -> Void)?
-    var dismiss: (() -> Void)?
-    private let shade = UIControl()
+    private let shade = UIView()
     private let pageControl = UIPageControl()
     private var buttons: [UIButton] = []
     private var page = 0
@@ -37,7 +35,7 @@ private final class PXPanelViewController: UIViewController {
     }
     private var ringCounts: [Int] {
         [3, 5, 7, 9].enumerated().map { index, fallback in
-            min(16, max(1, defaults?.object(forKey: "launcherRing\(index + 1)") as? Int ?? fallback))
+            min(max(1, apps.count), max(1, defaults?.object(forKey: "launcherRing\(index + 1)") as? Int ?? fallback))
         }
     }
 
@@ -45,16 +43,10 @@ private final class PXPanelViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .clear
         shade.backgroundColor = UIColor.black.withAlphaComponent(0.14)
-        shade.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         view.addSubview(shade)
         pageControl.isUserInteractionEnabled = false
         pageControl.hidesForSinglePage = true
         view.addSubview(pageControl)
-        for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
-            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(changePage(_:)))
-            swipe.direction = direction
-            view.addGestureRecognizer(swipe)
-        }
         if apps.isEmpty {
             let label = UILabel()
             label.text = "请先在设置中添加应用"
@@ -95,14 +87,22 @@ private final class PXPanelViewController: UIViewController {
         let size = iconSize
         let spacing = size + 10
         let maxRadius = min(view.bounds.width - size - 16,
-                            view.bounds.height * 0.43 - size / 2)
-        let angle: CGFloat = 1.15
+                            min(view.bounds.midY - view.safeAreaInsets.top - size / 2 - 12,
+                                view.bounds.midY - view.safeAreaInsets.bottom - size / 2 - 12))
+        let angle: CGFloat = .pi / 2
         var rings: [(count: Int, radius: CGFloat)] = []
-        for (index, requested) in ringCounts.enumerated() {
-            let radius = size * 1.2 + CGFloat(index) * spacing
+        var previousRadius: CGFloat = 0
+        for requested in ringCounts {
+            let desiredRadius = requested == 1 ? 0 :
+                spacing / (2 * sin(.pi / (2 * CGFloat(requested - 1))))
+            let radius = max(size * 1.2,
+                             max(previousRadius + (rings.isEmpty ? 0 : spacing),
+                                 min(desiredRadius, maxRadius)))
             guard radius <= maxRadius else { break }
-            let fits = Int((2 * angle * radius / spacing).rounded(.down)) + 1
+            let fits = radius + 0.01 >= desiredRadius ? requested :
+                Int((.pi / (2 * asin(min(1, spacing / (2 * radius))))).rounded(.down)) + 1
             rings.append((min(requested, fits), radius))
+            previousRadius = radius
         }
         pageCapacity = max(1, rings.reduce(0) { $0 + $1.count })
         pageControl.numberOfPages = max(1, (apps.count + pageCapacity - 1) / pageCapacity)
@@ -136,7 +136,6 @@ private final class PXPanelViewController: UIViewController {
                 icon.clipsToBounds = true
                 icon.isUserInteractionEnabled = false
                 button.addSubview(icon)
-                button.addTarget(self, action: #selector(appTapped(_:)), for: .touchUpInside)
                 view.addSubview(button)
                 buttons.append(button)
                 appIndex += 1
@@ -145,17 +144,20 @@ private final class PXPanelViewController: UIViewController {
         setProgress(progress)
     }
 
-    @objc private func changePage(_ gesture: UISwipeGestureRecognizer) {
-        let next = page + (gesture.direction == .up ? 1 : -1)
-        guard next >= 0, next < pageControl.numberOfPages else { return }
+    func advancePage(forDrag verticalDistance: CGFloat) {
+        let next = min(pageControl.numberOfPages - 1, max(0, Int(-verticalDistance / 150)))
+        guard next > page else { return }
         page = next
         layoutPage()
     }
 
-    @objc private func closeTapped() { dismiss?() }
-    @objc private func appTapped(_ sender: UIButton) {
-        guard apps.indices.contains(sender.tag) else { return }
-        choose?(apps[sender.tag].id)
+    func selectedApp(at point: CGPoint) -> String? {
+        for button in buttons.reversed() {
+            if button.frame.insetBy(dx: -4, dy: -4).contains(point) {
+                return apps[button.tag].id
+            }
+        }
+        return nil
     }
 }
 
@@ -180,6 +182,7 @@ public final class PXPanelEntry: NSObject {
     private var moveStartFrame: CGRect?
     private var needsHostRefresh = false
     private var deviceLocked = false
+    private var panelDragProgress: CGFloat = 0
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -283,11 +286,6 @@ public final class PXPanelEntry: NSObject {
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
         controller.apps = selectedApps()
-        controller.dismiss = { [weak self] in self?.hidePanel() }
-        controller.choose = { [weak self] id in
-            self?.hidePanel()
-            self?.openHost(id)
-        }
         window.rootViewController = controller
         _ = controller.view
         controller.view.layoutIfNeeded()
@@ -301,31 +299,29 @@ public final class PXPanelEntry: NSObject {
     @objc private func dragHandle(_ gesture: UIPanGestureRecognizer) {
         guard let root = handleWindow?.rootViewController?.view else { return }
         let distance = -gesture.translation(in: root).x
+        let savedDistance = UserDefaults(suiteName: preferenceDomain)?
+            .object(forKey: "launcherDragDistance") as? Int ?? 120
+        let threshold = min(240, max(50, CGFloat(savedDistance)))
         switch gesture.state {
         case .began:
+            panelDragProgress = 0
             beginPanel()
             fallthrough
         case .changed:
-            panel?.setProgress(distance / 180)
+            panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))
+            panel?.setProgress(panelDragProgress)
+            if panelDragProgress >= 0.8 {
+                panel?.advancePage(forDrag: gesture.translation(in: root).y)
+            }
         case .ended:
-            let speed = -gesture.velocity(in: root).x
-            if distance > 45 || speed > 650 { showPanel() }
-            else { hidePanel() }
+            if panelDragProgress >= 0.8,
+               let controller = panel,
+               let bundleID = controller.selectedApp(at: gesture.location(in: controller.view)) {
+                hidePanel { [weak self] in self?.openHost(bundleID) }
+            } else { hidePanel() }
         case .cancelled, .failed:
             hidePanel()
         default: break
-        }
-    }
-
-    private func showPanel() {
-        guard let window = panelWindow, let controller = panel else { return }
-        handleWindow?.isHidden = true
-        window.isUserInteractionEnabled = true
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.34,
-                       delay: 0, usingSpringWithDamping: 0.86,
-                       initialSpringVelocity: 0,
-                       options: [.beginFromCurrentState, .allowUserInteraction]) {
-            controller.setProgress(1)
         }
     }
 
