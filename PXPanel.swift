@@ -808,16 +808,6 @@ public final class PXPanelEntry: NSObject {
                 self.layoutHostControls()
                 return
             }
-            self.handleWindow?.windowLevel = .alert + 2
-            if window.safeAreaInsets.bottom > 0, let root = window.rootViewController?.view {
-                let screen = scene.coordinateSpace.bounds
-                let homeBar = UIView(frame: CGRect(x: screen.midX - 67, y: screen.maxY - 13,
-                                                   width: 134, height: 5))
-                homeBar.backgroundColor = .label
-                homeBar.layer.cornerRadius = 2.5
-                homeBar.isUserInteractionEnabled = false
-                root.addSubview(homeBar)
-            }
             // ponytail: the current launch API has no transition completion; replace this hold if one is found.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self, weak window] in
                 if self?.hostWindow === window { self?.closeHost(animated: false) }
@@ -923,7 +913,6 @@ public final class PXPanelEntry: NSObject {
 
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
-        handleWindow?.windowLevel = .statusBar - 1
         let closingCard = hostCard
         resizeLink?.invalidate()
         resizeLink = nil
