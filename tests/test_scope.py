@@ -13,18 +13,28 @@ assert 'stringArray(forKey: "applications")' in panel
 assert 'dictionary(forKey: "applicationNames")' in panel
 assert "PXSceneBridge.shared().close()" in panel
 assert "let width = screen.width * 0.78" in panel
-assert "let height = 44 + width * screen.height / screen.width" in panel
+assert "let height = width * screen.height / screen.width" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
 assert panel.index("root.view.addSubview(card)") < panel.index("let clip = UIView(frame:")
 assert "if success { self.matchHostAspect() }" in panel
-assert "height: 44 + (start.height - 44) * scale" in panel
+assert "height: start.height * scale" in panel
 assert "#selector(resizeHost(_:))" in panel
-assert "#selector(fullscreenTapped)" in panel
+assert "if gesture.state == .began { fullscreenTapped() }" in panel
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
-assert 'corner.addSubview(line)' in panel and 'for side in [-1, 1]' in panel
-assert 'root.view.addSubview(corner)' in panel
-assert 'root.view.addSubview(moveGrip)' in panel
+assert 'PXCornerGrip' in panel and 'path.addQuadCurve' in panel
+assert 'for side in [-1, 1]' in panel
+assert 'controls.addSubview(corner)' in panel
+assert 'controls.addSubview(moveGrip)' in panel
+assert 'handleWindow?.windowLevel = .alert + 2' in panel
+assert 'handleWindow?.windowLevel = .statusBar + 1' in panel
+assert 'hostCorners.forEach { $0.removeFromSuperview() }' in panel
+assert 'moveGrip.addGestureRecognizer(doubleTap)' in panel
+assert 'numberOfTapsRequired = 2' in panel
+assert '#selector(moveGripHeld(_:))' in panel
+assert 'let clip = UIView(frame: card.bounds)' in panel
+assert 'let toolbarWidth' not in panel
+assert 'layoutHostControls()' in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
 assert 'private func layoutHostControls()' in panel
 assert 'root.onLayout = { [weak self] in self?.layoutHostControls() }' in panel
 assert 'let root = PXHostViewController()' in panel.split('private func presentHost')[1]
