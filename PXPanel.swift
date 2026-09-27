@@ -794,11 +794,12 @@ public final class PXPanelEntry: NSObject {
         } completion: { [weak self, weak window] _ in
             guard let self = self, let window = window, self.hostWindow === window else { return }
             window.windowLevel = .alert + 1
-            let report = NSMutableString(string: self.handoffWindowSnapshot("before launch", in: scene))
+            self.handleWindow?.windowLevel = window.windowLevel + 1
+            self.exposeSystemHomeIndicator(in: scene, through: window)
             guard PXSceneBridge.shared().openFullscreenApplication(bundleID) else {
-                report.append(self.handoffWindowSnapshot("launch failed", in: scene))
-                self.writeHandoffReport(report)
                 window.windowLevel = .statusBar - 2
+                window.layer.mask = nil
+                self.handleWindow?.windowLevel = .statusBar - 1
                 card.transform = .identity
                 card.frame = cardFrame
                 card.layer.cornerRadius = cornerRadius
@@ -811,46 +812,32 @@ public final class PXPanelEntry: NSObject {
                 self.layoutHostControls()
                 return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak window] in
-                guard let self = self, self.hostWindow === window else { return }
-                report.append(self.handoffWindowSnapshot("transition", in: scene))
-            }
             // ponytail: the current launch API has no transition completion; replace this hold if one is found.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self, weak window] in
                 guard let self = self, self.hostWindow === window else { return }
-                report.append(self.handoffWindowSnapshot("before reveal", in: scene))
-                self.writeHandoffReport(report)
                 self.closeHost(animated: false)
             }
         }
     }
 
-    private func handoffWindowSnapshot(_ stage: String, in scene: UIWindowScene) -> String {
-        var lines = ["\nParallelX alpha35 \(stage)\n"]
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        for activeScene in scenes {
-          lines.append("scene \(activeScene.session.role.rawValue) foreground=\(activeScene.activationState.rawValue) target=\(activeScene === scene)\n")
-          for window in activeScene.windows {
-            lines.append("window \(NSStringFromClass(type(of: window))) level=\(window.windowLevel.rawValue) hidden=\(window.isHidden) frame=\(window.frame)\n")
-            var stack: [UIView] = [window]
-            var visited = 0
-            while let view = stack.popLast(), visited < 1000 {
-                visited += 1
-                let name = NSStringFromClass(type(of: view))
-                if ["Pill", "Grabber", "HomeIndicator", "StatusBar"].contains(where: { name.localizedCaseInsensitiveContains($0) }) {
-                    lines.append("  view \(name) frame=\(view.frame) hidden=\(view.isHidden) alpha=\(view.alpha)\n")
-                }
-                stack.append(contentsOf: view.subviews)
+    private func exposeSystemHomeIndicator(in scene: UIWindowScene, through overlay: UIWindow) {
+        let source = scene.windows.first { NSStringFromClass(type(of: $0)) == "SBMainSwitcherWindow" }
+            ?? scene.windows.first { NSStringFromClass(type(of: $0)) == "SBMainDisplaySceneLayoutWindow" }
+        guard let source else { return }
+        var views: [UIView] = [source]
+        while let view = views.popLast() {
+            if NSStringFromClass(type(of: view)) == "MTLumaDodgePillView" {
+                let opening = view.convert(view.bounds, to: overlay).insetBy(dx: -4, dy: -3)
+                let path = UIBezierPath(rect: overlay.bounds)
+                path.append(UIBezierPath(roundedRect: opening, cornerRadius: opening.height / 2))
+                let mask = CAShapeLayer()
+                mask.path = path.cgPath
+                mask.fillRule = .evenOdd
+                overlay.layer.mask = mask
+                return
             }
-          }
+            views.append(contentsOf: view.subviews)
         }
-        return lines.joined()
-    }
-
-    private func writeHandoffReport(_ report: NSMutableString) {
-        try? String(describing: report).write(
-            toFile: "/var/mobile/Library/Preferences/com.moxuan.parallelx.handoff.log",
-            atomically: true, encoding: .utf8)
     }
 
     @objc private func moveGripHeld(_ gesture: UILongPressGestureRecognizer) {
@@ -951,6 +938,7 @@ public final class PXPanelEntry: NSObject {
 
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
+        handleWindow?.windowLevel = .statusBar - 1
         let closingCard = hostCard
         resizeLink?.invalidate()
         resizeLink = nil

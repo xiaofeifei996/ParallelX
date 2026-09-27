@@ -69,8 +69,10 @@ assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApp
 assert 'window.windowLevel = .alert + 1' in fullscreen
 assert 'card.frame = cardFrame' in fullscreen
 assert 'deadline: .now() + 0.75' in fullscreen
-assert 'handoffWindowSnapshot("transition", in: scene)' in fullscreen
-assert 'com.moxuan.parallelx.handoff.log' in panel
+assert 'self.handleWindow?.windowLevel = window.windowLevel + 1' in fullscreen
+assert 'self.exposeSystemHomeIndicator(in: scene, through: window)' in fullscreen
+assert 'overlay.layer.mask = mask' in panel
+assert 'handleWindow?.windowLevel = .statusBar - 1' in panel
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'CADisplayLink(target: self, selector: #selector(applyResizePreview))' in panel
