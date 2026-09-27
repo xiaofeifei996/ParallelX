@@ -25,10 +25,14 @@ assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'corner.addSubview(line)' in panel and 'for side in [-1, 1]' in panel
 assert 'root.view.addSubview(corner)' in panel
 assert 'root.view.addSubview(moveGrip)' in panel
+assert 'private func layoutHostControls()' in panel
+assert 'root.onLayout = { [weak self] in self?.layoutHostControls() }' in panel
+assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1].split('private func layoutHostControls()')[0]
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel
 assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
 assert '"↙"' not in panel and '"↘"' not in panel
 assert 'prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
+assert 'BOOL shouldReturnHome = wasFullscreen || [currentID isEqualToString:bundleID]' in bridge
 assert 'screen.maxX' not in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
 assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge

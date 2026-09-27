@@ -70,6 +70,21 @@ static BOOL PXUpdateScene(id scene, id settings)
     return YES;
 }
 
+static void PXTransitionLog(NSString *message)
+{
+    NSString *path = @"/var/mobile/Documents/com.moxuan.parallelx.transition.log";
+    NSFileManager *files = NSFileManager.defaultManager;
+    if (![files fileExistsAtPath:path]) [files createFileAtPath:path contents:nil attributes:nil];
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!handle) return;
+    @try {
+        [handle seekToEndOfFile];
+        NSString *line = [NSString stringWithFormat:@"%@ %@\n", NSDate.date, message];
+        [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+    } @catch (__unused NSException *exception) { }
+    [handle closeFile];
+}
+
 static int PXApplicationPID(NSString *bundleID)
 {
     id controller = PXCall(NSClassFromString(@"SBApplicationController"), @"sharedInstance");
@@ -171,11 +186,17 @@ static int PXApplicationPID(NSString *bundleID)
                       completion:(dispatch_block_t)completion
 {
     if (!completion) return;
+    NSString *currentID = [self frontmostBundleID];
+    BOOL shouldReturnHome = wasFullscreen || [currentID isEqualToString:bundleID];
+    PXTransitionLog([NSString stringWithFormat:@"select=%@ cachedFullscreen=%d current=%@ returnHome=%d",
+                     bundleID, wasFullscreen, currentID, shouldReturnHome]);
     dispatch_block_t finish = ^{
+        PXTransitionLog([NSString stringWithFormat:@"home completion current=%@",
+                         [self frontmostBundleID]]);
         if (NSThread.isMainThread) completion();
         else dispatch_async(dispatch_get_main_queue(), completion);
     };
-    if (!wasFullscreen || bundleID.length == 0) {
+    if (!shouldReturnHome || bundleID.length == 0) {
         finish();
         return;
     }
@@ -185,9 +206,11 @@ static int PXApplicationPID(NSString *bundleID)
     if (!signature || signature.numberOfArguments != 3 ||
         signature.methodReturnType[0] != 'v' ||
         [signature getArgumentTypeAtIndex:2][0] != '@') {
+        PXTransitionLog(@"home selector unavailable");
         finish();
         return;
     }
+    PXTransitionLog(@"home selector invoked");
     ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, [finish copy]);
 }
 
