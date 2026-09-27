@@ -3,6 +3,17 @@
 #import <objc/runtime.h>
 #import <string.h>
 
+@interface PXKeyboardSlot : UIView
+@end
+
+@implementation PXKeyboardSlot
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+    UIView *hit = [super hitTest:point withEvent:event];
+    return hit == self ? nil : hit;
+}
+@end
+
 static id PXCall(id object, NSString *name)
 {
     SEL selector = NSSelectorFromString(name);
@@ -306,7 +317,8 @@ static int PXApplicationPID(NSString *bundleID)
 - (void)relocateKeyboardView:(UIView *)view
 {
     if (view == self.keyboardHostView) {
-        if (!view.window) {
+        if (!view.window || view.superview != self.keyboardSlot) {
+            self.keyboardSlot.userInteractionEnabled = NO;
             [self.keyboardSlot removeFromSuperview];
             self.keyboardSlot = nil;
             self.keyboardHostView = nil;
@@ -320,7 +332,12 @@ static int PXApplicationPID(NSString *bundleID)
     CGFloat sourceHeight = view.bounds.size.height;
     if (screen.width <= 0 || screen.height <= 0 || sourceHeight <= 0) return;
     CGFloat height = MIN(sourceHeight, screen.height * 0.4);
-    UIView *slot = [[UIView alloc] initWithFrame:CGRectMake(0, screen.height - height,
+    UIView *previousSlot = self.keyboardSlot;
+    self.keyboardHostView = nil;
+    self.keyboardSlot = nil;
+    previousSlot.userInteractionEnabled = NO;
+    [previousSlot removeFromSuperview];
+    UIView *slot = [[PXKeyboardSlot alloc] initWithFrame:CGRectMake(0, screen.height - height,
                                                             screen.width, height)];
     slot.backgroundColor = UIColor.clearColor;
     slot.opaque = NO;
@@ -417,6 +434,7 @@ static int PXApplicationPID(NSString *bundleID)
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
     self.generation += 1;
     self.keyboardHostView = nil;
+    self.keyboardSlot.userInteractionEnabled = NO;
     [self.keyboardSlot removeFromSuperview];
     self.keyboardSlot = nil;
     self.keyboardOverlay = nil;

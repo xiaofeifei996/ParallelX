@@ -112,7 +112,6 @@ public final class PXPanelEntry: NSObject {
     private var hostCorners: [UIView] = []
     private var hostMoveGrip: UIView?
     private weak var hostCanvas: UIView?
-    private weak var previousKeyWindow: UIWindow?
     private var panel: PXPanelViewController?
     private var handle: UIView?
     private var hostedBundleID: String?
@@ -234,10 +233,8 @@ public final class PXPanelEntry: NSObject {
 
     private func showPanel() {
         guard let window = panelWindow, let controller = panel else { return }
-        previousKeyWindow = window.windowScene?.windows.first(where: { $0.isKeyWindow })
         handleWindow?.isHidden = true
         window.isUserInteractionEnabled = true
-        window.makeKey()
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.34,
                        delay: 0, usingSpringWithDamping: 0.86,
                        initialSpringVelocity: 0,
@@ -251,6 +248,7 @@ public final class PXPanelEntry: NSObject {
             completion?()
             return
         }
+        window.isUserInteractionEnabled = false
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.22,
                        delay: 0, options: [.beginFromCurrentState]) {
             controller.setProgress(0)
@@ -260,7 +258,6 @@ public final class PXPanelEntry: NSObject {
             window.rootViewController = nil
             self.panelWindow = nil
             self.panel = nil
-            self.previousKeyWindow?.makeKey()
             self.handleWindow?.isHidden = false
             completion?()
         }
