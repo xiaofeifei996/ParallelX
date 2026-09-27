@@ -231,3 +231,8 @@ assert 'px.action.window' in picker
 assert 'px.action.recent' in picker and 'urls.count < 10' in picker
 assert 'px.action.kayoko' in picker
 assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')
+assert 'PXSetOpenOptions' in (root / 'Tweak.m').read_text(encoding='utf-8')
+assert 'FBSOpenApplicationOptionKeyActivateSuspended' in (root / 'Tweak.m').read_text(encoding='utf-8')
+assert 'externalOpenApplication:' in (root / 'Tweak.m').read_text(encoding='utf-8')
+assert 'func completeOpening()' in panel
+assert 'withRenderingMode(.alwaysOriginal)' in panel

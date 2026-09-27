@@ -126,6 +126,7 @@ private final class PXPanelViewController: UIViewController {
     private var pageCapacity = 1
     private var lastSize = CGSize.zero
     private var progress: CGFloat = 0
+    private var opening = false
     private let defaults = UserDefaults(suiteName: preferenceDomain)
     private var iconSize: CGFloat {
         min(72, max(36, CGFloat(defaults?.object(forKey: "launcherIconSize") as? Int ?? 52)))
@@ -219,6 +220,14 @@ private final class PXPanelViewController: UIViewController {
         }
         pageControl.alpha = self.progress
         selectionPreview.alpha = selectedIndex == nil ? 0 : self.progress
+    }
+
+    func completeOpening() {
+        guard !opening else { return }
+        opening = true
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.23,
+                       delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0,
+                       options: [.beginFromCurrentState]) { self.setProgress(1) }
     }
 
     private func layoutPage() {
@@ -460,7 +469,19 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
                              height: card.bounds.height - 68)
     }
 
-    func focus() { field.becomeFirstResponder() }
+    func focus() {
+        view.layoutIfNeeded()
+        card.alpha = 0
+        card.transform = CGAffineTransform(translationX: 0, y: 28)
+        view.alpha = 1
+        field.becomeFirstResponder()
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.25,
+                       delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0,
+                       options: [.beginFromCurrentState]) {
+            self.card.alpha = 1
+            self.card.transform = .identity
+        }
+    }
 
     @objc private func keyboardChanged(_ note: Notification) {
         guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
@@ -507,7 +528,13 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
             let button = UIButton(type: .system)
             button.tag = index
             button.setTitle(app.name, for: .normal)
-            button.setImage(PXApplicationIcon(app.id), for: .normal)
+            if let icon = PXApplicationIcon(app.id) {
+                let size = CGSize(width: 32, height: 32)
+                let image = UIGraphicsImageRenderer(size: size).image { _ in
+                    icon.draw(in: CGRect(origin: .zero, size: size))
+                }
+                button.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
+            }
             button.imageView?.contentMode = .scaleAspectFit
             button.titleLabel?.font = .systemFont(ofSize: 14)
             button.contentHorizontalAlignment = .left
@@ -568,6 +595,12 @@ public final class PXPanelEntry: NSObject {
                 shared.removeDock(dock, fullscreenHandoff: true)
             }
         }
+    }
+
+    @objc public static func externalOpenApplication(_ bundleID: String) {
+        guard !shared.deviceLocked, shared.activeScene() != nil else { return }
+        shared.panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
+        shared.openHost(bundleID)
     }
 
     @objc private func lockStateChanged(_ notification: Notification) {
@@ -773,8 +806,10 @@ public final class PXPanelEntry: NSObject {
                 _ = PXSceneBridge.shared().setBrightnessLevel(Float(value))
                 return
             }
+            let prior = panelDragProgress
             panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))
-            panel?.setProgress(panelDragProgress)
+            if prior < 0.8 && panelDragProgress >= 0.8 { panel?.completeOpening() }
+            else if panelDragProgress < 0.8 { panel?.setProgress(panelDragProgress) }
             if panelDragProgress >= 0.8 {
                 panel?.advancePage(forDrag: gesture.translation(in: root).y)
                 if let controller = panel {
@@ -809,6 +844,13 @@ public final class PXPanelEntry: NSObject {
                         }
                         else { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
                     } else { openHost(bundleID) }
+                }
+            } else if panelDragProgress >= 0.8 {
+                panel?.completeOpening()
+                let current = panelWindow
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
+                    guard self?.panelWindow === current else { return }
+                    self?.hidePanel()
                 }
             } else { hidePanel() }
         case .cancelled, .failed:
@@ -905,6 +947,9 @@ public final class PXPanelEntry: NSObject {
         window.rootViewController = controller
         searchPreviousKeyWindow = scene.windows.first(where: { $0.isKeyWindow })
         searchWindow = window
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        controller.view.alpha = 0
         window.makeKeyAndVisible()
         controller.focus()
     }
