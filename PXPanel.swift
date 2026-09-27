@@ -2,7 +2,7 @@ import UIKit
 
 private let preferenceDomain = "com.moxuan.parallelx"
 private let gripMargin: CGFloat = 28
-private let gripBottom: CGFloat = 40
+private let gripBottom: CGFloat = 168
 
 private final class PXHandleWindow: UIWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -138,6 +138,7 @@ public final class PXPanelEntry: NSObject {
     private var hostCard: UIView?
     private var hostCorners: [PXCornerGrip] = []
     private var hostMoveGrip: UIView?
+    private weak var hostCanvas: UIView?
     private weak var previousKeyWindow: UIWindow?
     private var panel: PXPanelViewController?
     private var handle: UIView?
@@ -145,14 +146,36 @@ public final class PXPanelEntry: NSObject {
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
     private var moveStartFrame: CGRect?
+    private var needsHostRefresh = false
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
             selector: #selector(sceneActivated), name: UIScene.didActivateNotification, object: nil)
+        NotificationCenter.default.addObserver(shared,
+            selector: #selector(sceneDeactivated), name: UIScene.willDeactivateNotification, object: nil)
         shared.installHandle()
     }
 
-    @objc private func sceneActivated() { installHandle() }
+    @objc private func sceneDeactivated(_ notification: Notification) {
+        if (notification.object as? UIWindowScene) === hostWindow?.windowScene {
+            needsHostRefresh = true
+        }
+    }
+
+    @objc private func sceneActivated(_ notification: Notification) {
+        installHandle()
+        guard needsHostRefresh, let window = hostWindow,
+              (notification.object as? UIWindowScene) === window.windowScene,
+              let bundleID = hostedBundleID, let canvas = hostCanvas,
+              let controls = handleWindow?.rootViewController?.view else { return }
+        needsHostRefresh = false
+        PXSceneBridge.shared().openApplication(bundleID, in: canvas,
+                                               keyboardOverlay: controls) { [weak self, weak window] success in
+            guard let self = self, self.hostWindow === window else { return }
+            if success { self.matchHostAspect() }
+            else { self.closeHost(animated: false) }
+        }
+    }
 
     private func activeScene() -> UIWindowScene? {
         UIApplication.shared.connectedScenes
@@ -273,12 +296,10 @@ public final class PXPanelEntry: NSObject {
     private func openHost(_ bundleID: String) {
         let wasFullscreen = panelFrontmostBundleID == bundleID
         panelFrontmostBundleID = nil
-        PXSceneBridge.shared().prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self] in
-            self?.presentHost(bundleID)
-        }
+        presentHost(bundleID, wasFullscreen: wasFullscreen)
     }
 
-    private func presentHost(_ bundleID: String) {
+    private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
         closeHost(animated: false)
@@ -311,6 +332,7 @@ public final class PXPanelEntry: NSObject {
         let canvas = UIView(frame: clip.bounds)
         canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         clip.addSubview(canvas)
+        hostCanvas = canvas
         let spinner = UIActivityIndicatorView(style: .medium)
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
@@ -325,14 +347,16 @@ public final class PXPanelEntry: NSObject {
             corner.accessibilityLabel = "拖动调整窗口大小"
             corner.addGestureRecognizer(UIPanGestureRecognizer(target: self,
                                                                action: #selector(resizeHost(_:))))
-            controls.addSubview(corner)
+            root.view.addSubview(corner)
             hostCorners.append(corner)
         }
         let moveGrip = UIView(frame: .zero)
-        let moveLine = UIView(frame: CGRect(x: 85, y: 24, width: 70, height: 5))
-        moveLine.backgroundColor = .secondaryLabel
-        moveLine.layer.cornerRadius = 2.5
-        moveGrip.addSubview(moveLine)
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        if defaults?.bool(forKey: "gestureDebug") == true {
+            moveGrip.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.25)
+            moveGrip.layer.borderColor = UIColor.systemBlue.cgColor
+            moveGrip.layer.borderWidth = 1
+        }
         moveGrip.isAccessibilityElement = true
         moveGrip.accessibilityLabel = "拖动移动；双击关闭；长按全屏"
         moveGrip.addGestureRecognizer(UIPanGestureRecognizer(target: self,
@@ -342,28 +366,33 @@ public final class PXPanelEntry: NSObject {
         moveGrip.addGestureRecognizer(doubleTap)
         moveGrip.addGestureRecognizer(UILongPressGestureRecognizer(target: self,
                                                                    action: #selector(moveGripHeld(_:))))
-        controls.addSubview(moveGrip)
+        root.view.addSubview(moveGrip)
         hostMoveGrip = moveGrip
         root.onLayout = { [weak self] in self?.layoutHostControls() }
         window.isHidden = false
         hostWindow = window
         hostCard = card
         layoutHostControls()
-        handleWindow?.windowLevel = .alert + 2
         card.alpha = 0
         card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3,
-                       delay: 0, usingSpringWithDamping: 0.88,
-                       initialSpringVelocity: 0, options: .beginFromCurrentState) {
-            card.alpha = 1
-            card.transform = .identity
-        } completion: { [weak self] _ in self?.layoutHostControls() }
+        window.isUserInteractionEnabled = false
         PXSceneBridge.shared().openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
-            if success { self.matchHostAspect() }
-            else { self.closeHost(animated: true) }
+            guard success else { self.closeHost(animated: false); return }
+            self.matchHostAspect()
+            PXSceneBridge.shared().prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
+                guard let self = self, self.hostWindow === window else { return }
+                guard ready else { self.closeHost(animated: false); return }
+                window?.isUserInteractionEnabled = true
+                UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.3,
+                               delay: 0, usingSpringWithDamping: 0.88,
+                               initialSpringVelocity: 0, options: .beginFromCurrentState) {
+                    card.alpha = 1
+                    card.transform = .identity
+                } completion: { [weak self] _ in self?.layoutHostControls() }
+            }
         }
     }
 
@@ -385,9 +414,8 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func layoutHostControls() {
-        guard let card = hostCard, let window = hostWindow else { return }
-        let frame = CGRect(x: window.frame.minX + gripMargin, y: window.frame.minY,
-                           width: card.bounds.width, height: card.bounds.height)
+        guard let card = hostCard, hostWindow != nil else { return }
+        let frame = card.frame
         for corner in hostCorners {
             let radius = max(CGFloat(12), card.layer.cornerRadius)
             let center = CGPoint(x: corner.tag < 0 ? frame.minX + radius : frame.maxX - radius,
@@ -401,8 +429,12 @@ public final class PXPanelEntry: NSObject {
                                        y: center.y - corner.frame.minY)
             corner.arcRadius = arcRadius
         }
-        hostMoveGrip?.frame = CGRect(x: frame.midX - 120, y: frame.maxY - 20,
-                                     width: 240, height: 72)
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
+        let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
+        let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
+        hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
+                                     width: width, height: height)
     }
 
     @objc private func closeTapped() { closeHost(animated: true) }
@@ -469,14 +501,16 @@ public final class PXPanelEntry: NSObject {
         guard let window = hostWindow else { return }
         hostCorners.forEach { $0.removeFromSuperview() }
         hostMoveGrip?.removeFromSuperview()
-        handleWindow?.windowLevel = .statusBar + 1
+        window.isUserInteractionEnabled = false
         hostWindow = nil
         hostCard = nil
+        hostCanvas = nil
         hostCorners = []
         hostMoveGrip = nil
         hostedBundleID = nil
         resizeStartFrame = nil
         moveStartFrame = nil
+        needsHostRefresh = false
         PXSceneBridge.shared().close()
         let finish = {
             window.isHidden = true

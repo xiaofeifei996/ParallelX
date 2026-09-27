@@ -25,11 +25,13 @@ assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'PXCornerGrip' in panel and 'path.addQuadCurve' in panel
 assert 'corner.isOpaque = false' in panel and 'corner.backgroundColor = .clear' in panel
 assert 'for side in [-1, 1]' in panel
-assert 'controls.addSubview(corner)' in panel
-assert 'controls.addSubview(moveGrip)' in panel
-assert 'width: 240, height: 72' in panel
-assert 'handleWindow?.windowLevel = .alert + 2' in panel
-assert 'handleWindow?.windowLevel = .statusBar + 1' in panel
+assert 'root.view.addSubview(corner)' in panel
+assert 'root.view.addSubview(moveGrip)' in panel
+assert 'let gripBottom: CGFloat = 168' in panel
+assert 'window.isUserInteractionEnabled = false' in panel
+assert 'hostMoveGrip?.frame = CGRect' in panel
+assert 'gestureWidth' in panel and 'gestureHeight' in panel and 'gestureOffset' in panel
+assert 'gestureDebug' in panel and 'moveLine' not in panel
 assert 'hostCorners.forEach { $0.removeFromSuperview() }' in panel
 assert 'moveGrip.addGestureRecognizer(doubleTap)' in panel
 assert 'numberOfTapsRequired = 2' in panel
@@ -45,6 +47,9 @@ assert 'let window = PXHandleWindow(windowScene: scene)' in panel
 assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
 assert '"↙"' not in panel and '"↘"' not in panel
 assert 'prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
+assert panel.index('openApplication(bundleID, in: canvas') < panel.index('prepareWindow(for: bundleID')
+assert 'UIScene.willDeactivateNotification' in panel
+assert 'needsHostRefresh' in panel
 assert 'BOOL shouldReturnHome = wasFullscreen || [currentID isEqualToString:bundleID]' in bridge
 assert 'screen.maxX' not in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
 assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
@@ -61,7 +66,8 @@ assert "_returnToHomeScreenWithCompletion:" in bridge
 prepare = bridge.split("- (void)prepareWindowForBundleID:", 1)[1].split("- (void)layoutHost", 1)[0]
 assert "id controller = UIApplication.sharedApplication;" in prepare
 assert "SBHomeHardwareButtonActions" in prepare and "performSinglePressUpActions" in prepare
-assert 'home action unavailable; window not opened' in prepare
+assert 'else finish(NO)' in prepare
+assert 'objc_msgSend)(controller, selector, nil)' in prepare
 assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
@@ -72,8 +78,12 @@ assert 'protectedSettings:settings forScene:scene' in entry
 assert 'keepHostedProcessAlive' in bridge
 assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge
+assert 'com.moxuan.parallelx.transition.log' not in bridge
 assert not list(root.rglob("*.dylib")), "The project must not carry Myrtle binaries"
 assert 'com.apple.springboard' in (root / "ParallelX.plist").read_text(encoding="utf-8")
 assert not (root / "ParallelXSupport.plist").exists(), "Only SpringBoard may be injected"
 radius = (root / "prefs" / "PXCornerRadiusController.swift").read_text(encoding="utf-8")
 assert "UISlider()" in radius and "UILongPressGestureRecognizer" in radius
+gesture = (root / "prefs" / "PXGestureAreaController.swift").read_text(encoding="utf-8")
+assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureOffset", "gestureDebug"))
+assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")

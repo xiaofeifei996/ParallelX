@@ -26,4 +26,11 @@
     [self.navigationController pushViewController:[controllerClass new] animated:YES];
 }
 
+- (void)openGestureArea
+{
+    Class controllerClass = NSClassFromString(@"PXGestureAreaController");
+    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
+    [self.navigationController pushViewController:[controllerClass new] animated:YES];
+}
+
 @end

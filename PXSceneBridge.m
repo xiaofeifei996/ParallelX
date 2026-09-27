@@ -70,21 +70,6 @@ static BOOL PXUpdateScene(id scene, id settings)
     return YES;
 }
 
-static void PXTransitionLog(NSString *message)
-{
-    NSString *path = @"/var/mobile/Documents/com.moxuan.parallelx.transition.log";
-    NSFileManager *files = NSFileManager.defaultManager;
-    if (![files fileExistsAtPath:path]) [files createFileAtPath:path contents:nil attributes:nil];
-    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!handle) return;
-    @try {
-        [handle seekToEndOfFile];
-        NSString *line = [NSString stringWithFormat:@"%@ %@\n", NSDate.date, message];
-        [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-    } @catch (__unused NSException *exception) { }
-    [handle closeFile];
-}
-
 static int PXApplicationPID(NSString *bundleID)
 {
     id controller = PXCall(NSClassFromString(@"SBApplicationController"), @"sharedInstance");
@@ -186,21 +171,17 @@ static int PXApplicationPID(NSString *bundleID)
 
 - (void)prepareWindowForBundleID:(NSString *)bundleID
             wasFullscreen:(BOOL)wasFullscreen
-                      completion:(dispatch_block_t)completion
+                      completion:(void (^)(BOOL success))completion
 {
     if (!completion) return;
     NSString *currentID = [self frontmostBundleID];
     BOOL shouldReturnHome = wasFullscreen || [currentID isEqualToString:bundleID];
-    PXTransitionLog([NSString stringWithFormat:@"select=%@ cachedFullscreen=%d current=%@ returnHome=%d",
-                     bundleID, wasFullscreen, currentID, shouldReturnHome]);
-    dispatch_block_t finish = ^{
-        PXTransitionLog([NSString stringWithFormat:@"home completion current=%@",
-                         [self frontmostBundleID]]);
-        if (NSThread.isMainThread) completion();
-        else dispatch_async(dispatch_get_main_queue(), completion);
+    void (^finish)(BOOL) = ^(BOOL success){
+        if (NSThread.isMainThread) completion(success);
+        else dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
     };
     if (!shouldReturnHome || bundleID.length == 0) {
-        finish();
+        finish(YES);
         return;
     }
     id controller = UIApplication.sharedApplication;
@@ -212,16 +193,13 @@ static int PXApplicationPID(NSString *bundleID)
         id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
         SEL press = NSSelectorFromString(@"performSinglePressUpActions");
         if ([actions respondsToSelector:press]) {
-            PXTransitionLog(@"home hardware action invoked");
             ((void (*)(id, SEL))objc_msgSend)(actions, press);
-            finish();
-        } else {
-            PXTransitionLog(@"home action unavailable; window not opened");
-        }
+            finish(YES);
+        } else finish(NO);
         return;
     }
-    PXTransitionLog(@"home selector invoked");
-    ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, [finish copy]);
+    ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, nil);
+    finish(YES);
 }
 
 - (void)layoutHost
@@ -350,8 +328,6 @@ static int PXApplicationPID(NSString *bundleID)
     view.frame = CGRectMake(0, height - sourceHeight, screen.width, sourceHeight);
     self.keyboardSlot = slot;
     self.keyboardHostView = view;
-    PXTransitionLog([NSString stringWithFormat:@"keyboard outside height=%.1f source=%.1f",
-                     height, sourceHeight]);
 }
 
 - (void)openApplication:(NSString *)bundleID

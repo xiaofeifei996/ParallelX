@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)frontmostBundleID;
 - (void)prepareWindowForBundleID:(NSString *)bundleID
             wasFullscreen:(BOOL)wasFullscreen
-                      completion:(dispatch_block_t)completion
+                      completion:(void (^)(BOOL success))completion
     NS_SWIFT_NAME(prepareWindow(for:wasFullscreen:completion:));
 - (nullable id)protectedSettings:(id)settings forScene:(id)scene;
 - (BOOL)openFullscreenApplication:(NSString *)bundleID;

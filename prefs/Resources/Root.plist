@@ -5,6 +5,8 @@
         { cell = PSButtonCell; label = "添加或移除应用"; action = openPicker; },
         { cell = PSGroupCell; label = "窗口外观"; footerText = "拖动横条调整圆角，长按数字可直接输入。更改在下次打开窗口时生效。"; },
         { cell = PSButtonCell; label = "窗口圆角"; action = openRadius; },
-        { cell = PSGroupCell; footerText = "从右侧手柄拖出面板选择应用。窗口下方中央可拖动位置，两侧下角可等比缩放。仅供 iOS 15 RootHide 测试。"; }
+        { cell = PSGroupCell; label = "手势"; footerText = "底部手势区默认透明；打开调试显示后可看到实际触发范围。"; },
+        { cell = PSButtonCell; label = "底部手势区域"; action = openGestureArea; },
+        { cell = PSGroupCell; footerText = "从右侧手柄拖出面板选择应用。窗口下方透明区域可拖动、双击关闭、长按全屏；两侧下角可等比缩放。仅供 iOS 15 RootHide 测试。"; }
     );
 }
