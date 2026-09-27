@@ -10,18 +10,24 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.rotation", "方向锁定", "lock.rotation"),
     ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
     ("px.action.screenshot", "截屏", "camera.viewfinder"),
-    ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath")
+    ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
+    ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard")
 ]
 
 private func isShortcut(_ id: String) -> Bool {
-    id.hasPrefix("px.action.") || id.hasPrefix("px.url.")
+    id.hasPrefix("px.action.") || id.hasPrefix("px.url.") || id.hasPrefix("px.recent.")
 }
 
 private func panelIcon(_ id: String) -> UIImage? {
+    if id.hasPrefix("px.recent.") {
+        let parts = id.split(separator: ".", maxSplits: 3)
+        if parts.count == 4 { return PXApplicationIcon(String(parts[3])) }
+    }
     if isShortcut(id) {
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let custom = (defaults?.dictionary(forKey: "shortcutSymbols") as? [String: String])?[id]
-        let fallback = shortcuts.first(where: { $0.id == id })?.symbol ?? "link"
+        let key = id.hasPrefix("px.recent.") ? "px.action.recent" : id
+        let custom = (defaults?.dictionary(forKey: "shortcutSymbols") as? [String: String])?[key]
+        let fallback = shortcuts.first(where: { $0.id == key })?.symbol ?? "link"
         return UIImage(systemName: custom ?? fallback) ?? UIImage(systemName: fallback)
     }
     return PXApplicationIcon(id)
@@ -189,9 +195,10 @@ private final class PXPanelViewController: UIViewController {
                 button.tag = appIndex
                 button.accessibilityLabel = apps[appIndex].name
                 let id = apps[appIndex].id
-                let action = isShortcut(id)
+                let action = isShortcut(id) && !id.hasPrefix("px.recent.") ||
+                    (id.hasPrefix("px.recent.") && id.split(separator: ".", maxSplits: 3).count < 4)
                 let active = action && PXSceneBridge.shared().shortcutIsActive(id)
-                button.backgroundColor = active ? .darkGray : .systemGray5
+                button.backgroundColor = active ? UIColor(white: 0.42, alpha: 1) : .systemGray5
                 button.layer.cornerRadius = size / 2
                 button.layer.shadowColor = UIColor.black.cgColor
                 button.layer.shadowOpacity = 0.12
@@ -251,9 +258,11 @@ private final class PXPanelViewController: UIViewController {
                 }
                 selectionPreview.image = panelIcon(id)?.withConfiguration(
                     UIImage.SymbolConfiguration(pointSize: 52, weight: .medium)) ?? UIImage(systemName: "app")
-                selectionPreview.contentMode = isShortcut(id) ? .center : .scaleAspectFill
+                let symbol = !id.hasPrefix("px.recent.") || id.split(separator: ".", maxSplits: 3).count < 4
+                selectionPreview.contentMode = isShortcut(id) && symbol ? .center : .scaleAspectFill
                 selectionPreview.tintColor = PXSceneBridge.shared().shortcutIsActive(id) ? .white : .label
-                selectionPreview.backgroundColor = PXSceneBridge.shared().shortcutIsActive(id) ? .darkGray : .systemGray5
+                selectionPreview.backgroundColor = PXSceneBridge.shared().shortcutIsActive(id) ?
+                    UIColor(white: 0.42, alpha: 1) : .systemGray5
                 selectionPreview.transform = CGAffineTransform(scaleX: 0.76, y: 0.76)
                 UIView.animate(withDuration: 0.28, delay: 0,
                                usingSpringWithDamping: 0.72, initialSpringVelocity: 0,
@@ -433,8 +442,17 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let ids = defaults?.stringArray(forKey: "applications") ?? []
         let names = defaults?.dictionary(forKey: "applicationNames") as? [String: String] ?? [:]
-        return ids.map { id in
-            (id: id, name: names[id] ?? shortcuts.first(where: { $0.id == id })?.name ?? id)
+        let excluded = ids.filter { !isShortcut($0) }
+        return ids.flatMap { id -> [(id: String, name: String)] in
+            if id == "px.action.recent" {
+                let count = min(20, max(1, defaults?.integer(forKey: "recentAppRank") ?? 1))
+                return (1...count).map { rank in
+                    let bundleID = PXSceneBridge.shared().recentApplicationSkipping(excluded, rank: rank)
+                    return (id: bundleID.map { "px.recent.\(rank).\($0)" } ?? "px.recent.\(rank)",
+                            name: bundleID ?? "最近应用为空")
+                }
+            }
+            return [(id: id, name: names[id] ?? shortcuts.first(where: { $0.id == id })?.name ?? id)]
         }
     }
 
@@ -546,12 +564,17 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func performShortcut(_ id: String) {
-        if id == "px.action.recent" {
-            let defaults = UserDefaults(suiteName: preferenceDomain)
-            let rank = min(20, max(1, defaults?.integer(forKey: "recentAppRank") ?? 1))
-            let excluded = (defaults?.stringArray(forKey: "applications") ?? []).filter { !isShortcut($0) }
-            if let recent = PXSceneBridge.shared().recentApplicationSkipping(excluded, rank: rank) {
-                openHost(recent)
+        if id.hasPrefix("px.recent.") {
+            let parts = id.split(separator: ".", maxSplits: 3)
+            if parts.count == 4 { openHost(String(parts[3])) }
+        } else if id == "px.action.screenshot" &&
+                    UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "hideForScreenshot") == true {
+            handleWindow?.isHidden = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                _ = PXSceneBridge.shared().performShortcut(id)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    if self?.deviceLocked == false { self?.handleWindow?.isHidden = false }
+                }
             }
         } else if id.hasPrefix("px.url."),
                   let entries = UserDefaults(suiteName: preferenceDomain)?.array(forKey: "urlShortcuts") as? [[String: String]],
@@ -595,7 +618,8 @@ public final class PXPanelEntry: NSObject {
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
         let dark = card.traitCollection.userInterfaceStyle == .dark
-        card.layer.shadowOpacity = dark ? min(0.75, strength * 1.6) : strength
+        card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
+        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
         card.layer.shadowRadius = dark ? blur + 4 : blur
         card.layer.shadowOffset = CGSize(width: 0, height: 3)
         root.view.addSubview(card)
@@ -613,6 +637,7 @@ public final class PXPanelEntry: NSObject {
         spinner.center = CGPoint(x: width / 2, y: height / 2)
         spinner.startAnimating()
         card.addSubview(spinner)
+        let coldStart = !PXSceneBridge.shared().hasScene(forApplication: bundleID)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
         for side in [-1, 1] {
             let corner = UIView(frame: .zero)
@@ -664,6 +689,11 @@ public final class PXPanelEntry: NSObject {
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
             guard success else { self.closeHost(animated: false); return }
+            if let preview = card.subviews.first(where: { $0.tag == 0x50584c }) {
+                UIView.animate(withDuration: 0.18, animations: { preview.alpha = 0 }) { _ in
+                    preview.removeFromSuperview()
+                }
+            }
             self.matchHostAspect()
             PXSceneBridge.shared().prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
@@ -671,6 +701,18 @@ public final class PXPanelEntry: NSObject {
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
             }
+        }
+        if coldStart, let image = PXSceneBridge.shared().launchImage(forApplication: bundleID, size: card.bounds.size),
+           hostWindow === window {
+            let preview = UIImageView(image: image)
+            preview.tag = 0x50584c
+            preview.frame = card.bounds
+            preview.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            preview.contentMode = .scaleToFill
+            preview.layer.cornerRadius = card.layer.cornerRadius
+            preview.clipsToBounds = true
+            preview.isUserInteractionEnabled = false
+            card.addSubview(preview)
         }
     }
 
@@ -697,7 +739,8 @@ public final class PXPanelEntry: NSObject {
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
         let dark = card.traitCollection.userInterfaceStyle == .dark
-        card.layer.shadowOpacity = dark ? min(0.75, strength * 1.6) : strength
+        card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
+        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
         card.layer.shadowRadius = dark ? blur + 4 : blur
         if card.layer.shadowPath?.boundingBox != card.bounds {
             card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,

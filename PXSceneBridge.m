@@ -149,6 +149,42 @@ static int PXApplicationPID(NSString *bundleID)
     return nil;
 }
 
+- (BOOL)hasSceneForApplication:(NSString *)bundleID
+{
+    return [self sceneForBundleID:bundleID] != nil;
+}
+
+- (UIImage *)launchImageForApplication:(NSString *)bundleID size:(CGSize)size
+{
+    if (bundleID.length == 0 || size.width <= 0 || size.height <= 0) return nil;
+    @try {
+        id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
+        SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
+        if (![workspace respondsToSelector:lookup]) return nil;
+        id proxy = ((id (*)(id, SEL, id))objc_msgSend)(workspace, lookup, bundleID);
+        NSURL *url = PXCall(proxy, @"bundleURL");
+        if (![url isKindOfClass:NSURL.class]) return nil;
+        NSBundle *bundle = [NSBundle bundleWithURL:url];
+        NSString *name = [bundle objectForInfoDictionaryKey:@"UILaunchStoryboardName"];
+        if (![name isKindOfClass:NSString.class] || name.length == 0) return nil;
+        UIViewController *controller = [[UIStoryboard storyboardWithName:name bundle:bundle]
+                                         instantiateInitialViewController];
+        if (!controller) return nil;
+        UIView *view = controller.view;
+        view.frame = (CGRect){CGPointZero, size};
+        [view layoutIfNeeded];
+        UIGraphicsBeginImageContextWithOptions(size, YES, 0);
+        CGContextRef context = UIGraphicsGetCurrentContext();
+        if (!context) { UIGraphicsEndImageContext(); return nil; }
+        [view.layer renderInContext:context];
+        UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        return image;
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+}
+
 - (BOOL)launchSuspended:(NSString *)bundleID
 {
     SEL selector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
@@ -186,6 +222,11 @@ static int PXApplicationPID(NSString *bundleID)
 
 - (BOOL)performShortcut:(NSString *)identifier
 {
+    if ([identifier isEqualToString:@"px.action.kayoko"]) {
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+            CFSTR("codes.aurora.kayoko.core.show"), NULL, NULL, YES);
+        return YES;
+    }
     if ([identifier isEqualToString:@"px.action.dark"]) {
         Class styleClass = NSClassFromString(@"UISUserInterfaceStyleMode");
         SEL setter = NSSelectorFromString(@"setModeValue:");
@@ -398,6 +439,8 @@ static int PXApplicationPID(NSString *bundleID)
     if (!PXSetBool(mutable, @"setBackgrounded:", NO)) return nil;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", YES);
+    if (self.sourceSize.width > 0 && self.sourceSize.height > 0)
+        PXSetSceneFrame(mutable, self.sourceSize);
     SEL deactivation = NSSelectorFromString(@"setDeactivationReasons:");
     NSMethodSignature *signature = [mutable methodSignatureForSelector:deactivation];
     if (signature && signature.numberOfArguments == 3)

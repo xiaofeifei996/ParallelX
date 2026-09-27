@@ -24,6 +24,11 @@ assert 'updateSelection(at: gesture.location(in: controller.view))' in panel
 assert 'selectedSince = (next.map { isShortcut(apps[$0].id) } ?? true) ? nil : CACurrentMediaTime()' in panel
 assert 'if !isShortcut(id)' in panel
 assert 'recentApplicationSkipping(excluded, rank: rank)' in panel
+assert 'return (1...count).map { rank in' in panel
+assert 'id.hasPrefix("px.recent.")' in panel
+assert 'hideForScreenshot' in panel and 'handleWindow?.isHidden = true' in panel
+assert 'hasScene(forApplication: bundleID)' in panel
+assert 'launchImage(forApplication: bundleID, size: card.bounds.size)' in panel
 assert 'urlShortcuts' in panel and 'shortcutSymbols' in panel
 assert '[overlay insertSubview:slot atIndex:0]' in bridge
 assert 'recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank' in bridge
@@ -130,6 +135,9 @@ assert 'guard !deviceLocked, needsHostRefresh' in panel
 assert 'self.canvas.window.windowLevel + 1' in bridge
 assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in bridge
 assert 'self.relocatingKeyboard' in bridge
+assert 'PXSetSceneFrame(mutable, self.sourceSize)' in bridge
+assert 'UILaunchStoryboardName' in bridge and 'renderInContext:context' in bridge
+assert 'codes.aurora.kayoko.core.show' in bridge
 assert 'keepHostedProcessAlive' in bridge
 assert 'applicationDisplayItemWithBundleIdentifier:sceneIdentifier:' in bridge
 assert 'addAppLayoutForDisplayItem:completion:' in bridge
@@ -157,3 +165,5 @@ assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destin
 assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
 assert 'px.action.window' in picker
 assert 'px.action.recent' in picker and 'urls.count < 10' in picker
+assert 'px.action.kayoko' in picker
+assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')

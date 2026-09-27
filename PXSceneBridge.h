@@ -10,6 +10,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)relocateKeyboardView:(UIView *)view;
 - (void)layoutHost;
 - (CGSize)hostedSourceSize;
+- (BOOL)hasSceneForApplication:(NSString *)bundleID;
+- (nullable UIImage *)launchImageForApplication:(NSString *)bundleID size:(CGSize)size;
 - (nullable NSString *)frontmostBundleID;
 - (void)prepareWindowForBundleID:(NSString *)bundleID
             wasFullscreen:(BOOL)wasFullscreen

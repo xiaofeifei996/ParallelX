@@ -15,7 +15,8 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         ("px.action.rotation", "方向锁定", "lock.rotation"),
         ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
         ("px.action.screenshot", "截屏", "camera.viewfinder"),
-        ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath")
+        ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
+        ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard")
     ]
 
     public override func viewDidLoad() {
@@ -183,9 +184,9 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
             }]
             if id == "px.action.recent" {
                 let rank = UserDefaults(suiteName: self.domain)?.integer(forKey: "recentAppRank") ?? 1
-                actions.append(UIAction(title: "追溯第几个最近应用", image: UIImage(systemName: "number")) { [weak self] _ in
+                actions.append(UIAction(title: "显示几个最近应用", image: UIImage(systemName: "number")) { [weak self] _ in
                     guard let self = self else { return }
-                    self.prompt("最近应用序号", value: String(max(1, rank)), help: "跳过当前面板中的应用；范围 1–20") { value in
+                    self.prompt("最近应用数量", value: String(max(1, rank)), help: "各占一个图标位置，跳过当前面板中的应用；范围 1–20") { value in
                         guard let number = Int(value), (1...20).contains(number) else { return }
                         UserDefaults(suiteName: self.domain)?.set(number, forKey: "recentAppRank")
                     }
