@@ -120,6 +120,9 @@ assert 'slot.opaque = NO' in bridge
 assert 'screen.height * 0.55' in bridge and 'screen.height * 0.4' not in bridge
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
+assert 'if (self.scene && [self.bundleID isEqualToString:bundleID])' in bridge
+assert 'activateApplication:fromIcon:location:activationSettings:actions:' in bridge
+assert 'PXProbeFullscreenRuntime' not in bridge
 assert 'performShortcut:(NSString *)identifier' in bridge
 assert all(action in bridge for action in ('px.action.dark', 'px.action.record',
                                           'px.action.rotation', 'px.action.screenshot'))
