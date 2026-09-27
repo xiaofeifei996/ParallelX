@@ -567,6 +567,7 @@ public final class PXPanelEntry: NSObject {
     private var panel: PXPanelViewController?
     private var handle: UIView?
     private var hostedBundleID: String?
+    private var externalPendingBundleID: String?
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
     private var resizeStartRadius: CGFloat = 0
@@ -599,8 +600,22 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func externalOpenApplication(_ bundleID: String) {
         guard !shared.deviceLocked, shared.activeScene() != nil else { return }
+        shared.externalPendingBundleID = bundleID
         shared.panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
         shared.openHost(bundleID)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            guard shared.externalPendingBundleID == bundleID else { return }
+            shared.externalPendingBundleID = nil
+            guard shared.hostedBundleID == bundleID, shared.hostWindow != nil else { return }
+            shared.closeHost(animated: false)
+            _ = PXSceneBridge.shared().openFullscreenApplication(bundleID)
+        }
+    }
+
+    private func externalOpenFailed(_ bundleID: String) {
+        guard externalPendingBundleID == bundleID else { return }
+        externalPendingBundleID = nil
+        _ = PXSceneBridge.shared().openFullscreenApplication(bundleID)
     }
 
     @objc private func lockStateChanged(_ notification: Notification) {
@@ -1070,7 +1085,11 @@ public final class PXPanelEntry: NSObject {
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             spinner.stopAnimating()
-            guard success else { self.closeHost(animated: false); return }
+            guard success else {
+                self.closeHost(animated: false)
+                self.externalOpenFailed(bundleID)
+                return
+            }
             if let preview = card.subviews.first(where: { $0.tag == 0x50584c }) {
                 UIView.animate(withDuration: 0.15, animations: { preview.alpha = 0 }) { _ in
                     preview.removeFromSuperview()
@@ -1079,7 +1098,12 @@ public final class PXPanelEntry: NSObject {
             self.matchHostAspect()
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
-                guard ready else { self.closeHost(animated: false); return }
+                guard ready else {
+                    self.closeHost(animated: false)
+                    self.externalOpenFailed(bundleID)
+                    return
+                }
+                if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
             }
