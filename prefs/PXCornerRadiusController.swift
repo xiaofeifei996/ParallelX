@@ -12,6 +12,8 @@ public final class PXCornerRadiusController: UIViewController {
     private let shadowBlurLabel = UILabel()
     private let rightInset = UISlider()
     private let rightInsetLabel = UILabel()
+    private let initialWidth = UISlider()
+    private let initialWidthLabel = UILabel()
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
 
     public override func viewDidLoad() {
@@ -41,11 +43,12 @@ public final class PXCornerRadiusController: UIViewController {
         for (control, label, key, fallback, maximum) in [
             (shadowStrength, shadowStrengthLabel, "shadowStrength", 22, 50),
             (shadowBlur, shadowBlurLabel, "shadowBlur", 15, 24),
-            (rightInset, rightInsetLabel, "initialRightInset", 12, 120)
+            (rightInset, rightInsetLabel, "initialRightInset", 12, 120),
+            (initialWidth, initialWidthLabel, "initialWidthPercent", 78, 95)
         ] {
             label.font = .preferredFont(forTextStyle: .body)
             view.addSubview(label)
-            control.minimumValue = 0
+            control.minimumValue = key == "initialWidthPercent" ? 35 : 0
             control.maximumValue = Float(maximum)
             control.value = Float(defaults?.object(forKey: key) as? Int ?? fallback)
             control.addTarget(self, action: #selector(shadowChanged), for: .valueChanged)
@@ -71,6 +74,8 @@ public final class PXCornerRadiusController: UIViewController {
         shadowBlur.frame = CGRect(x: 20, y: y + 270, width: width - 40, height: 38)
         rightInsetLabel.frame = CGRect(x: 20, y: y + 330, width: width - 40, height: 28)
         rightInset.frame = CGRect(x: 20, y: y + 364, width: width - 40, height: 38)
+        initialWidthLabel.frame = CGRect(x: 20, y: y + 424, width: width - 40, height: 28)
+        initialWidth.frame = CGRect(x: 20, y: y + 458, width: width - 40, height: 38)
     }
 
     @objc private func valueChanged() {
@@ -87,16 +92,19 @@ public final class PXCornerRadiusController: UIViewController {
         shadowStrengthLabel.text = "阴影强度：\(Int(shadowStrength.value.rounded()))%"
         shadowBlurLabel.text = "阴影模糊：\(Int(shadowBlur.value.rounded())) pt"
         rightInsetLabel.text = "初始窗口距离右边缘：\(Int(rightInset.value.rounded())) pt"
+        initialWidthLabel.text = "初始窗口宽度：屏幕的 \(Int(initialWidth.value.rounded()))%"
     }
 
     @objc private func shadowFinished() {
         shadowStrength.value = shadowStrength.value.rounded()
         shadowBlur.value = shadowBlur.value.rounded()
         rightInset.value = rightInset.value.rounded()
+        initialWidth.value = initialWidth.value.rounded()
         shadowChanged()
         defaults?.set(Int(shadowStrength.value), forKey: "shadowStrength")
         defaults?.set(Int(shadowBlur.value), forKey: "shadowBlur")
         defaults?.set(Int(rightInset.value), forKey: "initialRightInset")
+        defaults?.set(Int(initialWidth.value), forKey: "initialWidthPercent")
     }
 
     @objc private func editNumber(_ gesture: UILongPressGestureRecognizer) {

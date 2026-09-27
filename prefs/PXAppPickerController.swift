@@ -16,7 +16,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         ("px.action.record", "屏幕录制 · 再次选择停止", "record.circle"),
         ("px.action.rotation", "方向锁定", "lock.rotation"),
         ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
-        ("px.action.screenshot", "截屏", "camera.viewfinder"),
+        ("px.action.screenshot", "截屏（长按仅复制）", "camera.viewfinder"),
         ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
         ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
         ("px.action.brightness", "调节亮度 · 选中后长按并上下拖动", "sun.max.fill"),

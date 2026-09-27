@@ -21,6 +21,14 @@ private func isShortcut(_ id: String) -> Bool {
     id.hasPrefix("px.action.") || id.hasPrefix("px.url.") || id.hasPrefix("px.recent.")
 }
 
+private func applicationID(_ id: String) -> String? {
+    if id.hasPrefix("px.recent.") {
+        let parts = id.split(separator: ".", maxSplits: 3)
+        return parts.count == 4 ? String(parts[3]) : nil
+    }
+    return isShortcut(id) ? nil : id
+}
+
 private func panelIcon(_ id: String) -> UIImage? {
     if id.hasPrefix("px.recent.") {
         let parts = id.split(separator: ".", maxSplits: 3)
@@ -45,14 +53,39 @@ private func panelPreviewIcon(_ id: String) -> UIImage? {
 }
 
 private final class PXHandleWindow: UIWindow {
-    var captureOutsideKeyboard: ((CGPoint) -> Bool)?
-
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
-        if result === self || result === rootViewController?.view {
-            return captureOutsideKeyboard?(point) == true ? rootViewController?.view : nil
+        return result === self || result === rootViewController?.view ? nil : result
+    }
+}
+
+private final class PXKeyboardDismissLayer: UIControl {
+    var excludedRects: [CGRect] = [] {
+        didSet {
+            let area = CGRect(x: 0, y: 0, width: bounds.width,
+                              height: max(0, excludedRects.dropFirst().first?.minY ?? bounds.height))
+            let path = UIBezierPath(rect: area)
+            if let card = excludedRects.first, card.intersects(area) {
+                path.append(UIBezierPath(rect: card.intersection(area)))
+            }
+            shade.path = path.cgPath
         }
-        return result
+    }
+    private let shade = CAShapeLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        shade.fillRule = .evenOdd
+        shade.fillColor = UIColor.gray.withAlphaComponent(0.08).cgColor
+        layer.addSublayer(shade)
+        accessibilityLabel = "点击关闭分屏"
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.contains(point) && !excludedRects.contains { $0.contains(point) }
     }
 }
 
@@ -335,19 +368,19 @@ private final class PXPanelViewController: UIViewController {
                 UIView.animate(withDuration: 0.13) { old.subviews.first?.transform = .identity }
             }
             selectedIndex = next
-            selectedSince = (next.map { isShortcut(apps[$0].id) } ?? true) ? nil : CACurrentMediaTime()
+            selectedSince = next.map { applicationID(apps[$0].id) != nil || apps[$0].id == "px.action.screenshot" } == true ? CACurrentMediaTime() : nil
             if let hit = hit, let next = next {
                 selectionFeedback.selectionChanged()
                 selectionFeedback.prepare()
                 let id = apps[next].id
-                if !isShortcut(id) || id == "px.action.brightness" {
+                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" {
                     holdFeedback.prepare()
                     let task = DispatchWorkItem { [weak self] in
                         guard let self = self, self.selectedIndex == next else { return }
+                        self.holdFeedback.impactOccurred()
                         if id == "px.action.brightness" {
                             self.onBrightnessHold?(self.lastSelectionPoint)
-                        } else {
-                            self.holdFeedback.impactOccurred()
+                        } else if applicationID(id) != nil {
                             self.animateFullscreenReady()
                         }
                     }
@@ -588,7 +621,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
 }
 
 @objc(PXPanelEntry)
-public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
+public final class PXPanelEntry: NSObject {
     private static let shared = PXPanelEntry()
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
@@ -617,6 +650,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
     private var handleDragStartY: CGFloat = 0
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
+    private var keyboardDismissLayer: PXKeyboardDismissLayer?
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -624,6 +658,8 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         NotificationCenter.default.addObserver(shared,
             selector: #selector(sceneDeactivated), name: UIScene.willDeactivateNotification, object: nil)
         shared.installHandle()
+        NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
+            name: Notification.Name("PXKeyboardStateChanged"), object: nil)
         NotificationCenter.default.addObserver(shared,
             selector: #selector(lockStateChanged), name: Notification.Name("PXLockStateChanged"), object: nil)
     }
@@ -632,6 +668,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let hide = UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "hideForScreenshot") == true
         if let handle = shared.handle { PXSceneBridge.setCaptureHidden(hide, for: handle) }
         if let view = shared.panel?.view { PXSceneBridge.setCaptureHidden(hide, for: view) }
+        shared.refreshKeyboardDismissLayer()
     }
 
     @objc public static func applicationActivated(_ bundleID: String) {
@@ -746,19 +783,6 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let root = UIViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
-        window.captureOutsideKeyboard = { [weak self, weak window] point in
-            guard let self = self, let window = window, self.hostWindow != nil,
-                  self.activeBridge.isKeyboardRelocated() else { return false }
-            let defaults = UserDefaults(suiteName: preferenceDomain)
-            guard defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
-                defaults?.bool(forKey: "closeOutsideWithKeyboard") == true else { return false }
-            let screenPoint = window.convert(point, to: nil)
-            return self.hostWindow?.frame.contains(screenPoint) == false &&
-                !self.activeBridge.relocatedKeyboardFrame().contains(point)
-        }
-        let outsideTap = UITapGestureRecognizer(target: self, action: #selector(outsideKeyboardTapped))
-        outsideTap.delegate = self
-        root.view.addGestureRecognizer(outsideTap)
         let pill = UIView(frame: .zero)
         pill.backgroundColor = .secondarySystemBackground
         pill.layer.cornerCurve = .continuous
@@ -781,12 +805,28 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         updateHandleAppearance()
     }
 
-    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                                  shouldReceive touch: UITouch) -> Bool {
-        touch.view === handleWindow?.rootViewController?.view
-    }
-
     @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
+
+    @objc private func refreshKeyboardDismissLayer() {
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
+            defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
+        guard enabled, !deviceLocked, hostWindow != nil, activeBridge.isKeyboardRelocated(),
+              let root = handleWindow?.rootViewController?.view, let card = hostCard else {
+            keyboardDismissLayer?.removeFromSuperview()
+            keyboardDismissLayer = nil
+            return
+        }
+        let layer = keyboardDismissLayer ?? PXKeyboardDismissLayer(frame: root.bounds)
+        if keyboardDismissLayer == nil {
+            layer.addTarget(self, action: #selector(outsideKeyboardTapped), for: .touchUpInside)
+            root.insertSubview(layer, at: 0)
+            keyboardDismissLayer = layer
+        }
+        layer.frame = root.bounds
+        layer.excludedRects = [card.convert(card.bounds, to: root), activeBridge.relocatedKeyboardFrame()] +
+            (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).map { $0.convert($0.bounds, to: root) }
+    }
 
     private func updateHandleAppearance() {
         guard let window = handleWindow, let pill = handle else { return }
@@ -913,18 +953,13 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
                let controller = panel,
                let bundleID = controller.updateSelection(at: gesture.location(in: controller.view)) {
                 let fullscreen = controller.selectedDuration >= controller.holdDuration
-                if isShortcut(bundleID) {
-                    hidePanel { [weak self] in self?.performShortcut(bundleID) }
-                } else {
+                if let appID = applicationID(bundleID) {
                     hidePanel()
-                    if fullscreen {
-                        if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped() }
-                        else if let dock = dockedHosts.first(where: { $0.bundleID == bundleID }) {
-                            restoreDock(dock)
-                            fullscreenTapped()
-                        }
-                        else { _ = PXSceneBridge.shared().openFullscreenApplication(bundleID) }
-                    } else { openHost(bundleID) }
+                    if fullscreen { openFullscreen(appID) }
+                    else { openHost(appID) }
+                } else {
+                    let action = bundleID == "px.action.screenshot" && fullscreen ? "px.action.screenshot.copy" : bundleID
+                    hidePanel { [weak self] in self?.performShortcut(action) }
                 }
             } else { hidePanel() }
         case .cancelled, .failed:
@@ -953,6 +988,11 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
     }
 
     private func openHost(_ bundleID: String) {
+        if hostedBundleID == bundleID, hostWindow != nil {
+            externalPendingBundleID = nil
+            panelFrontmostBundleID = nil
+            return
+        }
         if let dock = dockedHosts.first(where: { $0.bundleID == bundleID }) {
             restoreDock(dock)
             return
@@ -960,6 +1000,16 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let wasFullscreen = panelFrontmostBundleID == bundleID
         panelFrontmostBundleID = nil
         presentHost(bundleID, wasFullscreen: wasFullscreen)
+    }
+
+    private func openFullscreen(_ bundleID: String) {
+        if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped(); return }
+        closeHost(animated: false)
+        if let dock = dockedHosts.first(where: { $0.bundleID == bundleID }) {
+            removeDock(dock, fullscreenHandoff: true)
+        }
+        panelFrontmostBundleID = nil
+        _ = PXSceneBridge.shared().openFullscreenApplication(bundleID)
     }
 
     private func performShortcut(_ id: String) {
@@ -1030,10 +1080,11 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
-        closeHost(animated: false)
+        if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: 1) }
+        else { closeHost(animated: false) }
         hostedBundleID = bundleID
         let screen = scene.coordinateSpace.bounds
-        let width = screen.width * 0.78
+        let width = screen.width * initialWidthFraction
         let height = width * screen.height / screen.width
         let cardFrame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
         let window = PXHandleWindow(windowScene: scene)
@@ -1175,7 +1226,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let source = activeBridge.hostedSourceSize()
         guard source.width > 0, source.height > 0 else { return }
         let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
-        let width = min(screen.width * 0.78,
+        let width = min(screen.width * initialWidthFraction,
                         (screen.height - 80) * source.width / source.height)
         let height = width * source.height / source.width
         let frame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
@@ -1193,6 +1244,11 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let inset = min(max(0, screen.width - size.width), max(0, CGFloat(saved?.doubleValue ?? 12)))
         return CGRect(x: screen.maxX - size.width - inset,
                       y: screen.midY - size.height / 2, width: size.width, height: size.height)
+    }
+
+    private var initialWidthFraction: CGFloat {
+        let saved = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "initialWidthPercent") as? NSNumber
+        return CGFloat(min(95, max(35, saved?.doubleValue ?? 78))) / 100
     }
 
     private func layoutHostControls() {
@@ -1228,12 +1284,10 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
         hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
                                      width: width, height: height)
+        refreshKeyboardDismissLayer()
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
-        let limit = min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
-            .integer(forKey: "dockCount") ?? 2))
-        if dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }
         parkMain(side: sender.tag)
     }
 
@@ -1241,6 +1295,9 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
               let root = window.rootViewController?.view else { return false }
+        let limit = min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
+            .object(forKey: "dockCount") as? Int ?? 2))
+        while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }
         let overlay = UIView(frame: root.bounds)
         overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)
@@ -1269,6 +1326,7 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         hostMoveGrip = nil
         hostedBundleID = nil
         activeBridge = PXSceneBridge()
+        refreshKeyboardDismissLayer()
         layoutDocks()
         return true
     }
@@ -1507,8 +1565,15 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
         guard let window = hostWindow else { return }
         if gesture.state == .began { moveStartFrame = window.frame }
         guard let start = moveStartFrame else { return }
+        let translation = gesture.translation(in: handleWindow)
+        if gesture.state == .ended, translation.y < -35,
+           -translation.y > abs(translation.x) * 1.2,
+           gesture.velocity(in: handleWindow).y < -500 {
+            moveStartFrame = nil
+            parkMain(side: 1)
+            return
+        }
         if gesture.state == .changed || gesture.state == .ended {
-            let translation = gesture.translation(in: handleWindow)
             window.frame = start.offsetBy(dx: translation.x, dy: translation.y)
             layoutHostControls()
         }
@@ -1519,6 +1584,8 @@ public final class PXPanelEntry: NSObject, UIGestureRecognizerDelegate {
 
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
+        keyboardDismissLayer?.removeFromSuperview()
+        keyboardDismissLayer = nil
         let closingCard = hostCard
         resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }

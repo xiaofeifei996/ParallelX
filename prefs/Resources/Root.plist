@@ -9,7 +9,7 @@
         { cell = PSLinkCell; label = "角落小窗"; id = dock; },
         { cell = PSGroupCell; label = "交互"; },
         { cell = PSLinkCell; label = "底部手势区域"; id = gestures; },
-        { cell = PSSwitchCell; label = "有键盘时点击外部关闭分屏"; defaults = "com.moxuan.parallelx"; key = "closeOutsideWithKeyboard"; default = 1; },
+        { cell = PSSwitchCell; label = "有键盘时点击外部关闭分屏"; defaults = "com.moxuan.parallelx"; key = "closeOutsideWithKeyboard"; default = 1; PostNotification = "com.moxuan.parallelx.capture-updated"; },
         { cell = PSGroupCell; label = "外部打开"; footerText = "点击通知或其他应用中的链接时，将目标应用放入分屏；系统应用及不支持的启动请求仍按原方式打开。"; },
         { cell = PSSwitchCell; label = "通知跳转分屏"; defaults = "com.moxuan.parallelx"; key = "notificationSplitEnabled"; default = 1; },
         { cell = PSSwitchCell; label = "URL 跳转分屏"; defaults = "com.moxuan.parallelx"; key = "urlSplitEnabled"; default = 1; },

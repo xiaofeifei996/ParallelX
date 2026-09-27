@@ -328,6 +328,14 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ((void (*)(id, SEL))objc_msgSend)(manager, action);
         return YES;
     }
+    if ([identifier isEqualToString:@"px.action.screenshot.copy"]) {
+        CFTypeRef (*capture)(void) = (CFTypeRef (*)(void))dlsym(RTLD_DEFAULT, "_UICreateScreenUIImage");
+        if (!capture) return NO;
+        UIImage *image = (__bridge_transfer UIImage *)capture();
+        if (!image) return NO;
+        UIPasteboard.generalPasteboard.image = image;
+        return YES;
+    }
     if ([identifier isEqualToString:@"px.action.screenshot"]) {
         id springBoard = UIApplication.sharedApplication;
         SEL action = NSSelectorFromString(@"takeScreenshot");
@@ -659,6 +667,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             self.keyboardSlot = nil;
             self.keyboardHostView = nil;
             self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel;
+            [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
         }
         else {
             CGSize screen = self.keyboardOverlay.bounds.size;
@@ -666,11 +675,13 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             if (height <= 0 || screen.width <= 0) return;
             CGRect slotFrame = CGRectMake(0, screen.height - height, screen.width, height);
             self.relocatingKeyboard = YES;
-            if (!CGRectEqualToRect(self.keyboardSlot.frame, slotFrame)) self.keyboardSlot.frame = slotFrame;
+            BOOL changed = !CGRectEqualToRect(self.keyboardSlot.frame, slotFrame);
+            if (changed) self.keyboardSlot.frame = slotFrame;
             CGRect keyboardFrame = CGRectMake(0, height - view.bounds.size.height,
                                                screen.width, view.bounds.size.height);
             if (!CGRectEqualToRect(view.frame, keyboardFrame)) view.frame = keyboardFrame;
             self.relocatingKeyboard = NO;
+            if (changed) [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
             return;
         }
     }
@@ -700,6 +711,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     self.keyboardSlot = slot;
     self.keyboardHostView = view;
     self.relocatingKeyboard = NO;
+    [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
 }
 
 - (void)relocateExistingKeyboard:(UIView *)root
@@ -823,6 +835,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     [self.keyboardSlot removeFromSuperview];
     self.keyboardSlot = nil;
     self.keyboardOverlay = nil;
+    [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
     UIView *host = self.hostView;
     self.hostView = nil;
     id scene = self.scene;

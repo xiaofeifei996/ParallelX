@@ -21,8 +21,8 @@ assert 'let centerX = view.bounds.maxX - size / 2 - edgeInset' in panel
 assert 'sheet = UIVisualEffectView' not in panel
 assert 'launcherDragDistance' in panel
 assert 'updateSelection(at: gesture.location(in: controller.view))' in panel
-assert 'selectedSince = (next.map { isShortcut(apps[$0].id) } ?? true) ? nil : CACurrentMediaTime()' in panel
-assert 'if !isShortcut(id)' in panel
+assert 'selectedSince = next.map { applicationID(apps[$0].id) != nil || apps[$0].id == "px.action.screenshot" }' in panel
+assert 'if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot"' in panel
 assert 'recentApplicationSkipping(excluded, rank: rank)' in panel
 assert 'return (1...count).map { rank in' in panel
 assert 'id.hasPrefix("px.recent.")' in panel
@@ -43,7 +43,7 @@ assert 'selectionPreview.layer.cornerRadius = 26' in panel
 assert 'width: 110, height: 110' in panel
 assert 'selectionPreview.layer.borderWidth = 6' in panel
 assert 'shortcuts: [(id: String, name: String, symbol: String)]' in panel
-assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped() }' in panel
+assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped(); return }' in panel
 assert 'window.windowLevel = .statusBar - 2' in panel
 assert 'shadowStrength' in panel and 'shadowBlur' in panel
 assert 'card.layer.shadowPath = UIBezierPath' in panel
@@ -56,7 +56,7 @@ for count in (3, 5, 7, 12):
     radius = spacing / (2 * sin(pi / (2 * (count - 1))))
     assert 2 * radius * sin(pi / (2 * (count - 1))) >= spacing - 1e-6
 assert 'bridge.close()' in panel
-assert "let width = screen.width * 0.78" in panel
+assert "let width = screen.width * initialWidthFraction" in panel
 assert "let height = width * screen.height / screen.width" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
 assert panel.index("root.view.addSubview(card)") < panel.index("let clip = UIView(frame:")
@@ -210,8 +210,22 @@ assert 'createApplicationProcessForBundleID:' not in bridge
 assert bridge.index('completion(YES);') < bridge.index('[strongSelf registerSceneInSwitcher:scene bundleID:bundleID]')
 assert 'if (strongSelf.generation == generation)\n                            [strongSelf registerSceneInSwitcher:scene bundleID:bundleID];' in bridge
 assert 'deadline: .now() + 0.16' not in panel
-assert 'if dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }' in panel
-assert 'captureOutsideKeyboard' in panel and 'isKeyboardRelocated()' in panel
+assert 'while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }' in park
+assert 'captureOutsideKeyboard' not in panel and 'isKeyboardRelocated()' in panel
+assert 'private final class PXKeyboardDismissLayer: UIControl' in panel
+assert 'root.insertSubview(layer, at: 0)' in panel
+assert '!excludedRects.contains { $0.contains(point) }' in panel
+assert bridge.count('postNotificationName:@"PXKeyboardStateChanged"') == 4
+assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
+assert 'keyboardDismissLayer?.removeFromSuperview()' in close_host
+assert 'gesture.velocity(in: handleWindow).y < -500' in panel
+assert 'if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: 1) }' in panel
+open_fullscreen = panel.split('private func openFullscreen(', 1)[1].split('private func performShortcut', 1)[0]
+assert open_fullscreen.index('closeHost(animated: false)') < open_fullscreen.index('openFullscreenApplication(bundleID)')
+assert 'px.action.screenshot.copy' in panel and 'px.action.screenshot.copy' in bridge
+copy_shot = bridge.split('if ([identifier isEqualToString:@"px.action.screenshot.copy"])', 1)[1].split('if ([identifier isEqualToString:@"px.action.screenshot"])', 1)[0]
+assert '_UICreateScreenUIImage' in copy_shot and 'UIPasteboard.generalPasteboard.image = image' in copy_shot
+assert 'takeScreenshot' not in copy_shot and 'UIImageWriteToSavedPhotosAlbum' not in copy_shot
 assert 'urlSplitExcluded' in entry and 'URL 分屏黑名单' in root_plist
 assert '!notification && link ? [defaults stringArrayForKey:@"urlSplitExcluded"] : nil' in entry
 assert 'displayItemWithType:bundleIdentifier:uniqueIdentifier:' not in bridge
@@ -224,6 +238,7 @@ assert not (root / "ParallelXSupport.plist").exists(), "Only SpringBoard may be 
 radius = (root / "prefs" / "PXCornerRadiusController.swift").read_text(encoding="utf-8")
 assert "UISlider()" in radius and "UILongPressGestureRecognizer" in radius
 assert '"shadowStrength"' in radius and '"shadowBlur"' in radius
+assert '"initialWidthPercent"' in radius and '"initialWidthPercent"' in panel
 gesture = (root / "prefs" / "PXGestureAreaController.swift").read_text(encoding="utf-8")
 assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureOffset", "gestureDebug"))
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
