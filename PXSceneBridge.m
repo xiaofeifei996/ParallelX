@@ -162,12 +162,6 @@ static int PXApplicationPID(NSString *bundleID)
         launched = signature && signature.numberOfArguments == 4 &&
             ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, YES);
     }
-    if (launched && !PXApplicationPID(bundleID)) {
-        id manager = PXCall(NSClassFromString(@"FBProcessManager"), @"sharedInstance");
-        SEL create = NSSelectorFromString(@"createApplicationProcessForBundleID:");
-        if ([manager methodSignatureForSelector:create].numberOfArguments == 3)
-            ((void (*)(id, SEL, id))objc_msgSend)(manager, create, bundleID);
-    }
     return launched;
 }
 
@@ -612,9 +606,13 @@ static int PXApplicationPID(NSString *bundleID)
                 if (layers.count && strongSelf.hostView) {
                     [strongSelf.hostView layoutIfNeeded];
                     [strongSelf relocateExistingKeyboard:strongSelf.hostView];
-                    if (coldStart)
-                        [strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID];
                     completion(YES);
+                    if (coldStart) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if (strongSelf.generation == generation)
+                                [strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID];
+                        });
+                    }
                     retry = nil;
                     return;
                 }

@@ -133,6 +133,8 @@ assert 'self.relocatingKeyboard' in bridge
 assert 'keepHostedProcessAlive' in bridge
 assert 'applicationDisplayItemWithBundleIdentifier:sceneIdentifier:' in bridge
 assert 'addAppLayoutForDisplayItem:completion:' in bridge
+assert 'createApplicationProcessForBundleID:' not in bridge
+assert bridge.index('completion(YES);') < bridge.index('[strongSelf registerColdSceneInSwitcher:scene bundleID:bundleID]')
 assert 'displayItemWithType:bundleIdentifier:uniqueIdentifier:' not in bridge
 assert 'self.processAssertion = nil' in bridge
 assert 'com.moxuan.parallelx.scene.log' not in bridge
