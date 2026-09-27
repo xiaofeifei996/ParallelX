@@ -47,11 +47,12 @@ static void PXSetOpenOptions(id request, SEL selector, id options)
         ![bundleID isEqualToString:@"com.apple.springboard"] &&
         ![bundleID isEqualToString:@"com.apple.mobileslideshow"] &&
         ![bundleID isEqualToString:@"com.apple.ReplayKitNotifications"];
-    NSString **key = dlsym(RTLD_DEFAULT, "FBSOpenApplicationOptionKeyActivateSuspended");
+    void *rawKey = dlsym(RTLD_DEFAULT, "FBSOpenApplicationOptionKeyActivateSuspended");
+    NSString *key = rawKey ? *(__unsafe_unretained NSString **)rawKey : nil;
     SEL setDictionary = NSSelectorFromString(@"setDictionary:");
-    if (eligible && key && *key && [request respondsToSelector:setDictionary]) {
+    if (eligible && key && [request respondsToSelector:setDictionary]) {
         NSMutableDictionary *updated = [values mutableCopy];
-        updated[*key] = @YES;
+        updated[key] = @YES;
         ((void (*)(id, SEL, id))objc_msgSend)(request, setDictionary, updated);
         SEL trust = NSSelectorFromString(@"setTrusted:");
         if ([request respondsToSelector:trust])
