@@ -11,7 +11,8 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
     ("px.action.screenshot", "截屏", "camera.viewfinder"),
     ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
-    ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard")
+    ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
+    ("px.action.brightness", "调节亮度", "sun.max.fill")
 ]
 
 private func isShortcut(_ id: String) -> Bool {
@@ -34,10 +35,8 @@ private func panelIcon(_ id: String) -> UIImage? {
 }
 
 private final class PXHandleWindow: UIWindow {
-    var onHitTest: ((CGPoint, UIView?) -> Void)?
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
-        onHitTest?(point, result)
         return result === self || result === rootViewController?.view ? nil : result
     }
 }
@@ -94,18 +93,24 @@ private final class PXDockedHost {
 
 private final class PXPanelViewController: UIViewController {
     var apps: [(id: String, name: String)] = []
+    var onBrightnessHold: ((CGPoint) -> Void)?
     var handleCenterY: CGFloat = 0
     var handleCenterX: CGFloat = 0
     var holdDuration: TimeInterval = 0.7
     private let shade = UIView()
     private let pageControl = UIPageControl()
     private let selectionPreview = UIImageView()
+    private let brightnessOverlay = UIView()
+    private let brightnessTrack = UIView()
+    private let brightnessFill = UIView()
+    private let brightnessPercent = UILabel()
     private let selectionFeedback = UISelectionFeedbackGenerator()
     private let holdFeedback = UIImpactFeedbackGenerator(style: .medium)
     private var buttons: [UIButton] = []
     private var buttonRings: [Int] = []
     private var selectedIndex: Int?
     private var selectedSince: CFTimeInterval?
+    private var lastSelectionPoint = CGPoint.zero
     private var holdFeedbackTask: DispatchWorkItem?
     private var page = 0
     private var pageCapacity = 1
@@ -141,6 +146,26 @@ private final class PXPanelViewController: UIViewController {
         selectionPreview.isUserInteractionEnabled = false
         selectionPreview.alpha = 0
         view.addSubview(selectionPreview)
+        brightnessOverlay.backgroundColor = .secondarySystemBackground
+        brightnessOverlay.layer.cornerRadius = 30
+        brightnessOverlay.isHidden = true
+        let sun = UIImageView(image: UIImage(systemName: "sun.max.fill"))
+        sun.tintColor = .label
+        sun.contentMode = .scaleAspectFit
+        sun.frame = CGRect(x: 42, y: 22, width: 28, height: 28)
+        brightnessOverlay.addSubview(sun)
+        brightnessTrack.backgroundColor = .systemGray4
+        brightnessTrack.layer.cornerRadius = 22
+        brightnessTrack.clipsToBounds = true
+        brightnessTrack.frame = CGRect(x: 34, y: 64, width: 44, height: 172)
+        brightnessOverlay.addSubview(brightnessTrack)
+        brightnessFill.backgroundColor = .label
+        brightnessTrack.addSubview(brightnessFill)
+        brightnessPercent.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+        brightnessPercent.textAlignment = .center
+        brightnessPercent.frame = CGRect(x: 0, y: 252, width: 112, height: 24)
+        brightnessOverlay.addSubview(brightnessPercent)
+        view.addSubview(brightnessOverlay)
         if apps.isEmpty {
             let label = UILabel()
             label.text = "请先在设置中添加应用"
@@ -164,6 +189,8 @@ private final class PXPanelViewController: UIViewController {
         selectionPreview.frame = CGRect(x: view.bounds.midX - 55,
                                         y: max(view.safeAreaInsets.top + 24, view.bounds.height * 0.2 - 55),
                                         width: 110, height: 110)
+        brightnessOverlay.frame = CGRect(x: view.bounds.midX - 56,
+                                         y: view.bounds.midY - 148, width: 112, height: 296)
         guard lastSize != view.bounds.size else { return }
         lastSize = view.bounds.size
         layoutPage()
@@ -269,6 +296,7 @@ private final class PXPanelViewController: UIViewController {
     }
 
     func updateSelection(at point: CGPoint) -> String? {
+        lastSelectionPoint = point
         let hit = buttons.reversed().first {
             $0.frame.insetBy(dx: -4, dy: -4).contains(point)
         }
@@ -285,11 +313,13 @@ private final class PXPanelViewController: UIViewController {
                 selectionFeedback.selectionChanged()
                 selectionFeedback.prepare()
                 let id = apps[next].id
-                if !isShortcut(id) {
+                if !isShortcut(id) || id == "px.action.brightness" {
                     holdFeedback.prepare()
                     let task = DispatchWorkItem { [weak self] in
                         guard let self = self, self.selectedIndex == next else { return }
-                        self.holdFeedback.impactOccurred()
+                        if id == "px.action.brightness" {
+                            self.onBrightnessHold?(self.lastSelectionPoint)
+                        } else { self.holdFeedback.impactOccurred() }
                     }
                     holdFeedbackTask = task
                     DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: task)
@@ -322,6 +352,24 @@ private final class PXPanelViewController: UIViewController {
 
     func cancelSelectionFeedback() { holdFeedbackTask?.cancel() }
 
+    func showBrightness(_ value: CGFloat) {
+        cancelSelectionFeedback()
+        buttons.forEach { $0.alpha = 0 }
+        selectionPreview.alpha = 0
+        pageControl.alpha = 0
+        shade.backgroundColor = UIColor.black.withAlphaComponent(0.48)
+        brightnessOverlay.isHidden = false
+        updateBrightness(value)
+    }
+
+    func updateBrightness(_ value: CGFloat) {
+        let amount = min(1, max(0, value))
+        let height = brightnessTrack.bounds.height * amount
+        brightnessFill.frame = CGRect(x: 0, y: brightnessTrack.bounds.height - height,
+                                      width: brightnessTrack.bounds.width, height: height)
+        brightnessPercent.text = "亮度 \(Int((amount * 100).rounded()))%"
+    }
+
     func animateClosed(completion: @escaping () -> Void) {
         cancelSelectionFeedback()
         let duration = UIAccessibility.isReduceMotionEnabled ? 0 : 0.25
@@ -339,6 +387,7 @@ private final class PXPanelViewController: UIViewController {
             self.shade.alpha = 0
             self.pageControl.alpha = 0
             self.selectionPreview.alpha = 0
+            self.brightnessOverlay.alpha = 0
         } completion: { _ in completion() }
     }
 }
@@ -346,8 +395,6 @@ private final class PXPanelViewController: UIViewController {
 @objc(PXPanelEntry)
 public final class PXPanelEntry: NSObject {
     private static let shared = PXPanelEntry()
-    private static let touchProbeQueue = DispatchQueue(label: "com.moxuan.parallelx.touch-probe")
-    private var touchProbeCount = 0
     private var handleWindow: PXHandleWindow?
     private var panelWindow: UIWindow?
     private var hostWindow: UIWindow?
@@ -372,25 +419,7 @@ public final class PXPanelEntry: NSObject {
     private var panelDragProgress: CGFloat = 0
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
     private var handleDragStartY: CGFloat = 0
-
-    private func recordDockTouch(_ message: String) {
-        let line = "\(Date()) \(message)\n"
-        Self.touchProbeQueue.async {
-            let path = "/var/mobile/Library/Preferences/com.moxuan.parallelx.touch.log"
-            let data = Data(line.utf8)
-            if !FileManager.default.fileExists(atPath: path) {
-                guard FileManager.default.createFile(atPath: path, contents: nil) else {
-                    NSLog("ParallelX touch probe could not create %@", path)
-                    return
-                }
-            }
-            if let file = FileHandle(forWritingAtPath: path) {
-                file.seekToEndOfFile()
-                file.write(data)
-                file.closeFile()
-            } else { NSLog("ParallelX touch probe could not open %@", path) }
-        }
-    }
+    private var brightnessStart: (y: CGFloat, value: CGFloat)?
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -488,13 +517,6 @@ public final class PXPanelEntry: NSObject {
         if handleWindow != nil { updateHandleAppearance(); return }
         guard let scene = activeScene() else { return }
         let window = PXHandleWindow(windowScene: scene)
-        window.onHitTest = { [weak self] point, hit in
-            guard let self = self, !self.dockedHosts.isEmpty, self.touchProbeCount < 80 else { return }
-            self.touchProbeCount += 1
-            let viewName = hit.map { String(describing: type(of: $0)) } ?? "nil"
-            let frames = self.dockedHosts.map { "\($0.bundleID):\($0.overlay.frame)" }.joined(separator: ",")
-            self.recordDockTouch("hit point=\(point) view=\(viewName) docks=\(frames)")
-        }
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar - 1
         window.backgroundColor = .clear
@@ -572,6 +594,12 @@ public final class PXPanelEntry: NSObject {
         let holdMillis = UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "launcherHoldMilliseconds") as? Int ?? 700
         controller.holdDuration = Double(min(2000, max(300, holdMillis))) / 1000
+        controller.onBrightnessHold = { [weak self, weak controller] point in
+            guard let self = self, self.handleDragMode == 1 else { return }
+            let value = CGFloat(UIScreen.main.brightness)
+            self.brightnessStart = (point.y, value)
+            controller?.showBrightness(value)
+        }
         window.rootViewController = controller
         _ = controller.view
         controller.view.layoutIfNeeded()
@@ -592,6 +620,7 @@ public final class PXPanelEntry: NSObject {
         switch gesture.state {
         case .began:
             panelDragProgress = 0
+            brightnessStart = nil
             handleDragMode = 0
             handleDragStartY = pill.center.y
             fallthrough
@@ -606,6 +635,13 @@ public final class PXPanelEntry: NSObject {
                 return
             }
             guard handleDragMode == 1 else { return }
+            if let start = brightnessStart, let controller = panel {
+                let y = gesture.location(in: controller.view).y
+                let value = min(1, max(0, start.value + (start.y - y) / (root.bounds.height * 0.45)))
+                controller.updateBrightness(value)
+                _ = PXSceneBridge.shared().setBrightnessLevel(Float(value))
+                return
+            }
             panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))
             panel?.setProgress(panelDragProgress)
             if panelDragProgress >= 0.8 {
@@ -615,6 +651,11 @@ public final class PXPanelEntry: NSObject {
                 }
             }
         case .ended:
+            if brightnessStart != nil {
+                brightnessStart = nil
+                hidePanel()
+                return
+            }
             if handleDragMode == 2 {
                 UserDefaults(suiteName: preferenceDomain)?.set(Double(pill.center.y / root.bounds.height),
                                                                   forKey: "handleCenterFraction")
@@ -640,6 +681,7 @@ public final class PXPanelEntry: NSObject {
                 }
             } else { hidePanel() }
         case .cancelled, .failed:
+            brightnessStart = nil
             if handleDragMode == 2 { updateHandleAppearance() }
             hidePanel()
         default: break
@@ -674,6 +716,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func performShortcut(_ id: String) {
+        if id == "px.action.brightness" { return }
         if id.hasPrefix("px.recent.") {
             let parts = id.split(separator: ".", maxSplits: 3)
             if parts.count == 4 { openHost(String(parts[3])) }
@@ -918,8 +961,6 @@ public final class PXPanelEntry: NSObject {
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 moveGrip: hostMoveGrip, overlay: overlay)
         dockedHosts.append(dock)
-        touchProbeCount = 0
-        recordDockTouch("park \(bundleID) initial=\(overlay.frame)")
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
         hostWindow = nil
         hostCard = nil
@@ -950,7 +991,6 @@ public final class PXPanelEntry: NSObject {
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
-            recordDockTouch("layout \(dock.bundleID) target=\(frame)")
             UIView.animate(withDuration: 0.38, delay: 0, usingSpringWithDamping: 0.86,
                            initialSpringVelocity: 0, options: .beginFromCurrentState) {
                 dock.window.frame = frame
@@ -969,13 +1009,11 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func restoreDockTapped(_ sender: UITapGestureRecognizer) {
         guard let dock = dockedHosts.first(where: { $0.overlay === sender.view }) else { return }
-        recordDockTouch("tap \(dock.bundleID)")
         restoreDock(dock)
     }
 
     @objc private func dockSwiped(_ sender: UISwipeGestureRecognizer) {
         guard let dock = dockedHosts.first(where: { $0.overlay === sender.view }) else { return }
-        recordDockTouch("swipe \(dock.bundleID) direction=\(sender.direction.rawValue)")
         if sender.direction == .up {
             removeDock(dock)
         } else {

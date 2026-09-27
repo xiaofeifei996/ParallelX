@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import <string.h>
 #import <dlfcn.h>
+#import <math.h>
 
 @interface PXKeyboardSlot : UIView
 @end
@@ -326,6 +327,22 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         return YES;
     }
     return NO;
+}
+
+- (BOOL)setBrightnessLevel:(float)level
+{
+    static id controller;
+    static SEL setter;
+    if (!controller) {
+        Class cls = NSClassFromString(@"SBDisplayBrightnessController");
+        setter = NSSelectorFromString(@"setBrightnessLevel:animated:");
+        if (!cls || ![cls instancesRespondToSelector:setter]) return NO;
+        controller = [cls new];
+    }
+    if (![controller respondsToSelector:setter]) return NO;
+    ((void (*)(id, SEL, float, BOOL))objc_msgSend)(controller, setter,
+        fminf(1, fmaxf(0, level)), NO);
+    return YES;
 }
 
 - (BOOL)shortcutIsActive:(NSString *)identifier

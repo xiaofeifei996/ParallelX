@@ -168,10 +168,12 @@ assert 'com.apple.springboard.lockstate' in entry
 assert 'guard !deviceLocked, needsHostRefresh' in panel
 assert 'bool(forKey: "clearOnLock")' in panel
 assert 'for dock in Array(dockedHosts) { removeDock(dock) }' in panel
-assert 'recordDockTouch("park \\(bundleID)' in panel
-assert 'recordDockTouch("layout \\(dock.bundleID)' in panel
+assert 'recordDockTouch' not in panel and 'touchProbe' not in panel
 assert 'overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)' in panel
+assert 'onBrightnessHold' in panel and 'start.value + (start.y - y)' in panel
+assert 'setBrightnessLevel:(float)level' in bridge
 picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
+assert 'px.action.brightness' in panel and 'px.action.brightness' in picker
 assert 'navigationItem.searchController = search' in picker
 assert 'localizedCaseInsensitiveContains(query)' in picker
 assert 'CGSize(width: 32, height: 32)' in picker

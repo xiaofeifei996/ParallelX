@@ -23,6 +23,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable id)protectedSettings:(id)settings forScene:(id)scene;
 - (BOOL)openFullscreenApplication:(NSString *)bundleID;
 - (BOOL)performShortcut:(NSString *)identifier;
+- (BOOL)setBrightnessLevel:(float)level;
 - (BOOL)shortcutIsActive:(NSString *)identifier;
 - (nullable NSString *)recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank;
 - (void)close;
