@@ -70,6 +70,17 @@ static NSArray *PXStaticActions(NSString *bundleID)
     return PXActionArray(((id (*)(id, SEL, id))objc_msgSend)(itemClass, convert, entries));
 }
 
+BOOL PXApplicationHasActions(NSString *bundleID)
+{
+    if (PXStaticActions(bundleID).count) return YES;
+    @try {
+        id service = PXActionService();
+        SEL fetch = NSSelectorFromString(@"applicationShortcutItemsOfTypes:forBundleIdentifier:");
+        return [service respondsToSelector:fetch] &&
+            PXActionArray(((id (*)(id, SEL, NSUInteger, id))objc_msgSend)(service, fetch, 3, bundleID)).count > 0;
+    } @catch (__unused NSException *exception) { return NO; }
+}
+
 void PXFetchApplicationActions(NSString *bundleID, void (^completion)(NSArray<NSDictionary *> *))
 {
     NSCAssert(NSThread.isMainThread, @"Fetch application actions on the main thread");

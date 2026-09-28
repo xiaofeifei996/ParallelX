@@ -494,11 +494,13 @@ private final class PXPanelViewController: UIViewController {
     func updateGroupSelection(at point: CGPoint) {
         lastSelectionPoint = point
         guard groupMenu != nil, let scroll = groupScroll else { return }
-        // Map the whole screen, not the menu rectangle; every entry remains reachable.
-        let fraction = min(1, max(0, (point.y - view.safeAreaInsets.top) /
-            max(1, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom)))
-        let row = min(groupItems.count, Int(floor(fraction * CGFloat(groupItems.count + 1))))
-        let moved = abs(point.y - groupOriginY) >= 8
+        // Small, finger-relative steps still work anywhere on the screen.
+        let distance = abs(point.y - groupOriginY)
+        let travel = max(groupOriginY - view.safeAreaInsets.top,
+                         view.bounds.height - view.safeAreaInsets.bottom - groupOriginY)
+        let step = min(36, max(12, (travel - 8) / CGFloat(groupItems.count + 1)))
+        let row = min(groupItems.count, Int(max(0, distance - 8) / step))
+        let moved = distance >= 8
         let next: Int? = moved && groupItems.indices.contains(row) ? row : nil
         if next != groupSelected {
             selectionFeedback.selectionChanged()
@@ -721,8 +723,10 @@ public final class PXPanelEntry: NSObject {
     private var handleDragStartY: CGFloat = 0
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
     private var keyboardDismissWindow: UIWindow?
-    private var observedKeyboardFrame = CGRect.null
     private var keyboardDismissSuppressed = false
+    private var keyboardDismissFadingOut = false
+    private var keyboardAnimationDuration: TimeInterval = 0.25
+    private var keyboardAnimationOptions: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -732,7 +736,8 @@ public final class PXPanelEntry: NSObject {
         shared.installHandle()
         NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
             name: Notification.Name("PXKeyboardStateChanged"), object: nil)
-        for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardDidShowNotification, UIResponder.keyboardDidChangeFrameNotification,
+        for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardWillChangeFrameNotification,
+                     UIResponder.keyboardDidShowNotification, UIResponder.keyboardDidChangeFrameNotification,
                      UIResponder.keyboardDidHideNotification] {
             NotificationCenter.default.addObserver(shared, selector: #selector(keyboardFrameChanged(_:)), name: name, object: nil)
         }
@@ -884,15 +889,20 @@ public final class PXPanelEntry: NSObject {
     @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
 
     @objc private func keyboardFrameChanged(_ notification: Notification) {
-        if notification.name == UIResponder.keyboardDidHideNotification {
-            observedKeyboardFrame = .null
+        if notification.name == UIResponder.keyboardWillChangeFrameNotification {
+            keyboardAnimationDuration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+            let curve = (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+            keyboardAnimationOptions = [.beginFromCurrentState, .allowUserInteraction,
+                                        UIView.AnimationOptions(rawValue: curve << 16)]
+            if let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                keyboardDismissSuppressed = end.intersection(UIScreen.main.bounds).height < 30
+            }
+        } else if notification.name == UIResponder.keyboardDidHideNotification {
             keyboardDismissSuppressed = true
-        }
-        else if let frame = (notification.userInfo?["frame"] ?? notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]) as? NSValue {
-            let visible = frame.cgRectValue.intersection(UIScreen.main.bounds)
-            observedKeyboardFrame = visible.isEmpty || visible.height < 30 ? .null : visible
-            if !observedKeyboardFrame.isNull { keyboardDismissSuppressed = false }
-            else if notification.name != Notification.Name("PXKeyboardFrameChanged") { keyboardDismissSuppressed = true }
+        } else if notification.name == UIResponder.keyboardDidShowNotification {
+            keyboardDismissSuppressed = false
+        } else if notification.name == Notification.Name("PXKeyboardStateChanged"), activeBridge.isKeyboardRelocated() {
+            keyboardDismissSuppressed = false
         }
         refreshKeyboardDismissLayer()
     }
@@ -901,14 +911,14 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
             defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
-        let keyboardFrame = activeBridge.isKeyboardRelocated() ? activeBridge.relocatedKeyboardFrame() : observedKeyboardFrame
-        guard enabled, !deviceLocked, !keyboardDismissSuppressed, !keyboardFrame.isNull,
+        guard enabled, !deviceLocked, !keyboardDismissSuppressed, activeBridge.isKeyboardRelocated(),
               let host = hostWindow, let scene = host.windowScene else {
-            removeKeyboardDismissLayer()
+            fadeKeyboardDismissLayer()
             return
         }
         if keyboardDismissWindow == nil {
             let window = UIWindow(windowScene: scene)
+            window.alpha = 0
             window.backgroundColor = .clear
             let root = UIViewController()
             let layer = UIControl()
@@ -924,9 +934,26 @@ public final class PXPanelEntry: NSObject {
         keyboardDismissWindow?.frame = scene.coordinateSpace.bounds
         keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5
         keyboardDismissWindow?.isHidden = false
+        if let window = keyboardDismissWindow, window.alpha < 1 || keyboardDismissFadingOut {
+            keyboardDismissFadingOut = false
+            UIView.animate(withDuration: keyboardAnimationDuration, delay: 0,
+                           options: keyboardAnimationOptions) { window.alpha = 1 }
+        }
+    }
+
+    private func fadeKeyboardDismissLayer() {
+        guard let window = keyboardDismissWindow, !keyboardDismissFadingOut else { return }
+        keyboardDismissFadingOut = true
+        UIView.animate(withDuration: keyboardAnimationDuration, delay: 0,
+                       options: keyboardAnimationOptions) { window.alpha = 0 } completion: { [weak self, weak window] _ in
+            guard let self = self, let window = window, self.keyboardDismissFadingOut,
+                  self.keyboardDismissWindow === window else { return }
+            self.removeKeyboardDismissLayer()
+        }
     }
 
     private func removeKeyboardDismissLayer() {
+        keyboardDismissFadingOut = false
         keyboardDismissWindow?.isHidden = true
         keyboardDismissWindow?.rootViewController = nil
         keyboardDismissWindow = nil

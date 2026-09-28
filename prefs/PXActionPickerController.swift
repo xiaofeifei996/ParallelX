@@ -27,7 +27,10 @@ final class PXActionPickerController: UITableViewController, UISearchResultsUpda
             navigationItem.rightBarButtonItems = [UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(save)), editButtonItem]
         }
         if kind == "apps" {
-            items = PXInstalledApplications().map { ["app": $0["id"] ?? "", "title": $0["name"] ?? ""] }
+            items = PXInstalledApplications().compactMap {
+                guard let id = $0["id"], PXApplicationHasActions(id) else { return nil }
+                return ["app": id, "title": $0["name"] ?? id]
+            }
             reload()
         } else if let bundleID = bundleID {
             PXFetchApplicationActions(bundleID) { [weak self] result in

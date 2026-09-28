@@ -51,7 +51,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         table.dataSource = self
         table.delegate = self
         table.rowHeight = 56
-        table.allowsSelectionDuringEditing = true
+        table.allowsSelectionDuringEditing = false
         view.addSubview(table)
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
@@ -144,15 +144,15 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     }
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        if indexPath.section == 0 { selected.remove(at: indexPath.row) }
+        if indexPath.section == 0 { return }
         else if indexPath.section == 1 {
             if indexPath.row == shortcuts.count + extraItems.count { addOrEditURL(at: nil); return }
             let id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
                 extraItems[indexPath.row - shortcuts.count].id
             if id == "px.add.workflow" { chooseWorkflowMode(); return }
             if id == "px.add.quick" { configureActions(kind: "apps"); return }
-            if selected.contains(id) { selected.removeAll { $0 == id } }
-            else { selected.append(id) }
+            guard !selected.contains(id) else { return }
+            selected.append(id)
         } else { selected.append(available[indexPath.row].id) }
         refreshAvailable()
         saveSelection()
@@ -317,7 +317,16 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
 
     public func tableView(_ tableView: UITableView,
                           editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
-        .none
+        indexPath.section == 0 ? .delete : .none
+    }
+
+    public func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle,
+                          forRowAt indexPath: IndexPath) {
+        guard editingStyle == .delete, indexPath.section == 0 else { return }
+        selected.remove(at: indexPath.row)
+        refreshAvailable()
+        saveSelection()
+        tableView.reloadData()
     }
 
     public func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {

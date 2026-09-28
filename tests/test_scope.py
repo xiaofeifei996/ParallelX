@@ -294,14 +294,33 @@ assert 'groupMenuActive' in panel and 'selectedGroupAction' in panel
 assert 'cancel.text = "取消"' in panel and 'scroll.scrollRectToVisible(groupRows[next].frame, animated: false)' in panel
 assert 'groupScrollLink' not in panel
 assert 'menu.frame = CGRect(x: view.bounds.midX - width / 2, y: view.bounds.midY - height / 2' in panel
-assert 'let fraction = min(1, max(0, (point.y - view.safeAreaInsets.top)' in panel
-assert 'groupItems.count + 1' in panel and 'let moved = abs(point.y - groupOriginY) >= 8' in panel
+assert 'let distance = abs(point.y - groupOriginY)' in panel
+assert 'let step = min(36, max(12, (travel - 8) / CGFloat(groupItems.count + 1)))' in panel
+assert 'let row = min(groupItems.count, Int(max(0, distance - 8) / step))' in panel
+assert 'groupItems.count + 1' in panel and 'let moved = distance >= 8' in panel
 assert 'multiple && indexPath.section == 0' in action_picker
 assert 'chosen.insert(chosen.remove(at: sourceIndexPath.row)' in action_picker
 assert 'shade.frame = view.bounds' in panel
 assert 'doubleTap.numberOfTapsRequired = 2' in panel
+assert 'UIResponder.keyboardWillChangeFrameNotification' in panel
 assert 'UIResponder.keyboardDidHideNotification' in panel
-assert '!keyboardFrame.isNull' in panel
+assert 'activeBridge.isKeyboardRelocated()' in panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
+assert 'keyboardDismissSuppressed' in panel and 'fadeKeyboardDismissLayer()' in panel
 assert 'PXKeyboardFrameChanged' in bridge
 assert 'PXDismissOpenedNotificationBanner(options);' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert (root / 'Tweak.m').read_text(encoding='utf-8').count('PXDismissOpenedNotificationBanner(options);') == 2
+
+app_picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')
+action_picker = (root / 'prefs' / 'PXActionPickerController.swift').read_text(encoding='utf-8')
+catalog = (root / 'PXAppCatalog.m').read_text(encoding='utf-8')
+assert 'if indexPath.section == 0 { return }' in app_picker
+assert 'indexPath.section == 0 ? .delete : .none' in app_picker
+assert 'commit editingStyle: UITableViewCell.EditingStyle' in app_picker
+assert 'PXApplicationHasActions(id)' in action_picker
+assert 'PXStaticActions(bundleID).count' in catalog
+
+for count in (1, 6, 20):
+    travel = 400
+    step = min(36, max(12, (travel - 8) / (count + 1)))
+    assert min(count, int(max(0, 8 + step * 1.2 - 8) / step)) == 1
+    assert min(count, int(max(0, 8 + step * count - 8) / step)) == count
