@@ -11,6 +11,7 @@ static void (*PXOriginalSceneUpdateWithoutCompletion)(id, SEL, id, id);
 static void (*PXOriginalKeyboardDidMove)(id, SEL);
 static void (*PXOriginalKeyboardLayout)(id, SEL);
 static void (*PXOriginalActivateApplication)(id, SEL, id, id, id, id, id);
+static void (*PXOriginalFrontDisplayDidChange)(id, SEL, id);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL PXDeviceLocked;
@@ -225,6 +226,16 @@ static void PXActivateApplication(id controller, SEL selector, id application, i
         ((void (*)(id, SEL, id))objc_msgSend)(entry, activated, bundleID);
 }
 
+static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application)
+{
+    PXOriginalFrontDisplayDidChange(springBoard, selector, application);
+    NSString *bundleID = PXBundleID(application);
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL activated = NSSelectorFromString(@"applicationActivated:");
+    if (bundleID.length && [entry respondsToSelector:activated])
+        ((void (*)(id, SEL, id))objc_msgSend)(entry, activated, bundleID);
+}
+
 static void PXKeyboardLayout(id view, SEL selector)
 {
     PXOriginalKeyboardLayout(view, selector);
@@ -273,6 +284,11 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (ui && class_getInstanceMethod(ui, activate))
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
                             (IMP *)&PXOriginalActivateApplication);
+        Class springBoard = NSClassFromString(@"SpringBoard");
+        SEL frontDisplay = NSSelectorFromString(@"frontDisplayDidChange:");
+        if (springBoard && class_getInstanceMethod(springBoard, frontDisplay))
+            MSHookMessageEx(springBoard, frontDisplay, (IMP)PXFrontDisplayDidChange,
+                            (IMP *)&PXOriginalFrontDisplayDidChange);
         Class workspace = NSClassFromString(@"SBMainWorkspace");
         SEL openRequest = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
         if (workspace && class_getInstanceMethod(workspace, openRequest))

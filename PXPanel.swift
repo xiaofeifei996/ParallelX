@@ -446,13 +446,17 @@ private final class PXPanelViewController: UIViewController {
         menu.layer.borderWidth = 1 / UIScreen.main.scale
         menu.layer.borderColor = UIColor.separator.cgColor
         menu.clipsToBounds = true
-        let width = min(300, view.bounds.width - 48)
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let widest = items.map { (($0["title"] as? String ?? "快捷指令") as NSString)
+            .size(withAttributes: [.font: font]).width }.max() ?? 0
+        let width = min(view.bounds.width - 48, max(150, ceil(widest) + 32))
         let availableHeight = max(96, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - 32)
         let height = min(availableHeight, CGFloat(min(6, items.count)) * 52 + 104)
         menu.frame = CGRect(x: view.bounds.midX - width / 2, y: view.bounds.midY - height / 2, width: width, height: height)
         let heading = UILabel(frame: CGRect(x: 16, y: 0, width: width - 32, height: 56))
         heading.text = "上下滑动选择，松手运行"
         heading.textAlignment = .center
+        heading.numberOfLines = 2
         heading.font = .preferredFont(forTextStyle: .footnote)
         heading.textColor = .secondaryLabel
         menu.contentView.addSubview(heading)
@@ -462,8 +466,9 @@ private final class PXPanelViewController: UIViewController {
         menu.contentView.addSubview(scroll)
         groupRows = items.enumerated().map { index, entry in
             let label = UILabel(frame: CGRect(x: 0, y: CGFloat(index) * 52, width: width, height: 52))
-            label.text = "  \(entry["title"] as? String ?? "快捷指令")"
-            label.font = .preferredFont(forTextStyle: .body)
+            label.text = entry["title"] as? String ?? "快捷指令"
+            label.textAlignment = .center
+            label.font = font
             label.textColor = .label
             let separator = UIView(frame: CGRect(x: 16, y: 51, width: width - 32, height: 1 / UIScreen.main.scale))
             separator.backgroundColor = .separator
@@ -495,11 +500,12 @@ private final class PXPanelViewController: UIViewController {
         lastSelectionPoint = point
         guard groupMenu != nil, let scroll = groupScroll else { return }
         // Small, finger-relative steps still work anywhere on the screen.
-        let distance = abs(point.y - groupOriginY)
+        let delta = point.y - groupOriginY
+        let distance = abs(delta)
         let travel = max(groupOriginY - view.safeAreaInsets.top,
                          view.bounds.height - view.safeAreaInsets.bottom - groupOriginY)
         let step = min(36, max(12, (travel - 8) / CGFloat(groupItems.count + 1)))
-        let row = min(groupItems.count, Int(max(0, distance - 8) / step))
+        let row = min(groupItems.count, max(0, groupItems.count / 2 + Int(delta / step)))
         let moved = distance >= 8
         let next: Int? = moved && groupItems.indices.contains(row) ? row : nil
         if next != groupSelected {
@@ -753,11 +759,13 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc public static func applicationActivated(_ bundleID: String) {
-        DispatchQueue.main.async {
+        let clear = {
             for dock in shared.dockedHosts.filter({ $0.bundleID == bundleID }) {
                 shared.removeDock(dock, fullscreenHandoff: true)
             }
         }
+        if Thread.isMainThread { clear() }
+        else { DispatchQueue.main.async(execute: clear) }
     }
 
     @objc public static func externalOpenApplication(_ bundleID: String) {
@@ -922,7 +930,7 @@ public final class PXPanelEntry: NSObject {
             window.backgroundColor = .clear
             let root = UIViewController()
             let layer = UIControl()
-            layer.backgroundColor = UIColor.black.withAlphaComponent(0.12)
+            layer.backgroundColor = .clear
             layer.accessibilityLabel = "双击关闭分屏"
             let doubleTap = UITapGestureRecognizer(target: self, action: #selector(outsideKeyboardTapped))
             doubleTap.numberOfTapsRequired = 2
@@ -934,6 +942,9 @@ public final class PXPanelEntry: NSObject {
         keyboardDismissWindow?.frame = scene.coordinateSpace.bounds
         keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5
         keyboardDismissWindow?.isHidden = false
+        let configured = (defaults?.object(forKey: "keyboardDimOpacity") as? NSNumber)?.doubleValue ?? 0.12
+        let dim = min(0.6, max(0, configured))
+        keyboardDismissWindow?.rootViewController?.view.backgroundColor = UIColor.black.withAlphaComponent(dim)
         if let window = keyboardDismissWindow, window.alpha < 1 || keyboardDismissFadingOut {
             keyboardDismissFadingOut = false
             UIView.animate(withDuration: keyboardAnimationDuration, delay: 0,

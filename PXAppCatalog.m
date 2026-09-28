@@ -55,15 +55,19 @@ static id PXActionService(void)
         ?: [NSClassFromString(@"SBSApplicationShortcutService") new];
 }
 
-static NSArray *PXStaticActions(NSString *bundleID)
+static NSBundle *PXApplicationBundle(NSString *bundleID)
 {
     Class proxyClass = NSClassFromString(@"LSApplicationProxy");
     SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
-    if (![proxyClass respondsToSelector:proxySelector]) return @[];
+    if (![proxyClass respondsToSelector:proxySelector]) return nil;
     id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, bundleID);
     NSURL *url = PXRead(proxy, @"bundleURL");
-    if (![url isKindOfClass:NSURL.class]) return @[];
-    NSArray *entries = [NSBundle bundleWithURL:url].infoDictionary[@"UIApplicationShortcutItems"];
+    return [url isKindOfClass:NSURL.class] ? [NSBundle bundleWithURL:url] : nil;
+}
+
+static NSArray *PXStaticActions(NSString *bundleID)
+{
+    NSArray *entries = PXApplicationBundle(bundleID).infoDictionary[@"UIApplicationShortcutItems"];
     Class itemClass = NSClassFromString(@"SBSApplicationShortcutItem");
     SEL convert = NSSelectorFromString(@"_staticApplicationShortcutItemsFromInfoPlistEntry:");
     if (![entries isKindOfClass:NSArray.class] || ![itemClass respondsToSelector:convert]) return @[];
@@ -84,6 +88,7 @@ BOOL PXApplicationHasActions(NSString *bundleID)
 void PXFetchApplicationActions(NSString *bundleID, void (^completion)(NSArray<NSDictionary *> *))
 {
     NSCAssert(NSThread.isMainThread, @"Fetch application actions on the main thread");
+    NSBundle *bundle = PXApplicationBundle(bundleID);
     __block BOOL finished = NO;
     NSMutableArray *base = [NSMutableArray array];
     void (^finish)(NSArray *) = ^(NSArray *raw) {
@@ -97,7 +102,8 @@ void PXFetchApplicationActions(NSString *bundleID, void (^completion)(NSArray<NS
             if (![type isKindOfClass:NSString.class] || !type.length ||
                 ![title isKindOfClass:NSString.class] || !title.length || [seen containsObject:type]) continue;
             [seen addObject:type];
-            NSMutableDictionary *entry = [@{@"kind":@"quick", @"app":bundleID, @"type":type, @"title":title} mutableCopy];
+            NSString *localized = [bundle localizedStringForKey:title value:title table:@"InfoPlist"] ?: title;
+            NSMutableDictionary *entry = [@{@"kind":@"quick", @"app":bundleID, @"type":type, @"title":localized} mutableCopy];
             id info = PXRead(item, @"userInfo");
             if ([info isKindOfClass:NSDictionary.class] &&
                 [NSPropertyListSerialization propertyList:info isValidForFormat:NSPropertyListBinaryFormat_v1_0])
