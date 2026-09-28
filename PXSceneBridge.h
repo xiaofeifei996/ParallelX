@@ -17,6 +17,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setHostedInteractionEnabled:(BOOL)enabled;
 - (CGSize)hostedSourceSize;
 - (BOOL)isKeyboardRelocated;
+- (BOOL)isHostedKeyboardVisible;
+- (BOOL)usesExternalKeyboard;
+- (void)refreshKeyboardPlacement;
 - (CGRect)relocatedKeyboardFrame;
 - (BOOL)hasSceneForApplication:(NSString *)bundleID;
 - (nullable UIImage *)launchImageForApplication:(NSString *)bundleID size:(CGSize)size;

@@ -49,7 +49,7 @@ assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped(); r
 assert 'window.windowLevel = .statusBar - 2' in panel
 assert 'shadowStrength' in panel and 'shadowBlur' in panel
 assert 'card.layer.shadowPath = UIBezierPath' in panel
-assert 'let gripTop: CGFloat = 28' in panel
+assert 'let card = UIView(frame: cardFrame)' in panel
 assert 'launcherHoldMilliseconds' in panel
 assert 'handleWidth' in panel and 'handleHeight' in panel
 assert 'showPanel()' not in panel
@@ -58,8 +58,8 @@ for count in (3, 5, 7, 12):
     radius = spacing / (2 * sin(pi / (2 * (count - 1))))
     assert 2 * radius * sin(pi / (2 * (count - 1))) >= spacing - 1e-6
 assert 'bridge.close()' in panel
-assert "let width = screen.width * initialWidthFraction" in panel
-assert "let height = width * screen.height / screen.width" in panel
+assert 'screen.width * initialWidthFraction / source.width' in panel
+assert "CGSize(width: source.width * scale, height: source.height * scale)" in panel
 assert "let canvas = UIView(frame: clip.bounds)" in panel
 assert panel.index("root.view.addSubview(card)") < panel.index("let clip = UIView(frame:")
 assert "private func refreshHost()" in panel
@@ -89,7 +89,7 @@ assert 'corner.backgroundColor = debug ?' in panel
 assert 'for side in [-1, 1]' in panel
 assert 'root.view.addSubview(corner)' in panel
 assert 'root.view.addSubview(moveGrip)' in panel
-assert 'let gripBottom: CGFloat = 168' in panel
+assert 'window.frame = scene.coordinateSpace.bounds' in panel
 assert 'window.isUserInteractionEnabled = false' in panel
 assert 'hostMoveGrip?.frame = CGRect' in panel
 assert 'gestureWidth' in panel and 'gestureHeight' in panel and 'gestureOffset' in panel
@@ -152,8 +152,8 @@ assert 'MSHookMessageEx(scene, update' in entry
 assert 'protectedSettings:settings forAnyScene:scene' in entry
 assert 'PXSceneBridge relocateAnyKeyboardView:view' in entry
 assert 'private func layoutDocks()' in panel and 'private func restoreDock(' in panel
-assert 'dock.window.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
-assert 'dock.window.transform = .identity' in panel
+assert 'dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
+assert 'dock.card.transform = .identity' in panel
 assert 'dock.card.frame = CGRect(origin: .zero, size: frame.size)' not in panel
 assert 'if hostWindow != nil { parkMain(side: defaultDockSide) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
@@ -162,8 +162,8 @@ park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func
 assert 'root.addSubview(overlay)' in park and 'controls.addSubview(overlay)' not in park
 assert 'window.windowLevel = .statusBar - 3' in park
 assert 'card.layer.shadowOpacity = 0' in park
-assert 'overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]' in park
-assert 'dock.overlay.frame = frame' not in panel
+assert 'let overlay = UIView(frame: card.frame)' in park
+assert 'dock.overlay.frame = frame' in panel
 assert 'dock.window.windowLevel = .statusBar - 2' in panel
 assert 'dock.window.isUserInteractionEnabled = true' in panel
 assert 'activeBridge.setHostedInteractionEnabled(false)' in panel
@@ -230,10 +230,10 @@ assert 'keyboardDismissWindow?.rootViewController?.view.backgroundColor = UIColo
 assert 'keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5' in panel
 assert 'keyboardDismissWindow?.frame = scene.coordinateSpace.bounds' in panel
 assert 'excludedRects' not in panel
-assert bridge.count('postNotificationName:@"PXKeyboardStateChanged"') == 4
+assert 'if (visible == self.keyboardWasVisible) return;' in bridge
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
 assert 'removeKeyboardDismissLayer()' in close_host
-assert 'gesture.velocity(in: handleWindow).y < -500' in panel
+assert 'gesture.velocity(in: window.rootViewController?.view).y < -500' in panel
 assert 'if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }' in panel
 open_fullscreen = panel.split('private func openFullscreen(', 1)[1].split('private func performShortcut', 1)[0]
 assert open_fullscreen.index('closeHost(animated: false)') < open_fullscreen.index('openFullscreenApplication(bundleID)')
@@ -386,3 +386,25 @@ for landscape in (False, True):
         scale = min(target[0] / visual[0], target[1] / visual[1])
         assert visual[0] * scale <= target[0] + 0.001
         assert visual[1] * scale <= target[1] + 0.001
+
+# Landscape card is sized by the short screen edge, and reserves the dock lane.
+for screen_w, screen_h in ((844, 390), (852, 393), (932, 430)):
+    dock_w = max(35, min(110, screen_h * 0.12))
+    for source_w, source_h in ((390, 844), (844, 390)):
+        scale = min(screen_h * .78 / max(source_w, source_h),
+                    (screen_w - dock_w - 48) / source_w)
+        width, height = source_w * scale, source_h * scale
+        right = screen_w - (dock_w + 24 + 12)
+        assert height <= screen_h * .78 + .001
+        assert right - width > screen_w / 2
+        assert right < screen_w - dock_w - 12
+        zoom = max(1, min(1.6, (right - 12) / width))
+        assert right - width * zoom >= 12 - .001
+        assert abs(width / height - source_w / source_h) < .001
+assert 'portraitExternalKeyboard' in root_plist and 'landscapeExternalKeyboard' in root_plist
+assert '![self usesExternalKeyboard]' in bridge
+assert '[self.keyboardOriginalParent addSubview:view]' in bridge
+assert 'activeBridge.isHostedKeyboardVisible()' in panel
+assert '!activeBridge.usesExternalKeyboard()' in panel
+assert 'let oldFrame = card.frame' in panel
+assert 'gesture.translation(in: window.rootViewController?.view)' in panel

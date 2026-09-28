@@ -1,9 +1,6 @@
 import UIKit
 
 private let preferenceDomain = "com.moxuan.parallelx"
-private let gripMargin: CGFloat = 28
-private let gripTop: CGFloat = 28
-private let gripBottom: CGFloat = 168
 private enum PXMotion {
     static func ease(_ duration: TimeInterval, delay: TimeInterval = 0,
                      options: UIView.AnimationOptions = .curveEaseOut,
@@ -105,8 +102,6 @@ private final class PXDockedHost {
     let bridge: PXSceneBridge
     let bundleID: String
     var side: Int
-    let sourceSize: CGSize
-    let originalFrame: CGRect
     let originalCardFrame: CGRect
     let originalCornerRadius: CGFloat
     let corners: [UIView]
@@ -123,8 +118,6 @@ private final class PXDockedHost {
         self.bridge = bridge
         self.bundleID = bundleID
         self.side = side
-        self.sourceSize = bridge.hostedSourceSize()
-        self.originalFrame = window.frame
         self.originalCardFrame = card.frame
         self.originalCornerRadius = card.layer.cornerRadius
         self.corners = corners
@@ -766,6 +759,8 @@ public final class PXPanelEntry: NSObject {
     private var keyboardAnimationDuration: TimeInterval = 0.25
     private var keyboardAnimationOptions: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
     private var layoutScreenBounds = CGRect.zero
+    private var keyboardFocusBase: CGRect?
+    private var keyboardFocusFrame = CGRect.null
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -780,6 +775,7 @@ public final class PXPanelEntry: NSObject {
         NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
             name: Notification.Name("PXKeyboardStateChanged"), object: nil)
         for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardWillChangeFrameNotification,
+                     UIResponder.keyboardWillShowNotification, UIResponder.keyboardWillHideNotification,
                      UIResponder.keyboardDidShowNotification, UIResponder.keyboardDidChangeFrameNotification,
                      UIResponder.keyboardDidHideNotification] {
             NotificationCenter.default.addObserver(shared, selector: #selector(keyboardFrameChanged(_:)), name: name, object: nil)
@@ -792,6 +788,7 @@ public final class PXPanelEntry: NSObject {
         let hide = UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "hideForScreenshot") == true
         if let handle = shared.handle { PXSceneBridge.setCaptureHidden(hide, for: handle) }
         if let view = shared.panel?.view { PXSceneBridge.setCaptureHidden(hide, for: view) }
+        shared.activeBridge.refreshKeyboardPlacement()
         shared.refreshKeyboardDismissLayer()
     }
 
@@ -901,20 +898,23 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func screenGeometryChanged() {
         guard let scene = handleWindow?.windowScene else { return }
-        let screen = scene.coordinateSpace.bounds
+        let screen = handleWindow?.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
         guard screen != layoutScreenBounds else { return }
         layoutScreenBounds = screen
         resizePreview = nil
         resizeStartFrame = nil
         moveStartFrame = nil
-        hostWindow?.transform = .identity
+        keyboardFocusBase = nil
+        keyboardFocusFrame = .null
+        hostCard?.transform = .identity
         updateHandleAppearance()
-        panelWindow?.frame = screen
+        panelWindow?.frame = scene.coordinateSpace.bounds
         panel?.handleCenterX = handle?.center.x ?? screen.maxX
         panel?.handleCenterY = handle?.center.y ?? screen.midY
         panel?.view.setNeedsLayout()
-        searchWindow?.frame = screen
+        searchWindow?.frame = scene.coordinateSpace.bounds
         matchHostAspect()
+        activeBridge.refreshKeyboardPlacement()
         layoutDocks()
         refreshKeyboardDismissLayer()
     }
@@ -955,14 +955,14 @@ public final class PXPanelEntry: NSObject {
         window.isHidden = false
         handle = pill
         handleWindow = window
-        layoutScreenBounds = scene.coordinateSpace.bounds
+        layoutScreenBounds = root.view.bounds
         updateHandleAppearance()
     }
 
     @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
 
     @objc private func keyboardFrameChanged(_ notification: Notification) {
-        if notification.name == UIResponder.keyboardWillChangeFrameNotification {
+        if notification.name == UIResponder.keyboardWillChangeFrameNotification || notification.name == UIResponder.keyboardWillShowNotification || notification.name == UIResponder.keyboardWillHideNotification {
             keyboardAnimationDuration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
             let curve = (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
             keyboardAnimationOptions = [.beginFromCurrentState, .allowUserInteraction,
@@ -970,6 +970,8 @@ public final class PXPanelEntry: NSObject {
             if let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
                 keyboardDismissSuppressed = end.intersection(UIScreen.main.bounds).height < 30
             }
+            if notification.name == UIResponder.keyboardWillHideNotification { keyboardDismissSuppressed = true }
+            if notification.name == UIResponder.keyboardWillShowNotification { keyboardDismissSuppressed = false }
         } else if notification.name == UIResponder.keyboardDidHideNotification {
             keyboardDismissSuppressed = true
         } else if notification.name == UIResponder.keyboardDidShowNotification {
@@ -981,6 +983,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func refreshKeyboardDismissLayer() {
+        updateKeyboardFocus()
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
             defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
@@ -1043,8 +1046,9 @@ public final class PXPanelEntry: NSObject {
         window.frame = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let fraction = min(0.78, max(0.22,
             CGFloat(defaults?.object(forKey: handlePositionKey) as? Double ?? 0.5)))
-        pill.frame = CGRect(x: window.bounds.maxX - width,
-                            y: window.bounds.height * fraction - height / 2, width: width, height: height)
+        let bounds = window.rootViewController?.view.bounds ?? window.bounds
+        pill.frame = CGRect(x: bounds.maxX - width,
+                            y: bounds.height * fraction - height / 2, width: width, height: height)
         pill.layer.cornerRadius = min(width / 2, 16)
         let markHeight = height * 0.46
         pill.subviews.first?.frame = CGRect(x: (width - 4) / 2,
@@ -1054,7 +1058,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     private var handlePositionKey: String {
-        let bounds = handleWindow?.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        let bounds = handleWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
         return bounds.width > bounds.height ? "handleCenterLandscapeFraction" : "handleCenterFraction"
     }
 
@@ -1320,19 +1324,20 @@ public final class PXPanelEntry: NSObject {
         if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }
         else { closeHost(animated: false) }
         hostedBundleID = bundleID
-        let screen = scene.coordinateSpace.bounds
-        let width = screen.width * initialWidthFraction
-        let height = width * screen.height / screen.width
+        let screen = controls.bounds
+        let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
+        let size = initialCardSize(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
+        let width = size.width
+        let height = size.height
         let cardFrame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
         let window = PXHandleWindow(windowScene: scene)
-        window.frame = CGRect(x: cardFrame.minX - gripMargin, y: cardFrame.minY - gripTop,
-                              width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
+        window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar - 2
         window.backgroundColor = .clear
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
-        let card = UIView(frame: CGRect(x: gripMargin, y: gripTop, width: width, height: height))
+        let card = UIView(frame: cardFrame)
         card.backgroundColor = .secondarySystemBackground
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let savedRadius = defaults?.object(forKey: "cornerRadius") as? NSNumber
@@ -1464,15 +1469,12 @@ public final class PXPanelEntry: NSObject {
         guard let window = hostWindow, let card = hostCard else { return }
         let source = activeBridge.hostedSourceSize()
         guard source.width > 0, source.height > 0 else { return }
-        let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
-        let width = min(screen.width * initialWidthFraction,
-                        (screen.height - 80) * source.width / source.height)
-        let height = width * source.height / source.width
-        let frame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
-        window.frame = CGRect(x: frame.minX - gripMargin,
-                              y: frame.minY - gripTop,
-                              width: width + 2 * gripMargin, height: height + gripTop + gripBottom)
-        card.frame = CGRect(x: gripMargin, y: gripTop, width: width, height: height)
+        let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+        let size = initialCardSize(in: screen, source: source)
+        keyboardFocusBase = nil
+        keyboardFocusFrame = .null
+        card.transform = .identity
+        card.frame = initialCardFrame(in: screen, size: size)
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
@@ -1480,9 +1482,60 @@ public final class PXPanelEntry: NSObject {
 
     private func initialCardFrame(in screen: CGRect, size: CGSize) -> CGRect {
         let saved = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "initialRightInset") as? NSNumber
-        let inset = min(max(0, screen.width - size.width), max(0, CGFloat(saved?.doubleValue ?? 12)))
+        let lane = screen.width > screen.height ? landscapeDockWidth(in: screen) + 24 : 0
+        let inset = min(max(0, screen.width - size.width), lane + max(0, CGFloat(saved?.doubleValue ?? 12)))
         return CGRect(x: screen.maxX - size.width - inset,
                       y: screen.midY - size.height / 2, width: size.width, height: size.height)
+    }
+
+    private func initialCardSize(in screen: CGRect, source: CGSize) -> CGSize {
+        guard source.width > 0, source.height > 0 else { return .zero }
+        let landscape = screen.width > screen.height
+        let scale = landscape
+            ? min(screen.height * initialWidthFraction / max(source.width, source.height),
+                  (screen.width - landscapeDockWidth(in: screen) - 48) / source.width)
+            : min(screen.width * initialWidthFraction / source.width, (screen.height - 80) / source.height)
+        return CGSize(width: source.width * scale, height: source.height * scale)
+    }
+
+    private func landscapeDockWidth(in screen: CGRect) -> CGFloat {
+        let requested = CGFloat(UserDefaults(suiteName: preferenceDomain)?.object(forKey: "dockWidth") as? Int ?? 110)
+        return max(35, min(requested, screen.height * 0.12))
+    }
+
+    private func updateKeyboardFocus() {
+        guard let card = hostCard, let root = hostWindow?.rootViewController?.view else { return }
+        let focused = !activeBridge.usesExternalKeyboard() && activeBridge.isHostedKeyboardVisible() &&
+            !keyboardDismissSuppressed && !deviceLocked && hostWindow?.isUserInteractionEnabled == true &&
+            resizeStartFrame == nil && moveStartFrame == nil
+        if focused && keyboardFocusBase == nil { keyboardFocusBase = card.frame }
+        guard let base = keyboardFocusBase else { return }
+        let zoom = focused ? max(1, min(1.6, min((base.maxX - 12) / base.width,
+                                                (base.maxY - 12) / base.height))) : 1
+        let target = CGRect(x: base.maxX - base.width * zoom, y: base.maxY - base.height * zoom,
+                            width: base.width * zoom, height: base.height * zoom)
+        guard target != keyboardFocusFrame else { return }
+        keyboardFocusFrame = target
+        if !focused { keyboardFocusBase = nil }
+        UIView.animate(withDuration: keyboardAnimationDuration, delay: 0, options: keyboardAnimationOptions) {
+            card.transform = .identity
+            card.frame = target
+            card.layoutIfNeeded()
+            self.activeBridge.layoutHost()
+            self.layoutHostControls()
+            root.layoutIfNeeded()
+        }
+    }
+
+    private func restoreKeyboardFocus() {
+        if let base = keyboardFocusBase {
+            hostCard?.transform = .identity
+            hostCard?.frame = base
+            hostCard?.layoutIfNeeded()
+            activeBridge.layoutHost()
+        }
+        keyboardFocusBase = nil
+        keyboardFocusFrame = .null
     }
 
     private var initialWidthFraction: CGFloat {
@@ -1504,10 +1557,11 @@ public final class PXPanelEntry: NSObject {
         card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
         card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
         card.layer.shadowRadius = dark ? blur + 4 : blur
-        if card.layer.shadowPath?.boundingBox != card.bounds {
+        if card.layer.shadowPath?.boundingBox != card.bounds || card.subviews.first?.layer.cornerRadius != card.layer.cornerRadius {
             card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
                                                   cornerRadius: card.layer.cornerRadius).cgPath
         }
+        card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
         let frame = card.frame
         for corner in hostCorners {
             let radius = max(CGFloat(12), card.layer.cornerRadius)
@@ -1536,14 +1590,14 @@ public final class PXPanelEntry: NSObject {
     }
 
     @discardableResult private func parkMain(side: Int) -> Bool {
+        restoreKeyboardFocus()
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
               let root = window.rootViewController?.view else { return false }
         let limit = min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockCount") as? Int ?? 2))
         while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }
-        let overlay = UIView(frame: root.bounds)
-        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        let overlay = UIView(frame: card.frame)
         overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)
         overlay.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(restoreDockTapped(_:))))
         for direction in [UISwipeGestureRecognizer.Direction.up, .left, .right] {
@@ -1576,29 +1630,28 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func layoutDocks() {
-        let screen = activeScene()?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        let screen = handleWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let count = max(1, dockedHosts.count)
-        let top = max(50, activeScene()?.windows.first?.safeAreaInsets.top ?? 50) + 12
+        let landscape = screen.width > screen.height
+        let top: CGFloat = landscape ? 16 : max(50, handleWindow?.rootViewController?.view.safeAreaInsets.top ?? 50) + 12
         let available = max(120, screen.height - top - 40 - CGFloat(count - 1) * 12)
-        let requested = CGFloat(UserDefaults(suiteName: preferenceDomain)?
+        let requested = landscape ? landscapeDockWidth(in: screen) : CGFloat(UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockWidth") as? Int ?? 110)
         for (index, dock) in dockedHosts.enumerated() {
             let ratio = dock.originalCardFrame.height / max(1, dock.originalCardFrame.width)
             let width = max(35, min(requested, available / CGFloat(count) / max(1, ratio)))
             let height = width * ratio
-            let preceding = dockedHosts.prefix(index).reduce(CGFloat.zero) { sum, item in
+            let preceding = dockedHosts.prefix(index).filter { $0.side == dock.side }.reduce(CGFloat.zero) { sum, item in
                 let r = item.originalCardFrame.height / max(1, item.originalCardFrame.width)
                 return sum + max(35, min(requested, available / CGFloat(count) / max(1, r))) * r + 12
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
             let scale = width / max(1, dock.originalCardFrame.width)
-            let cardOffset = CGPoint(x: dock.originalCardFrame.midX - dock.window.bounds.midX,
-                                     y: dock.originalCardFrame.midY - dock.window.bounds.midY)
             PXMotion.spring(0.30) {
-                dock.window.transform = CGAffineTransform(scaleX: scale, y: scale)
-                dock.window.center = CGPoint(x: frame.midX - cardOffset.x * scale,
-                                             y: frame.midY - cardOffset.y * scale)
+                dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)
+                dock.card.center = CGPoint(x: frame.midX, y: frame.midY)
+                dock.overlay.frame = frame
             }
         }
     }
@@ -1645,17 +1698,13 @@ public final class PXPanelEntry: NSObject {
         hostMoveGrip = dock.moveGrip
         hostedBundleID = dock.bundleID
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
-        let screen = dock.window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
-        let width = dock.originalCardFrame.width
-        let height = dock.originalCardFrame.height
-        let frame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
-        let targetWindow = CGRect(x: frame.minX - gripMargin,
-                                  y: frame.minY - gripTop,
-                                  width: width + 2 * gripMargin,
-                                  height: height + gripTop + gripBottom)
+        let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+        let frame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: dock.bridge.hostedSourceSize()))
         PXMotion.spring(0.32, animations: {
-            dock.window.transform = .identity
-            dock.window.center = CGPoint(x: targetWindow.midX, y: targetWindow.midY)
+            dock.card.transform = .identity
+            dock.card.frame = frame
+            dock.card.layoutIfNeeded()
+            dock.bridge.layoutHost()
             dock.card.layer.shadowOpacity = 0
         }, completion: { [weak self, weak dock] _ in
             guard let self = self, let dock = dock, self.hostWindow === dock.window else { return }
@@ -1667,22 +1716,21 @@ public final class PXPanelEntry: NSObject {
     @objc private func closeTapped() { closeHost(animated: true) }
 
     @objc private func fullscreenTapped() {
+        restoreKeyboardFocus()
         guard let bundleID = hostedBundleID, let window = hostWindow,
               let card = hostCard, let scene = window.windowScene else { return }
         let windowFrame = window.frame
         let cardFrame = card.frame
         let cornerRadius = card.layer.cornerRadius
         let shadowOpacity = card.layer.shadowOpacity
-        let oldFrame = CGRect(x: window.frame.minX + card.frame.minX,
-                              y: window.frame.minY + card.frame.minY,
-                              width: card.bounds.width, height: card.bounds.height)
+        let oldFrame = card.frame
         hostCorners.forEach { $0.isHidden = true }
         hostMoveGrip?.isHidden = true
         window.isUserInteractionEnabled = false
         window.frame = scene.coordinateSpace.bounds
         card.frame = oldFrame
         PXMotion.spring(0.40, animations: {
-            let screen = scene.coordinateSpace.bounds
+            let screen = window.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
             card.transform = CGAffineTransform(scaleX: screen.width / oldFrame.width,
                                                 y: screen.height / oldFrame.height)
             card.center = CGPoint(x: screen.midX, y: screen.midY)
@@ -1730,19 +1778,18 @@ public final class PXPanelEntry: NSObject {
     @objc private func resizeHost(_ gesture: UIPanGestureRecognizer) {
         guard let window = hostWindow, let card = hostCard else { return }
         if gesture.state == .began {
-            resizeStartFrame = CGRect(x: window.frame.minX + gripMargin,
-                                      y: window.frame.minY + gripTop, width: card.bounds.width,
-                                      height: card.bounds.height)
+            restoreKeyboardFocus()
+            resizeStartFrame = card.frame
             resizeStartRadius = card.layer.cornerRadius
         }
         guard let start = resizeStartFrame else { return }
         if gesture.state == .changed || gesture.state == .ended {
-            let translation = gesture.translation(in: handleWindow)
+            let translation = gesture.translation(in: window.rootViewController?.view)
             let horizontal = (gesture.view?.tag == -1 ? -translation.x : translation.x) / start.width
             let vertical = translation.y / start.height
             // Project both axes continuously; switching the dominant axis snaps the size.
             let change = (horizontal + vertical) / 2
-            let screen = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+            let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let horizontalRoom = gesture.view?.tag == -1 ?
                 start.maxX - screen.minX - 12 : screen.maxX - start.minX - 12
             let maximum = min(horizontalRoom / start.width,
@@ -1760,11 +1807,8 @@ public final class PXPanelEntry: NSObject {
                 UIView.performWithoutAnimation {
                     CATransaction.begin()
                     CATransaction.setDisableActions(true)
-                    window.transform = .identity
-                    window.frame = CGRect(x: x - gripMargin, y: start.minY - gripTop,
-                                          width: size.width + 2 * gripMargin,
-                                          height: size.height + gripTop + gripBottom)
-                    card.frame = CGRect(x: gripMargin, y: gripTop,
+                    card.transform = .identity
+                    card.frame = CGRect(x: x, y: start.minY,
                                         width: size.width, height: size.height)
                     card.layer.cornerRadius = resizeStartRadius
                     card.layoutIfNeeded()
@@ -1779,10 +1823,8 @@ public final class PXPanelEntry: NSObject {
             if gesture.state != .ended {
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
-                window.transform = .identity
-                window.frame = CGRect(x: start.minX - gripMargin, y: start.minY - gripTop,
-                                      width: start.width + 2 * gripMargin,
-                                      height: start.height + gripTop + gripBottom)
+                card.transform = .identity
+                card.frame = start
                 card.layer.cornerRadius = resizeStartRadius
                 CATransaction.commit()
             }
@@ -1792,30 +1834,34 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func applyResizePreview() {
-        guard let window = hostWindow, let card = hostCard, let preview = resizePreview else { return }
+        guard let card = hostCard, let start = resizeStartFrame, let preview = resizePreview else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        window.transform = CGAffineTransform(scaleX: preview.scale, y: preview.scale)
-        window.center = CGPoint(x: preview.x - preview.scale * (gripMargin - window.bounds.midX),
-                                y: preview.y - preview.scale * (gripTop - window.bounds.midY))
+        card.transform = CGAffineTransform(scaleX: preview.scale, y: preview.scale)
+        card.center = CGPoint(x: preview.x + start.width * preview.scale / 2,
+                              y: preview.y + start.height * preview.scale / 2)
         card.layer.cornerRadius = resizeStartRadius / preview.scale
+        layoutHostControls()
         CATransaction.commit()
     }
 
     @objc private func moveHost(_ gesture: UIPanGestureRecognizer) {
-        guard let window = hostWindow else { return }
-        if gesture.state == .began { moveStartFrame = window.frame }
+        guard let window = hostWindow, let card = hostCard else { return }
+        if gesture.state == .began {
+            restoreKeyboardFocus()
+            moveStartFrame = card.frame
+        }
         guard let start = moveStartFrame else { return }
-        let translation = gesture.translation(in: handleWindow)
+        let translation = gesture.translation(in: window.rootViewController?.view)
         if gesture.state == .ended, translation.y < -35,
            -translation.y > abs(translation.x) * 1.2,
-           gesture.velocity(in: handleWindow).y < -500 {
+           gesture.velocity(in: window.rootViewController?.view).y < -500 {
             moveStartFrame = nil
             parkMain(side: defaultDockSide)
             return
         }
         if gesture.state == .changed || gesture.state == .ended {
-            window.frame = start.offsetBy(dx: translation.x, dy: translation.y)
+            card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
             layoutHostControls()
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
@@ -1826,6 +1872,8 @@ public final class PXPanelEntry: NSObject {
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
         removeKeyboardDismissLayer()
+        keyboardFocusBase = nil
+        keyboardFocusFrame = .null
         let closingCard = hostCard
         resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }

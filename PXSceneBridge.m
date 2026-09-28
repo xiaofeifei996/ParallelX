@@ -132,6 +132,9 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, weak) UIView *keyboardOverlay;
 @property(nonatomic, weak) UIView *keyboardHostView;
 @property(nonatomic, strong) UIView *keyboardSlot;
+@property(nonatomic, weak) UIView *keyboardOriginalParent;
+@property(nonatomic, assign) CGRect keyboardOriginalFrame;
+@property(nonatomic, assign) BOOL keyboardWasVisible;
 @property(nonatomic, assign) UIWindowLevel keyboardWindowLevel;
 @property(nonatomic, assign) BOOL relocatingKeyboard;
 @property(nonatomic, assign) BOOL fullscreenHandoff;
@@ -554,6 +557,38 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     return self.sourceSize;
 }
 
+- (BOOL)usesExternalKeyboard
+{
+    CGSize size = self.keyboardOverlay.bounds.size;
+    BOOL landscape = size.width > size.height;
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.moxuan.parallelx"];
+    NSString *key = landscape ? @"landscapeExternalKeyboard" : @"portraitExternalKeyboard";
+    return [defaults objectForKey:key] ? [defaults boolForKey:key] : !landscape;
+}
+
+- (BOOL)isHostedKeyboardVisible
+{
+    UIView *view = self.keyboardHostView;
+    if (!self.hostView || !view.window || view.window.hidden ||
+        (![view isDescendantOfView:self.hostView] && view.superview != self.keyboardSlot)) return NO;
+    for (UIView *ancestor = view; ancestor; ancestor = ancestor.superview)
+        if (ancestor.hidden || ancestor.alpha <= 0.01) return NO;
+    return view.bounds.size.height > 0;
+}
+
+- (void)refreshKeyboardPlacement
+{
+    if (self.keyboardHostView) [self relocateKeyboardView:self.keyboardHostView];
+}
+
+- (void)publishKeyboardVisibility
+{
+    BOOL visible = [self isHostedKeyboardVisible];
+    if (visible == self.keyboardWasVisible) return;
+    self.keyboardWasVisible = visible;
+    [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
+}
+
 - (BOOL)isKeyboardRelocated
 {
     if (!self.keyboardSlot.superview || self.keyboardHostView.superview != self.keyboardSlot ||
@@ -775,6 +810,21 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 - (void)relocateKeyboardView:(UIView *)view
 {
     if (self.relocatingKeyboard) return;
+    if (![self usesExternalKeyboard]) {
+        if (view == self.keyboardHostView && self.keyboardSlot && self.keyboardOriginalParent) {
+            self.relocatingKeyboard = YES;
+            [self.keyboardOriginalParent addSubview:view];
+            view.frame = self.keyboardOriginalFrame;
+            [self.keyboardSlot removeFromSuperview];
+            self.keyboardSlot = nil;
+            self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel;
+            self.relocatingKeyboard = NO;
+            [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
+        }
+        if (self.hostView && [view isDescendantOfView:self.hostView]) self.keyboardHostView = view;
+        if (view == self.keyboardHostView) [self publishKeyboardVisibility];
+        return;
+    }
     if (view == self.keyboardHostView) {
         if (!view.window || view.superview != self.keyboardSlot) {
             self.keyboardSlot.userInteractionEnabled = NO;
@@ -797,6 +847,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             if (!CGRectEqualToRect(view.frame, keyboardFrame)) view.frame = keyboardFrame;
             self.relocatingKeyboard = NO;
             if (changed) [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
+            [self publishKeyboardVisibility];
             return;
         }
     }
@@ -806,6 +857,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     CGSize screen = overlay.bounds.size;
     CGFloat sourceHeight = view.bounds.size.height;
     if (screen.width <= 0 || screen.height <= 0 || sourceHeight <= 0) return;
+    self.keyboardOriginalParent = view.superview;
+    self.keyboardOriginalFrame = view.frame;
     self.relocatingKeyboard = YES;
     if (!self.keyboardSlot) self.keyboardWindowLevel = overlay.window.windowLevel;
     overlay.window.windowLevel = MAX(overlay.window.windowLevel, self.canvas.window.windowLevel + 1);
@@ -826,6 +879,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     self.keyboardSlot = slot;
     self.keyboardHostView = view;
     self.relocatingKeyboard = NO;
+    [self publishKeyboardVisibility];
     [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
 }
 
@@ -946,6 +1000,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     self.keyboardSlot.userInteractionEnabled = NO;
     [self.keyboardSlot removeFromSuperview];
     self.keyboardSlot = nil;
+    self.keyboardOriginalParent = nil;
+    self.keyboardWasVisible = NO;
     self.keyboardOverlay = nil;
     [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
     UIView *host = self.hostView;
