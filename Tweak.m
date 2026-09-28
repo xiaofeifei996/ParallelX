@@ -17,6 +17,7 @@ static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL (*PXOriginalExecuteTransition)(id, SEL, id);
+static void (*PXOriginalStyleTransition)(id, SEL, id, id, id);
 static BOOL PXDeviceLocked;
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
@@ -53,6 +54,18 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
         }
     }
     return PXOriginalExecuteTransition(workspace, selector, request);
+}
+
+static void PXStyleTransition(id action, SEL selector, id scene, id context, void (^applyChanges)(void))
+{
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL visible = NSSelectorFromString(@"hasVisibleHost");
+    if ([entry respondsToSelector:visible] &&
+        ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible)) {
+        if (applyChanges) applyChanges();
+        return;
+    }
+    PXOriginalStyleTransition(action, selector, scene, context, applyChanges);
 }
 
 static NSString *PXBundleID(id object)
@@ -324,6 +337,12 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (scene && class_getInstanceMethod(scene, updateShort))
             MSHookMessageEx(scene, updateShort, (IMP)PXSceneUpdateWithoutCompletion,
                             (IMP *)&PXOriginalSceneUpdateWithoutCompletion);
+        Class styleAction = NSClassFromString(@"_UIWindowSceneUserInterfaceStyleSettingsDiffAction");
+        SEL styleTransition = NSSelectorFromString(@"_animateUserInterfaceStyleChangeInScene:transitionContext:applyChangesBlock:");
+        Method styleMethod = class_getInstanceMethod(styleAction, styleTransition);
+        if (styleMethod && method_getNumberOfArguments(styleMethod) == 5)
+            MSHookMessageEx(styleAction, styleTransition, (IMP)PXStyleTransition,
+                            (IMP *)&PXOriginalStyleTransition);
         Class ui = NSClassFromString(@"SBUIController");
         SEL activate = NSSelectorFromString(@"activateApplication:fromIcon:location:activationSettings:actions:");
         if (ui && class_getInstanceMethod(ui, activate))

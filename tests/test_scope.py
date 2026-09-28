@@ -6,6 +6,7 @@ control = (root / "control").read_text(encoding="utf-8")
 makefile = (root / "Makefile").read_text(encoding="utf-8")
 panel = (root / "PXPanel.swift").read_text(encoding="utf-8")
 bridge = (root / "PXSceneBridge.m").read_text(encoding="utf-8")
+tweak = (root / "Tweak.m").read_text(encoding="utf-8")
 
 assert "Package: com.moxuan.parallelx" in control
 assert "firmware (<< 16.0)" in control
@@ -114,6 +115,9 @@ assert 'self?.screenGeometryChanged()' in panel and 'self?.layoutHostControls()'
 assert 'if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle { onAppearance?() }' in panel
 assert 'root.onAppearance = { [weak self] in self?.layoutHostControls() }' in panel
 assert 'if expectedSize == layoutScreenBounds.size && orientation == layoutOrientation { return }' in panel
+assert 'shared.hostWindow?.isHidden == false' in panel
+assert '_animateUserInterfaceStyleChangeInScene:transitionContext:applyChangesBlock:' in tweak
+assert 'if (applyChanges) applyChanges();' in tweak
 assert 'let root = PXHostViewController()' in panel.split('private func presentHost')[1]
 assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1].split('private func layoutHostControls()')[0]
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel

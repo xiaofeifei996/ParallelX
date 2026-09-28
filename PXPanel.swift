@@ -783,6 +783,10 @@ public final class PXPanelEntry: NSObject {
     private var keyboardFocusFrame = CGRect.null
     private var keyboardFocusRadius: CGFloat = 20
 
+    @objc public static func hasVisibleHost() -> Bool {
+        shared.hostWindow?.isHidden == false
+    }
+
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
             selector: #selector(sceneActivated), name: UIScene.didActivateNotification, object: nil)
