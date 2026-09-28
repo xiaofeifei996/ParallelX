@@ -241,6 +241,7 @@ static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation
                                  double duration, BOOL mirrored, BOOL force, id message)
 {
     PXOriginalOrientationChanged(manager, selector, orientation, duration, mirrored, force, message);
+    [PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation];
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
     });

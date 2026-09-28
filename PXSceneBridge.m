@@ -8,6 +8,44 @@
 #import <signal.h>
 #import <unistd.h>
 
+@interface UIWindow (PXRotation)
+- (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
+                         duration:(double)duration skipCallbacks:(BOOL)skipCallbacks;
+@end
+
+@implementation PXOverlayWindow {
+    UIInterfaceOrientation _appliedOrientation;
+}
+- (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
+                         duration:(double)duration skipCallbacks:(BOOL)skipCallbacks
+{
+    // SpringBoard must not start a second rotation animation for our overlays.
+}
+- (void)applySystemOrientation
+{
+    UIInterfaceOrientation orientation = [PXSceneBridge systemOrientation];
+    BOOL changed = _appliedOrientation != orientation;
+    if (changed) {
+        _appliedOrientation = orientation;
+        [UIView performWithoutAnimation:^{
+            [super _rotateWindowToOrientation:orientation updateStatusBar:NO duration:0 skipCallbacks:NO];
+        }];
+    }
+    CGSize physical = self.screen.fixedCoordinateSpace.bounds.size;
+    CGSize size = UIInterfaceOrientationIsLandscape(orientation)
+        ? CGSizeMake(MAX(physical.width, physical.height), MIN(physical.width, physical.height))
+        : CGSizeMake(MIN(physical.width, physical.height), MAX(physical.width, physical.height));
+    CGPoint center = CGPointMake(size.width / 2, size.height / 2);
+    if (!changed && CGSizeEqualToSize(self.bounds.size, size) && CGPointEqualToPoint(self.center, center)) return;
+    self.bounds = (CGRect){CGPointZero, size};
+    self.center = center;
+    [self setNeedsLayout];
+    [self layoutIfNeeded];
+}
+@end
+
+static UIInterfaceOrientation PXSystemOrientation = UIInterfaceOrientationUnknown;
+
 @interface PXKeyboardSlot : UIView
 @end
 
@@ -146,6 +184,24 @@ static int PXApplicationPID(NSString *bundleID)
 
 @implementation PXSceneBridge
 
++ (void)noteSystemOrientation:(UIInterfaceOrientation)orientation
+{
+    if (orientation >= UIInterfaceOrientationPortrait && orientation <= UIInterfaceOrientationLandscapeRight)
+        PXSystemOrientation = orientation;
+}
+
++ (UIInterfaceOrientation)systemOrientation
+{
+    if (PXSystemOrientation != UIInterfaceOrientationUnknown) return PXSystemOrientation;
+    PXSceneBridge *bridge = [self sharedBridge];
+    NSString *bundleID = [bridge frontmostBundleID];
+    id settings = PXCall([bridge sceneForBundleID:bundleID], @"settings");
+    UIInterfaceOrientation orientation = PXSceneOrientation(settings);
+    if (orientation == UIInterfaceOrientationUnknown)
+        orientation = UIApplication.sharedApplication.statusBarOrientation;
+    return orientation == UIInterfaceOrientationUnknown ? UIInterfaceOrientationPortrait : orientation;
+}
+
 - (void)updateAppearanceForStyle:(UIUserInterfaceStyle)style
 {
     if (!self.presentationContext || style == UIUserInterfaceStyleUnspecified ||
@@ -214,6 +270,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 
 - (id)sceneForBundleID:(NSString *)bundleID
 {
+    if (bundleID.length == 0) return nil;
     id manager = PXCall(NSClassFromString(@"FBSceneManager"), @"sharedInstance");
     id workspace = PXIvar(manager, "_workspace") ?: PXCall(manager, @"workspace");
     id scenes = PXIvar(workspace, "_allScenesByID") ?: PXCall(workspace, @"allScenesByID");
@@ -527,17 +584,12 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!host || !canvas || source.width <= 0 || source.height <= 0 ||
         target.width <= 0 || target.height <= 0) return;
     CGFloat scale = MIN(target.width / source.width, target.height / source.height);
-    // Scene layers use the display's fixed (portrait) coordinates. UIKit rotates
-    // our windows; only compensate the hosted scene here, not the whole window.
-    CGSize raw = UIInterfaceOrientationIsLandscape(self.sourceOrientation)
-        ? CGSizeMake(source.height, source.width) : source;
-    CGFloat angle = self.sourceOrientation == UIInterfaceOrientationPortraitUpsideDown ? M_PI :
-        self.sourceOrientation == UIInterfaceOrientationLandscapeLeft ? M_PI_2 :
-        self.sourceOrientation == UIInterfaceOrientationLandscapeRight ? -M_PI_2 : 0;
-    if (!CGSizeEqualToSize(host.bounds.size, raw))
-        host.bounds = (CGRect){CGPointZero, raw};
-    host.center = CGPointMake(target.width / 2, target.height / 2);
-    host.transform = CGAffineTransformRotate(CGAffineTransformMakeScale(scale, scale), angle);
+    // The scene owns its content orientation; do not rotate its surface again.
+    [UIView performWithoutAnimation:^{
+        host.bounds = (CGRect){CGPointZero, source};
+        host.center = CGPointMake(target.width / 2, target.height / 2);
+        host.transform = CGAffineTransformMakeScale(scale, scale);
+    }];
     if (self.keyboardHostView) [self relocateKeyboardView:self.keyboardHostView];
 }
 

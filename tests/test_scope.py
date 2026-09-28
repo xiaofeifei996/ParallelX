@@ -122,7 +122,8 @@ assert 'screen.maxX' not in panel.split('@objc private func moveHost')[1].split(
 assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
 assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
-assert "CGAffineTransformRotate(CGAffineTransformMakeScale(scale, scale), angle)" in bridge
+assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
+assert 'CGAffineTransformRotate' not in bridge
 assert "host.transform = CGAffineTransformIdentity" not in bridge
 assert 'relocateKeyboardView:(UIView *)view' in bridge
 assert 'self.keyboardOverlay = keyboardOverlay' in bridge
@@ -151,14 +152,14 @@ entry = (root / "Tweak.m").read_text(encoding="utf-8")
 assert 'MSHookMessageEx(scene, update' in entry
 assert 'protectedSettings:settings forAnyScene:scene' in entry
 assert 'PXSceneBridge relocateAnyKeyboardView:view' in entry
-assert 'private func layoutDocks()' in panel and 'private func restoreDock(' in panel
+assert 'private func layoutDocks(animated: Bool = true)' in panel and 'private func restoreDock(' in panel
 assert 'dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
 assert 'dock.card.transform = .identity' in panel
 assert 'dock.card.frame = CGRect(origin: .zero, size: frame.size)' not in panel
 assert 'if hostWindow != nil { parkMain(side: defaultDockSide) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
-park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks()', 1)[0]
+park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
 assert 'root.addSubview(overlay)' in park and 'controls.addSubview(overlay)' not in park
 assert 'window.windowLevel = .statusBar - 3' in park
 assert 'card.layer.shadowOpacity = 0' in park
@@ -225,10 +226,10 @@ assert 'deadline: .now() + 0.16' not in panel
 assert 'while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }' in park
 assert 'captureOutsideKeyboard' not in panel and 'isKeyboardRelocated()' in panel
 assert 'private final class PXKeyboardDismissLayer: UIControl' not in panel
-assert 'let window = UIWindow(windowScene: scene)' in panel.split('private func refreshKeyboardDismissLayer()', 1)[1]
+assert 'let window = PXOverlayWindow(windowScene: scene)' in panel.split('private func refreshKeyboardDismissLayer()', 1)[1]
 assert 'keyboardDismissWindow?.rootViewController?.view.backgroundColor = UIColor.black.withAlphaComponent(dim)' in panel
 assert 'keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5' in panel
-assert 'keyboardDismissWindow?.frame = scene.coordinateSpace.bounds' in panel
+assert '(keyboardDismissWindow as? PXOverlayWindow)?.applySystemOrientation()' in panel
 assert 'excludedRects' not in panel
 assert 'if (visible == self.keyboardWasVisible) return;' in bridge
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
@@ -374,7 +375,7 @@ assert '键盘关闭遮罩深度：%.0f%%' in prefs_host
 assert 'setPreferenceValue:@(control.value / 100) specifier:specifier' in prefs_host
 assert 'PXScreenGeometryChanged' in panel and 'PXHostedGeometryChanged' in bridge
 assert 'handleCenterLandscapeFraction' in panel
-assert 'UIInterfaceOrientationIsLandscape(self.sourceOrientation)' in bridge
+assert 'sourceOrientation = orientation' in bridge
 assert 'setInterfaceOrientation:' not in bridge
 # Both sideways orientations fit isotropically; portrait-only apps keep their aspect.
 for landscape in (False, True):
@@ -408,3 +409,28 @@ assert 'activeBridge.isHostedKeyboardVisible()' in panel
 assert '!activeBridge.usesExternalKeyboard()' in panel
 assert 'let oldFrame = card.frame' in panel
 assert 'gesture.translation(in: window.rootViewController?.view)' in panel
+
+# Overlay orientation is explicit and immediate; the app owns surface rotation.
+assert 'private final class PXHandleWindow: PXOverlayWindow' in panel
+assert '[super _rotateWindowToOrientation:orientation updateStatusBar:NO duration:0 skipCallbacks:NO]' in bridge
+assert '[PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation]' in entry
+assert 'layoutDocks(animated: false)' in panel
+assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel
+assert 'keyboardDismissSuppressed = !activeBridge.isHostedKeyboardVisible()' in panel
+dismiss = panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
+assert 'guard enabled, activeBridge.usesExternalKeyboard()' in dismiss
+for external in (False, True):
+    for keyboard_visible in (False, True):
+        enabled = external and keyboard_visible
+        assert not enabled or (external and keyboard_visible)
+        if not external:
+            assert not enabled
+for landscape in (False, True):
+    width, height = (844, 390) if landscape else (390, 844)
+    x, y, w, h = width - 90 - 140, (height - 303) / 2, 140, 303
+    zoom = min(1.6, (x + w - 12) / w) if landscape else 1
+    target_x, target_y = x + w - w * zoom, y + h - h * zoom
+    assert abs(target_x + w * zoom - (x + w)) < .001
+    assert abs(target_y + h * zoom - (y + h)) < .001
+    if landscape:
+        assert zoom == 1.6

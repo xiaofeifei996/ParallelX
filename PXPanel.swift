@@ -73,7 +73,7 @@ private func panelPreviewIcon(_ id: String) -> UIImage? {
     return isShortcut(id) ? panelIcon(id) : PXApplicationIconLarge(id)
 }
 
-private final class PXHandleWindow: UIWindow {
+private final class PXHandleWindow: PXOverlayWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
         return result === self || result === rootViewController?.view ? nil : result
@@ -759,8 +759,10 @@ public final class PXPanelEntry: NSObject {
     private var keyboardAnimationDuration: TimeInterval = 0.25
     private var keyboardAnimationOptions: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
     private var layoutScreenBounds = CGRect.zero
+    private var applyingScreenGeometry = false
     private var keyboardFocusBase: CGRect?
     private var keyboardFocusFrame = CGRect.null
+    private var keyboardFocusRadius: CGFloat = 20
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -772,7 +774,7 @@ public final class PXPanelEntry: NSObject {
             name: Notification.Name("PXScreenGeometryChanged"), object: nil)
         NotificationCenter.default.addObserver(shared, selector: #selector(hostedGeometryChanged(_:)),
             name: Notification.Name("PXHostedGeometryChanged"), object: nil)
-        NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
+        NotificationCenter.default.addObserver(shared, selector: #selector(hostedKeyboardChanged(_:)),
             name: Notification.Name("PXKeyboardStateChanged"), object: nil)
         for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardWillChangeFrameNotification,
                      UIResponder.keyboardWillShowNotification, UIResponder.keyboardWillHideNotification,
@@ -897,6 +899,13 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func screenGeometryChanged() {
+        guard !applyingScreenGeometry, handleWindow != nil else { return }
+        applyingScreenGeometry = true
+        defer { applyingScreenGeometry = false }
+        UIView.performWithoutAnimation {
+            ([handleWindow, hostWindow, panelWindow, searchWindow, keyboardDismissWindow].compactMap { $0 } +
+                dockedHosts.map { $0.window }).forEach { ($0 as? PXOverlayWindow)?.applySystemOrientation() }
+        }
         guard let scene = handleWindow?.windowScene else { return }
         let screen = handleWindow?.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
         guard screen != layoutScreenBounds else { return }
@@ -908,21 +917,21 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
         hostCard?.transform = .identity
         updateHandleAppearance()
-        panelWindow?.frame = scene.coordinateSpace.bounds
         panel?.handleCenterX = handle?.center.x ?? screen.maxX
         panel?.handleCenterY = handle?.center.y ?? screen.midY
         panel?.view.setNeedsLayout()
-        searchWindow?.frame = scene.coordinateSpace.bounds
-        matchHostAspect()
+        UIView.performWithoutAnimation { matchHostAspect() }
         activeBridge.refreshKeyboardPlacement()
-        layoutDocks()
+        layoutDocks(animated: false)
         refreshKeyboardDismissLayer()
     }
 
     @objc private func hostedGeometryChanged(_ notification: Notification) {
-        if (notification.object as? PXSceneBridge) === activeBridge { matchHostAspect() }
-        for dock in dockedHosts { dock.bridge.layoutHost() }
-        layoutDocks()
+        UIView.performWithoutAnimation {
+            if (notification.object as? PXSceneBridge) === activeBridge { matchHostAspect() }
+            for dock in dockedHosts { dock.bridge.layoutHost() }
+            layoutDocks(animated: false)
+        }
     }
 
     private func installHandle() {
@@ -935,6 +944,7 @@ public final class PXPanelEntry: NSObject {
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
+        window.applySystemOrientation()
         root.onLayout = { [weak self] in self?.screenGeometryChanged() }
         let pill = UIView(frame: .zero)
         pill.backgroundColor = .secondarySystemBackground
@@ -960,6 +970,12 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func outsideKeyboardTapped() { closeHost(animated: true) }
+
+    @objc private func hostedKeyboardChanged(_ notification: Notification) {
+        guard (notification.object as? PXSceneBridge) === activeBridge else { return }
+        keyboardDismissSuppressed = !activeBridge.isHostedKeyboardVisible()
+        refreshKeyboardDismissLayer()
+    }
 
     @objc private func keyboardFrameChanged(_ notification: Notification) {
         if notification.name == UIResponder.keyboardWillChangeFrameNotification || notification.name == UIResponder.keyboardWillShowNotification || notification.name == UIResponder.keyboardWillHideNotification {
@@ -987,13 +1003,14 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
             defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
-        guard enabled, !deviceLocked, !keyboardDismissSuppressed, activeBridge.isKeyboardRelocated(),
+        guard enabled, activeBridge.usesExternalKeyboard(), !deviceLocked,
+              !keyboardDismissSuppressed, activeBridge.isKeyboardRelocated(),
               let host = hostWindow, let scene = host.windowScene else {
             fadeKeyboardDismissLayer()
             return
         }
         if keyboardDismissWindow == nil {
-            let window = UIWindow(windowScene: scene)
+            let window = PXOverlayWindow(windowScene: scene)
             window.alpha = 0
             window.backgroundColor = .clear
             let root = UIViewController()
@@ -1005,9 +1022,10 @@ public final class PXPanelEntry: NSObject {
             layer.addGestureRecognizer(doubleTap)
             root.view = layer
             window.rootViewController = root
+            window.applySystemOrientation()
             keyboardDismissWindow = window
         }
-        keyboardDismissWindow?.frame = scene.coordinateSpace.bounds
+        (keyboardDismissWindow as? PXOverlayWindow)?.applySystemOrientation()
         keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5
         keyboardDismissWindow?.isHidden = false
         let configured = (defaults?.object(forKey: "keyboardDimOpacity") as? NSNumber)?.doubleValue ?? 0.12
@@ -1043,7 +1061,7 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let width = min(52, max(12, CGFloat(defaults?.object(forKey: "handleWidth") as? Int ?? 24)))
         let height = min(160, max(44, CGFloat(defaults?.object(forKey: "handleHeight") as? Int ?? 86)))
-        window.frame = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        window.applySystemOrientation()
         let fraction = min(0.78, max(0.22,
             CGFloat(defaults?.object(forKey: handlePositionKey) as? Double ?? 0.5)))
         let bounds = window.rootViewController?.view.bounds ?? window.bounds
@@ -1083,7 +1101,7 @@ public final class PXPanelEntry: NSObject {
     private func beginPanel() {
         guard panelWindow == nil, let scene = handleWindow?.windowScene else { return }
         panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
-        let window = UIWindow(windowScene: scene)
+        let window = PXOverlayWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar + 1
         window.backgroundColor = .clear
@@ -1101,6 +1119,7 @@ public final class PXPanelEntry: NSObject {
             controller?.showBrightness(value)
         }
         window.rootViewController = controller
+        window.applySystemOrientation()
         _ = controller.view
         controller.view.layoutIfNeeded()
         controller.setProgress(0)
@@ -1290,7 +1309,7 @@ public final class PXPanelEntry: NSObject {
 
     private func showSearch() {
         guard searchWindow == nil, let scene = activeScene() else { return }
-        let window = UIWindow(windowScene: scene)
+        let window = PXOverlayWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar + 2
         window.backgroundColor = .clear
@@ -1301,6 +1320,7 @@ public final class PXPanelEntry: NSObject {
         }
         controller.onDismiss = { [weak self] in self?.hideSearch() }
         window.rootViewController = controller
+        window.applySystemOrientation()
         searchPreviousKeyWindow = scene.windows.first(where: { $0.isKeyWindow })
         searchWindow = window
         controller.view.frame = window.bounds
@@ -1337,6 +1357,7 @@ public final class PXPanelEntry: NSObject {
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
+        window.applySystemOrientation()
         let card = UIView(frame: cardFrame)
         card.backgroundColor = .secondarySystemBackground
         let defaults = UserDefaults(suiteName: preferenceDomain)
@@ -1508,22 +1529,26 @@ public final class PXPanelEntry: NSObject {
         let focused = !activeBridge.usesExternalKeyboard() && activeBridge.isHostedKeyboardVisible() &&
             !keyboardDismissSuppressed && !deviceLocked && hostWindow?.isUserInteractionEnabled == true &&
             resizeStartFrame == nil && moveStartFrame == nil
-        if focused && keyboardFocusBase == nil { keyboardFocusBase = card.frame }
+        if focused && keyboardFocusBase == nil {
+            keyboardFocusBase = card.frame
+            keyboardFocusRadius = card.layer.cornerRadius
+        }
         guard let base = keyboardFocusBase else { return }
-        let zoom = focused ? max(1, min(1.6, min((base.maxX - 12) / base.width,
-                                                (base.maxY - 12) / base.height))) : 1
+        // Landscape focus intentionally grows above the screen, leaving the
+        // input field and keyboard anchored at the bottom rather than flying in.
+        let room = root.bounds.width > root.bounds.height ? (base.maxX - 12) / base.width :
+            min((base.maxX - 12) / base.width, (base.maxY - 12) / base.height)
+        let zoom = focused ? max(1, min(1.6, room)) : 1
         let target = CGRect(x: base.maxX - base.width * zoom, y: base.maxY - base.height * zoom,
                             width: base.width * zoom, height: base.height * zoom)
         guard target != keyboardFocusFrame else { return }
         keyboardFocusFrame = target
         if !focused { keyboardFocusBase = nil }
         UIView.animate(withDuration: keyboardAnimationDuration, delay: 0, options: keyboardAnimationOptions) {
-            card.transform = .identity
-            card.frame = target
-            card.layoutIfNeeded()
-            self.activeBridge.layoutHost()
+            card.transform = CGAffineTransform(scaleX: zoom, y: zoom)
+            card.center = CGPoint(x: target.midX, y: target.midY)
+            card.layer.cornerRadius = self.keyboardFocusRadius / zoom
             self.layoutHostControls()
-            root.layoutIfNeeded()
         }
     }
 
@@ -1531,6 +1556,7 @@ public final class PXPanelEntry: NSObject {
         if let base = keyboardFocusBase {
             hostCard?.transform = .identity
             hostCard?.frame = base
+            hostCard?.layer.cornerRadius = keyboardFocusRadius
             hostCard?.layoutIfNeeded()
             activeBridge.layoutHost()
         }
@@ -1629,7 +1655,7 @@ public final class PXPanelEntry: NSObject {
         return true
     }
 
-    private func layoutDocks() {
+    private func layoutDocks(animated: Bool = true) {
         let screen = handleWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let count = max(1, dockedHosts.count)
         let landscape = screen.width > screen.height
@@ -1648,11 +1674,13 @@ public final class PXPanelEntry: NSObject {
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
             let scale = width / max(1, dock.originalCardFrame.width)
-            PXMotion.spring(0.30) {
+            let changes = {
                 dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)
                 dock.card.center = CGPoint(x: frame.midX, y: frame.midY)
                 dock.overlay.frame = frame
             }
+            if animated { PXMotion.spring(0.30, animations: changes) }
+            else { UIView.performWithoutAnimation(changes) }
         }
     }
 
@@ -1719,7 +1747,6 @@ public final class PXPanelEntry: NSObject {
         restoreKeyboardFocus()
         guard let bundleID = hostedBundleID, let window = hostWindow,
               let card = hostCard, let scene = window.windowScene else { return }
-        let windowFrame = window.frame
         let cardFrame = card.frame
         let cornerRadius = card.layer.cornerRadius
         let shadowOpacity = card.layer.shadowOpacity
@@ -1727,7 +1754,6 @@ public final class PXPanelEntry: NSObject {
         hostCorners.forEach { $0.isHidden = true }
         hostMoveGrip?.isHidden = true
         window.isUserInteractionEnabled = false
-        window.frame = scene.coordinateSpace.bounds
         card.frame = oldFrame
         PXMotion.spring(0.40, animations: {
             let screen = window.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
@@ -1745,7 +1771,6 @@ public final class PXPanelEntry: NSObject {
                 card.layer.cornerRadius = cornerRadius
                 card.subviews.first?.layer.cornerRadius = cornerRadius
                 card.layer.shadowOpacity = shadowOpacity
-                window.frame = windowFrame
                 window.isUserInteractionEnabled = true
                 self.hostCorners.forEach { $0.isHidden = false }
                 self.hostMoveGrip?.isHidden = false

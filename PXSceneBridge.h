@@ -2,6 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 @interface PXSceneBridge : NSObject
++ (void)noteSystemOrientation:(UIInterfaceOrientation)orientation;
++ (UIInterfaceOrientation)systemOrientation;
 + (instancetype)sharedBridge;
 + (nullable id)protectedSettings:(id)settings forAnyScene:(id)scene;
 + (void)relocateAnyKeyboardView:(UIView *)view;
@@ -40,5 +42,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSString *)recentApplicationSkipping:(NSArray<NSString *> *)excluded rank:(NSInteger)rank;
 - (void)close;
 - (void)closeForFullscreen;
+@end
+@interface PXOverlayWindow : UIWindow
+- (void)applySystemOrientation;
 @end
 NS_ASSUME_NONNULL_END
