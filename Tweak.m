@@ -317,15 +317,6 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(scene, updateShort, (IMP)PXSceneUpdateWithoutCompletion,
                             (IMP *)&PXOriginalSceneUpdateWithoutCompletion);
         Class ui = NSClassFromString(@"SBUIController");
-        Class workspace = NSClassFromString(@"SBMainWorkspace");
-        SEL execute = NSSelectorFromString(@"_executeTransitionRequest:options:validator:");
-        Method execution = class_getInstanceMethod(workspace, execute);
-        char result[8] = {0};
-        if (execution) method_getReturnType(execution, result, sizeof(result));
-        if (execution && method_getNumberOfArguments(execution) == 5 &&
-            (result[0] == 'B' || result[0] == 'c'))
-            MSHookMessageEx(workspace, execute, (IMP)PXExecuteTransition,
-                            (IMP *)&PXOriginalExecuteTransition);
         SEL activate = NSSelectorFromString(@"activateApplication:fromIcon:location:activationSettings:actions:");
         if (ui && class_getInstanceMethod(ui, activate))
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
@@ -348,6 +339,14 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(springBoard, frontDisplay, (IMP)PXFrontDisplayDidChange,
                             (IMP *)&PXOriginalFrontDisplayDidChange);
         Class workspace = NSClassFromString(@"SBMainWorkspace");
+        SEL execute = NSSelectorFromString(@"_executeTransitionRequest:options:validator:");
+        Method execution = class_getInstanceMethod(workspace, execute);
+        char result[8] = {0};
+        if (execution) method_getReturnType(execution, result, sizeof(result));
+        if (execution && method_getNumberOfArguments(execution) == 5 &&
+            (result[0] == 'B' || result[0] == 'c'))
+            MSHookMessageEx(workspace, execute, (IMP)PXExecuteTransition,
+                            (IMP *)&PXOriginalExecuteTransition);
         SEL openRequest = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
         if (workspace && class_getInstanceMethod(workspace, openRequest))
             MSHookMessageEx(workspace, openRequest, (IMP)PXHandleOpenRequest,
