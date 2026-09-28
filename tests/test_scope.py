@@ -124,7 +124,7 @@ assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
 assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
 assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
 assert 'CGAffineTransformRotate' not in bridge
-assert "host.transform = CGAffineTransformIdentity" not in bridge
+assert 'layer.frame = host.bounds' in bridge
 assert 'relocateKeyboardView:(UIView *)view' in bridge
 assert 'self.keyboardOverlay = keyboardOverlay' in bridge
 assert 'slot.opaque = NO' in bridge
@@ -376,7 +376,9 @@ assert 'setPreferenceValue:@(control.value / 100) specifier:specifier' in prefs_
 assert 'PXScreenGeometryChanged' in panel and 'PXHostedGeometryChanged' in bridge
 assert 'handleCenterLandscapeFraction' in panel
 assert 'sourceOrientation = orientation' in bridge
-assert 'setInterfaceOrientation:' not in bridge
+client_update = bridge.split('- (void)scene:(id)scene didUpdateClientSettingsWithDiff:', 1)[1].split('- (NSArray *)mainLayersForScene:', 1)[0]
+assert 'PXSetSceneFrame(mutable, self.sourceSize)' in client_update
+assert 'sb_effectiveInterfaceOrientation' in client_update
 # Both sideways orientations fit isotropically; portrait-only apps keep their aspect.
 for landscape in (False, True):
     visual = (844, 390) if landscape else (390, 844)
@@ -417,22 +419,24 @@ assert 'self.center = center' in bridge and 'root.frame = content' in bridge
 assert 'orientation != layoutOrientation' in panel
 assert 'pill.autoresizingMask = []' in panel
 assert 'dockedHosts.filter { $0.side == dock.side }.count' in panel
-# Rotated local bounds must cover the physical screen, not shift off screen.
-import math
-for angle in (0, math.pi / 2, -math.pi / 2, math.pi):
-    physical_w, physical_h = 390, 844
-    local_w, local_h = (844, 390) if abs(math.sin(angle)) > .5 else (390, 844)
-    corners = [(physical_w / 2 + x * math.cos(angle) - y * math.sin(angle),
-                physical_h / 2 + x * math.sin(angle) + y * math.cos(angle))
-               for x in (-local_w / 2, local_w / 2) for y in (-local_h / 2, local_h / 2)]
-    assert abs(min(x for x, y in corners)) < .001
-    assert abs(min(y for x, y in corners)) < .001
-    assert abs(max(x for x, y in corners) - physical_w) < .001
-    assert abs(max(y for x, y in corners) - physical_h) < .001
+assert '[super _rotateWindowToOrientation:orientation updateStatusBar:NO duration:0 skipCallbacks:NO]' in bridge
+assert 'didUpdateClientSettingsWithDiff:' in bridge
+assert 'if (self.fullscreenHandoff || !scene' in bridge
+activation = bridge.split('- (BOOL)openFullscreenApplication:', 1)[1].split('- (BOOL)', 1)[0]
+assert activation.index('self.fullscreenHandoff = YES') < activation.index('objc_msgSend)(ui, activate')
+# Both halves of a landscape source must map into the fitted card.
+for source_w, source_h in ((390, 844), (844, 390)):
+    scale = min(300 / source_w, 660 / source_h)
+    for fraction in (.25, .75, 1):
+        touch_x = source_w * scale * fraction
+        assert abs(touch_x / scale - source_w * fraction) < .001
+assert 'layer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight' in bridge
+assert 'keyboardDismissSuppressed = keyboardHideInFlight || !visible' in panel
+assert 'indicator.backgroundColor = UIColor(white: 0.65, alpha: 0.65)' in panel
+assert 'let ratio = source.height / source.width' in panel
 assert '[PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation]' in entry
 assert 'layoutDocks(animated: false)' in panel
 assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel
-assert 'keyboardDismissSuppressed = !activeBridge.isHostedKeyboardVisible()' in panel
 dismiss = panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
 assert 'guard enabled, activeBridge.usesExternalKeyboard()' in dismiss
 assert '$0.session.persistentIdentifier == "com.apple.springboard"' in panel

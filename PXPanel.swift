@@ -102,7 +102,7 @@ private final class PXDockedHost {
     let bridge: PXSceneBridge
     let bundleID: String
     var side: Int
-    let originalCardFrame: CGRect
+    var originalCardFrame: CGRect
     let originalCornerRadius: CGFloat
     let corners: [UIView]
     let topCorners: [UIView]
@@ -755,6 +755,7 @@ public final class PXPanelEntry: NSObject {
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
     private var keyboardDismissWindow: UIWindow?
     private var keyboardDismissSuppressed = false
+    private var keyboardHideInFlight = false
     private var keyboardDismissFadingOut = false
     private var keyboardAnimationDuration: TimeInterval = 0.25
     private var keyboardAnimationOptions: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
@@ -981,7 +982,10 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func hostedKeyboardChanged(_ notification: Notification) {
         guard (notification.object as? PXSceneBridge) === activeBridge else { return }
-        keyboardDismissSuppressed = !activeBridge.isHostedKeyboardVisible()
+        let visible = activeBridge.isHostedKeyboardVisible()
+        if !visible && !keyboardHideInFlight { removeKeyboardDismissLayer() }
+        if !visible { keyboardHideInFlight = false }
+        keyboardDismissSuppressed = keyboardHideInFlight || !visible
         refreshKeyboardDismissLayer()
     }
 
@@ -994,8 +998,14 @@ public final class PXPanelEntry: NSObject {
             if let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
                 keyboardDismissSuppressed = end.intersection(UIScreen.main.bounds).height < 30
             }
-            if notification.name == UIResponder.keyboardWillHideNotification { keyboardDismissSuppressed = true }
-            if notification.name == UIResponder.keyboardWillShowNotification { keyboardDismissSuppressed = false }
+            if notification.name == UIResponder.keyboardWillHideNotification {
+                keyboardHideInFlight = true
+                keyboardDismissSuppressed = true
+            }
+            if notification.name == UIResponder.keyboardWillShowNotification {
+                keyboardHideInFlight = false
+                keyboardDismissSuppressed = false
+            }
         } else if notification.name == UIResponder.keyboardDidHideNotification {
             keyboardDismissSuppressed = true
         } else if notification.name == UIResponder.keyboardDidShowNotification {
@@ -1389,6 +1399,12 @@ public final class PXPanelEntry: NSObject {
         let canvas = UIView(frame: clip.bounds)
         canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         clip.addSubview(canvas)
+        let indicator = UIView(frame: .zero)
+        indicator.tag = 0x505847
+        indicator.backgroundColor = UIColor(white: 0.65, alpha: 0.65)
+        indicator.layer.cornerRadius = 2
+        indicator.isUserInteractionEnabled = false
+        clip.addSubview(indicator)
         hostCanvas = canvas
         let spinner = UIActivityIndicatorView(style: .medium)
         spinner.center = CGPoint(x: width / 2, y: height / 2)
@@ -1503,6 +1519,8 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
         card.transform = .identity
         card.frame = initialCardFrame(in: screen, size: size)
+        let savedRadius = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "cornerRadius") as? NSNumber
+        card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
@@ -1595,6 +1613,13 @@ public final class PXPanelEntry: NSObject {
                                                   cornerRadius: card.layer.cornerRadius).cgPath
         }
         card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
+        if let indicator = card.viewWithTag(0x505847) {
+            let barWidth = min(100, card.bounds.width * 0.32)
+            indicator.frame = CGRect(x: (card.bounds.width - barWidth) / 2,
+                                     y: card.bounds.height - 8, width: barWidth, height: 4)
+            indicator.isHidden = false
+            indicator.superview?.bringSubviewToFront(indicator)
+        }
         let frame = card.frame
         for corner in hostCorners {
             let radius = max(CGFloat(12), card.layer.cornerRadius)
@@ -1641,6 +1666,7 @@ public final class PXPanelEntry: NSObject {
         root.addSubview(overlay)
         window.windowLevel = .statusBar - 3
         card.layer.shadowOpacity = 0
+        card.viewWithTag(0x505847)?.isHidden = true
         canvas.isUserInteractionEnabled = false
         activeBridge.setHostedInteractionEnabled(false)
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
@@ -1669,19 +1695,27 @@ public final class PXPanelEntry: NSObject {
         let requested = landscape ? landscapeDockWidth(in: screen) : CGFloat(UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockWidth") as? Int ?? 110)
         for (index, dock) in dockedHosts.enumerated() {
+            let source = dock.bridge.hostedSourceSize()
+            guard source.width > 0, source.height > 0 else { continue }
+            let baseSize = initialCardSize(in: screen, source: source)
             let count = max(1, dockedHosts.filter { $0.side == dock.side }.count)
             let available = max(120, screen.height - top - 40 - CGFloat(count - 1) * 12)
-            let ratio = dock.originalCardFrame.height / max(1, dock.originalCardFrame.width)
+            let ratio = source.height / source.width
             let width = max(35, min(requested, available / CGFloat(count) / max(1, ratio)))
             let height = width * ratio
             let preceding = dockedHosts.prefix(index).filter { $0.side == dock.side }.reduce(CGFloat.zero) { sum, item in
-                let r = item.originalCardFrame.height / max(1, item.originalCardFrame.width)
+                let itemSource = item.bridge.hostedSourceSize()
+                let r = itemSource.height / max(1, itemSource.width)
                 return sum + max(35, min(requested, available / CGFloat(count) / max(1, r))) * r + 12
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
                                y: top + preceding, width: width, height: height)
-            let scale = width / max(1, dock.originalCardFrame.width)
+            let scale = width / max(1, baseSize.width)
             let changes = {
+                dock.card.bounds = CGRect(origin: .zero, size: baseSize)
+                dock.originalCardFrame.size = baseSize
+                dock.card.layoutIfNeeded()
+                dock.bridge.layoutHost()
                 dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)
                 dock.card.center = CGPoint(x: frame.midX, y: frame.midY)
                 dock.overlay.frame = frame

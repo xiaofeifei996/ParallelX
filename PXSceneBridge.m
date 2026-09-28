@@ -8,6 +8,11 @@
 #import <signal.h>
 #import <unistd.h>
 
+@interface UIWindow (PXRotation)
+- (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
+                         duration:(double)duration skipCallbacks:(BOOL)skipCallbacks;
+@end
+
 @implementation PXOverlayWindow {
     UIInterfaceOrientation _appliedOrientation;
 }
@@ -23,21 +28,19 @@
     CGSize size = UIInterfaceOrientationIsLandscape(orientation)
         ? CGSizeMake(MAX(physical.size.width, physical.size.height), MIN(physical.size.width, physical.size.height))
         : CGSizeMake(MIN(physical.size.width, physical.size.height), MAX(physical.size.width, physical.size.height));
-    CGFloat angle = orientation == UIInterfaceOrientationLandscapeLeft ? M_PI_2 :
-        orientation == UIInterfaceOrientationLandscapeRight ? -M_PI_2 :
-        orientation == UIInterfaceOrientationPortraitUpsideDown ? M_PI : 0;
-    CGAffineTransform transform = CGAffineTransformMakeRotation(angle);
-    CGPoint center = CGPointMake(CGRectGetMidX(physical), CGRectGetMidY(physical));
+    CGPoint center = CGPointMake(size.width / 2, size.height / 2);
     UIView *root = self.rootViewController.view;
     CGRect content = (CGRect){CGPointZero, size};
-    if (_appliedOrientation == orientation && CGAffineTransformEqualToTransform(self.transform, transform) &&
+    BOOL changed = _appliedOrientation != orientation;
+    if (!changed &&
         CGRectEqualToRect(self.bounds, content) && CGPointEqualToPoint(self.center, center) &&
         CGRectEqualToRect(root.frame, content)) return;
     _appliedOrientation = orientation;
-    // Keep the window centred in physical screen coordinates. Only its local
-    // content bounds swap axes; do not move the centre to (long/2, short/2).
+    // iOS 15 must update UIWindow's orientation contract, not just its visual
+    // transform: UIKit uses that contract for scene hosting and touch mapping.
     [UIView performWithoutAnimation:^{
-        self.transform = transform;
+        if (changed)
+            [super _rotateWindowToOrientation:orientation updateStatusBar:NO duration:0 skipCallbacks:NO];
         self.bounds = content;
         self.center = center;
         root.transform = CGAffineTransformIdentity;
@@ -197,6 +200,15 @@ static int PXApplicationPID(NSString *bundleID)
 
 + (UIInterfaceOrientation)systemOrientation
 {
+    PXSceneBridge *bridge = [self sharedBridge];
+    NSString *bundleID = [bridge frontmostBundleID];
+    id settings = PXCall([bridge sceneForBundleID:bundleID], @"settings");
+    UIInterfaceOrientation orientation = PXSceneOrientation(settings);
+    if (orientation >= UIInterfaceOrientationPortrait && orientation <= UIInterfaceOrientationLandscapeRight)
+        return orientation;
+    // The transition callback supplies the new direction before the desktop
+    // UIScreen/scene has finished updating its cached orientation.
+    if (PXSystemOrientation != UIInterfaceOrientationUnknown) return PXSystemOrientation;
     SEL screenOrientation = NSSelectorFromString(@"_interfaceOrientation");
     if ([UIScreen.mainScreen respondsToSelector:screenOrientation]) {
         UIInterfaceOrientation orientation = ((NSInteger (*)(id, SEL))objc_msgSend)(UIScreen.mainScreen, screenOrientation);
@@ -204,11 +216,6 @@ static int PXApplicationPID(NSString *bundleID)
             orientation == UIInterfaceOrientationLandscapeLeft || orientation == UIInterfaceOrientationLandscapeRight)
             return orientation;
     }
-    if (PXSystemOrientation != UIInterfaceOrientationUnknown) return PXSystemOrientation;
-    PXSceneBridge *bridge = [self sharedBridge];
-    NSString *bundleID = [bridge frontmostBundleID];
-    id settings = PXCall([bridge sceneForBundleID:bundleID], @"settings");
-    UIInterfaceOrientation orientation = PXSceneOrientation(settings);
     if (orientation == UIInterfaceOrientationUnknown) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:UIWindowScene.class] &&
@@ -358,6 +365,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 - (BOOL)openFullscreenApplication:(NSString *)bundleID
 {
     if (bundleID.length == 0) return NO;
+    BOOL previousHandoff = self.fullscreenHandoff;
+    self.fullscreenHandoff = YES;
     if (self.scene && [self.bundleID isEqualToString:bundleID]) {
         id controller = PXCall(NSClassFromString(@"SBApplicationController"), @"sharedInstance");
         SEL lookup = NSSelectorFromString(@"applicationWithBundleIdentifier:");
@@ -373,7 +382,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             ((void (*)(id, SEL, NSInteger, unsigned int))objc_msgSend)(settings, flag, 1, 1);
             ((void (*)(id, SEL, id, id, id, id, id))objc_msgSend)(ui, activate,
                 app, nil, nil, settings, nil);
-            self.fullscreenHandoff = YES;
             return YES;
         }
     }
@@ -382,14 +390,13 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     NSMethodSignature *signature = [springBoard methodSignatureForSelector:selector];
     if (signature && signature.numberOfArguments == 4 &&
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(springBoard, selector, bundleID, NO)) {
-        self.fullscreenHandoff = YES;
         return YES;
     }
     id workspace = PXCall(NSClassFromString(@"LSApplicationWorkspace"), @"defaultWorkspace");
     signature = [workspace methodSignatureForSelector:selector];
     BOOL opened = signature && signature.numberOfArguments == 4 &&
         ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(workspace, selector, bundleID, NO);
-    if (opened) self.fullscreenHandoff = YES;
+    if (!opened) self.fullscreenHandoff = previousHandoff;
     return opened;
 }
 
@@ -605,7 +612,15 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     CGFloat scale = MIN(target.width / source.width, target.height / source.height);
     // The scene owns its content orientation; do not rotate its surface again.
     [UIView performWithoutAnimation:^{
+        host.transform = CGAffineTransformIdentity;
         host.bounds = (CGRect){CGPointZero, source};
+        [host setNeedsLayout];
+        [host layoutIfNeeded];
+        for (UIView *layer in host.subviews) {
+            if (layer == self.keyboardHostView) continue;
+            layer.frame = host.bounds;
+            layer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        }
         host.center = CGPointMake(target.width / 2, target.height / 2);
         host.transform = CGAffineTransformMakeScale(scale, scale);
     }];
@@ -698,6 +713,14 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     CGSize sourceSize = PXSourceSize(settings);
     if (!PXSetSceneFrame(mutable, sourceSize)) return NO;
     if (!PXUpdateScene(scene, mutable)) return NO;
+    if (self.scene != scene) {
+        SEL remove = NSSelectorFromString(@"removeObserver:");
+        if ([self.scene respondsToSelector:remove])
+            ((void (*)(id, SEL, id))objc_msgSend)(self.scene, remove, self);
+        SEL add = NSSelectorFromString(@"addObserver:");
+        if ([scene respondsToSelector:add])
+            ((void (*)(id, SEL, id))objc_msgSend)(scene, add, self);
+    }
     self.scene = scene;
     self.sourceSize = sourceSize;
     self.sourceOrientation = PXSceneOrientation(settings);
@@ -737,7 +760,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 
 - (id)protectedSettings:(id)settings forScene:(id)scene
 {
-    if (!scene || scene != self.scene || !self.canvas ||
+    if (self.fullscreenHandoff || !scene || scene != self.scene || !self.canvas ||
         ![settings respondsToSelector:@selector(mutableCopy)]) return nil;
     id mutable = [settings mutableCopy];
     UIInterfaceOrientation orientation = PXSceneOrientation(settings);
@@ -761,6 +784,45 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (signature && signature.numberOfArguments == 3)
         ((void (*)(id, SEL, NSUInteger))objc_msgSend)(mutable, deactivation, 0);
     return mutable;
+}
+
+- (void)scene:(id)scene didUpdateClientSettingsWithDiff:(id)diff
+    oldClientSettings:(id)oldSettings transitionContext:(id)transitionContext
+{
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self scene:scene didUpdateClientSettingsWithDiff:diff oldClientSettings:oldSettings transitionContext:transitionContext];
+        });
+        return;
+    }
+    if (scene != self.scene || !self.canvas || self.fullscreenHandoff) return;
+    id client = PXCall(scene, @"clientSettings");
+    UIInterfaceOrientation orientation = PXSceneOrientation(client);
+    SEL effective = NSSelectorFromString(@"sb_effectiveInterfaceOrientation");
+    if ([client respondsToSelector:effective]) {
+        UIInterfaceOrientation value = ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective);
+        if (value >= UIInterfaceOrientationPortrait && value <= UIInterfaceOrientationLandscapeRight)
+            orientation = value;
+    }
+    SEL preferred = NSSelectorFromString(@"preferredInterfaceOrientation");
+    if (orientation == UIInterfaceOrientationUnknown && [client respondsToSelector:preferred])
+        orientation = ((NSInteger (*)(id, SEL))objc_msgSend)(client, preferred);
+    if (orientation < UIInterfaceOrientationPortrait || orientation > UIInterfaceOrientationLandscapeRight ||
+        orientation == self.sourceOrientation) return;
+    id settings = PXCall(scene, @"settings");
+    id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+    SEL setOrientation = NSSelectorFromString(@"setInterfaceOrientation:");
+    if (![mutable respondsToSelector:setOrientation]) return;
+    ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setOrientation, orientation);
+    self.sourceOrientation = orientation;
+    self.sourceSize = PXSourceSize(mutable);
+    PXSetSceneFrame(mutable, self.sourceSize);
+    PXUpdateScene(scene, mutable);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (scene != self.scene || !self.canvas || self.fullscreenHandoff) return;
+        [self layoutHost];
+        [NSNotificationCenter.defaultCenter postNotificationName:@"PXHostedGeometryChanged" object:self];
+    });
 }
 
 - (NSArray *)mainLayersForScene:(id)scene
@@ -1078,6 +1140,9 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     UIView *host = self.hostView;
     self.hostView = nil;
     id scene = self.scene;
+    SEL removeObserver = NSSelectorFromString(@"removeObserver:");
+    if ([scene respondsToSelector:removeObserver])
+        ((void (*)(id, SEL, id))objc_msgSend)(scene, removeObserver, self);
     NSString *bundleID = self.bundleID;
     BOOL fullscreenHandoff = self.fullscreenHandoff;
     self.fullscreenHandoff = NO;
