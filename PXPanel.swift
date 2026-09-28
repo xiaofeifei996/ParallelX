@@ -893,9 +893,13 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func activeScene() -> UIWindowScene? {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let main = scenes.first(where: { $0.session.persistentIdentifier == "com.apple.springboard" }) { return main }
+        if let main = scenes.first(where: { NSStringFromClass(type(of: $0)) == "SBWindowScene" }) { return main }
+        return scenes.first {
+            let kind = ($0.session.persistentIdentifier + NSStringFromClass(type(of: $0))).lowercased()
+            return $0.activationState == .foregroundActive && !kind.contains("keyboard") && !kind.contains("aperture")
+        }
     }
 
     @objc private func screenGeometryChanged() {

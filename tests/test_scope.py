@@ -419,12 +419,8 @@ assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel
 assert 'keyboardDismissSuppressed = !activeBridge.isHostedKeyboardVisible()' in panel
 dismiss = panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
 assert 'guard enabled, activeBridge.usesExternalKeyboard()' in dismiss
-for external in (False, True):
-    for keyboard_visible in (False, True):
-        enabled = external and keyboard_visible
-        assert not enabled or (external and keyboard_visible)
-        if not external:
-            assert not enabled
+assert '$0.session.persistentIdentifier == "com.apple.springboard"' in panel
+assert '!kind.contains("keyboard") && !kind.contains("aperture")' in panel
 for landscape in (False, True):
     width, height = (844, 390) if landscape else (390, 844)
     x, y, w, h = width - 90 - 140, (height - 303) / 2, 140, 303
