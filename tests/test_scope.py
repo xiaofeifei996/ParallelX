@@ -107,7 +107,7 @@ assert 'let clip = UIView(frame: card.bounds)' in panel
 assert 'let toolbarWidth' not in panel
 assert 'layoutHostControls()' in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
 assert 'private func layoutHostControls()' in panel
-assert 'root.onLayout = { [weak self] in self?.layoutHostControls() }' in panel
+assert 'self?.screenGeometryChanged()' in panel and 'self?.layoutHostControls()' in panel
 assert 'let root = PXHostViewController()' in panel.split('private func presentHost')[1]
 assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1].split('private func layoutHostControls()')[0]
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel
@@ -122,7 +122,7 @@ assert 'screen.maxX' not in panel.split('@objc private func moveHost')[1].split(
 assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
 assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
-assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
+assert "CGAffineTransformRotate(CGAffineTransformMakeScale(scale, scale), angle)" in bridge
 assert "host.transform = CGAffineTransformIdentity" not in bridge
 assert 'relocateKeyboardView:(UIView *)view' in bridge
 assert 'self.keyboardOverlay = keyboardOverlay' in bridge
@@ -365,3 +365,24 @@ assert prefs_info['NSPrincipalClass'] == 'PXRootListController'
 assert 'overridePrincipalClass = 1' in (root / 'layout' / 'Library' / 'PreferenceLoader' / 'Preferences' / 'ParallelX.plist').read_text()
 assert '- (void)setSpecifier:(PSSpecifier *)specifier' in prefs_host
 assert 'if (self.contentController || !self.specifier) return;' in prefs_host
+
+# Every settings slider has a title/value and a numeric keyboard affordance.
+for name in ('CornerRadius', 'Dock', 'GestureArea'):
+    page = (root / 'prefs' / f'PX{name}Controller.swift').read_text(encoding='utf-8')
+    assert 'inputButtons' in page and 'PXSettingsStyle.inputButton' in page
+assert '键盘关闭遮罩深度：%.0f%%' in prefs_host
+assert 'setPreferenceValue:@(control.value / 100) specifier:specifier' in prefs_host
+assert 'PXScreenGeometryChanged' in panel and 'PXHostedGeometryChanged' in bridge
+assert 'handleCenterLandscapeFraction' in panel
+assert 'UIInterfaceOrientationIsLandscape(self.sourceOrientation)' in bridge
+assert 'setInterfaceOrientation:' not in bridge
+# Both sideways orientations fit isotropically; portrait-only apps keep their aspect.
+for landscape in (False, True):
+    visual = (844, 390) if landscape else (390, 844)
+    raw = (visual[1], visual[0]) if landscape else visual
+    rotated = (raw[1], raw[0]) if landscape else raw
+    assert rotated == visual
+    for target in ((600, 300), (300, 650)):
+        scale = min(target[0] / visual[0], target[1] / visual[1])
+        assert visual[0] * scale <= target[0] + 0.001
+        assert visual[1] * scale <= target[1] + 0.001

@@ -64,6 +64,13 @@ static BOOL PXSetSceneFrame(id settings, CGSize size)
     return YES;
 }
 
+static UIInterfaceOrientation PXSceneOrientation(id settings)
+{
+    SEL selector = NSSelectorFromString(@"interfaceOrientation");
+    return [settings respondsToSelector:selector]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(settings, selector) : UIInterfaceOrientationUnknown;
+}
+
 static CGSize PXSourceSize(id settings)
 {
     // The server frame can retain a stale floating size. The display is the
@@ -71,9 +78,12 @@ static CGSize PXSourceSize(id settings)
     CGSize size = PXRect(PXCall(settings, @"displayConfiguration"), @"bounds").size;
     if (size.width <= 0 || size.height <= 0)
         size = UIScreen.mainScreen.bounds.size;
+    UIInterfaceOrientation orientation = PXSceneOrientation(settings);
     CGRect sceneFrame = PXRect(settings, @"frame");
-    if (sceneFrame.size.width > sceneFrame.size.height && size.width < size.height)
-        size = CGSizeMake(size.height, size.width);
+    BOOL landscape = orientation == UIInterfaceOrientationUnknown
+        ? sceneFrame.size.width > sceneFrame.size.height : UIInterfaceOrientationIsLandscape(orientation);
+    size = landscape ? CGSizeMake(MAX(size.width, size.height), MIN(size.width, size.height))
+                     : CGSizeMake(MIN(size.width, size.height), MAX(size.width, size.height));
     return size;
 }
 
@@ -127,6 +137,7 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, assign) BOOL fullscreenHandoff;
 @property(nonatomic, copy) NSString *latestSwitcherBundleID;
 @property(nonatomic, assign) CGSize sourceSize;
+@property(nonatomic, assign) UIInterfaceOrientation sourceOrientation;
 @property(nonatomic, assign) NSUInteger generation;
 @end
 
@@ -513,10 +524,18 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!host || !canvas || source.width <= 0 || source.height <= 0 ||
         target.width <= 0 || target.height <= 0) return;
     CGFloat scale = MIN(target.width / source.width, target.height / source.height);
-    if (!CGSizeEqualToSize(host.bounds.size, source))
-        host.bounds = (CGRect){CGPointZero, source};
+    // Scene layers use the display's fixed (portrait) coordinates. UIKit rotates
+    // our windows; only compensate the hosted scene here, not the whole window.
+    CGSize raw = UIInterfaceOrientationIsLandscape(self.sourceOrientation)
+        ? CGSizeMake(source.height, source.width) : source;
+    CGFloat angle = self.sourceOrientation == UIInterfaceOrientationPortraitUpsideDown ? M_PI :
+        self.sourceOrientation == UIInterfaceOrientationLandscapeLeft ? M_PI_2 :
+        self.sourceOrientation == UIInterfaceOrientationLandscapeRight ? -M_PI_2 : 0;
+    if (!CGSizeEqualToSize(host.bounds.size, raw))
+        host.bounds = (CGRect){CGPointZero, raw};
     host.center = CGPointMake(target.width / 2, target.height / 2);
-    host.transform = CGAffineTransformMakeScale(scale, scale);
+    host.transform = CGAffineTransformRotate(CGAffineTransformMakeScale(scale, scale), angle);
+    if (self.keyboardHostView) [self relocateKeyboardView:self.keyboardHostView];
 }
 
 - (void)setHostedInteractionEnabled:(BOOL)enabled
@@ -575,6 +594,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!PXUpdateScene(scene, mutable)) return NO;
     self.scene = scene;
     self.sourceSize = sourceSize;
+    self.sourceOrientation = PXSceneOrientation(settings);
     return YES;
 }
 
@@ -614,6 +634,17 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!scene || scene != self.scene || !self.canvas ||
         ![settings respondsToSelector:@selector(mutableCopy)]) return nil;
     id mutable = [settings mutableCopy];
+    UIInterfaceOrientation orientation = PXSceneOrientation(settings);
+    if (orientation != UIInterfaceOrientationUnknown && orientation != self.sourceOrientation) {
+        self.sourceOrientation = orientation;
+        self.sourceSize = PXSourceSize(settings);
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!weakSelf.canvas) return;
+            [weakSelf layoutHost];
+            [NSNotificationCenter.defaultCenter postNotificationName:@"PXHostedGeometryChanged" object:weakSelf];
+        });
+    }
     if (!PXSetBool(mutable, @"setBackgrounded:", NO)) return nil;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);

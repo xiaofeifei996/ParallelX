@@ -18,6 +18,7 @@ public final class PXCornerRadiusController: UIViewController {
     private var cards: [UIView] = []
     private var headings: [UILabel] = []
     private var lines: [UIView] = []
+    private var inputButtons: [UIButton] = []
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
 
     public override func viewDidLoad() {
@@ -48,7 +49,9 @@ public final class PXCornerRadiusController: UIViewController {
                                                                   action: #selector(editNumber(_:))))
         number.accessibilityHint = "长按输入圆角数值"
         scroll.addSubview(number)
-        hint.text = "长按右侧数字可以输入 0–60 pt"
+        number.setImage(UIImage(systemName: "keyboard"), for: .normal)
+        number.addTarget(self, action: #selector(editCorner), for: .touchUpInside)
+        hint.text = "点击键盘按钮输入精确数值"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
         scroll.addSubview(hint)
@@ -67,6 +70,9 @@ public final class PXCornerRadiusController: UIViewController {
             control.addTarget(self, action: #selector(shadowFinished),
                               for: [.touchUpInside, .touchUpOutside, .touchCancel])
             scroll.addSubview(control)
+            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : key == "initialRightInset" ? "初始右边距（pt）" : "初始窗口宽度（%）", in: self)
+            scroll.addSubview(button)
+            inputButtons.append(button)
         }
         valueChanged()
         shadowChanged()
@@ -91,10 +97,13 @@ public final class PXCornerRadiusController: UIViewController {
                 let rowY = cardY + CGFloat(row) * 82
                 pair.0.frame = CGRect(x: 32, y: rowY + 10, width: width - 64, height: 28)
                 pair.1.frame = CGRect(x: 32, y: rowY + 40,
-                                      width: section == 1 ? width - 120 : width - 64, height: 34)
+                                      width: width - 112, height: 34)
                 if section == 1 {
-                    number.frame = CGRect(x: width - 88, y: rowY + 36, width: 56, height: 42)
-                } else if row == 0 {
+                    number.frame = CGRect(x: width - 70, y: rowY + 36, width: 38, height: 38)
+                } else {
+                    inputButtons[section == 0 ? row + 2 : row].frame = CGRect(x: width - 70, y: rowY + 36, width: 38, height: 38)
+                }
+                if section != 1 && row == 0 {
                     lines[section == 0 ? 0 : 1].frame = CGRect(x: 32, y: rowY + 81,
                                                                width: width - 64, height: 0.5)
                 }
@@ -106,7 +115,7 @@ public final class PXCornerRadiusController: UIViewController {
     }
 
     @objc private func valueChanged() {
-        number.setTitle("\(Int(slider.value.rounded())) pt", for: .normal)
+        caption.text = "圆角大小：\(Int(slider.value.rounded())) pt"
     }
 
     @objc private func valueFinished() {
@@ -136,6 +145,10 @@ public final class PXCornerRadiusController: UIViewController {
 
     @objc private func editNumber(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began else { return }
+        editCorner()
+    }
+
+    @objc private func editCorner() {
         let alert = UIAlertController(title: "窗口圆角", message: "输入 0–60 pt", preferredStyle: .alert)
         alert.addTextField { field in
             field.keyboardType = .numberPad

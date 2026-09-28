@@ -12,6 +12,7 @@ static void (*PXOriginalKeyboardDidMove)(id, SEL);
 static void (*PXOriginalKeyboardLayout)(id, SEL);
 static void (*PXOriginalActivateApplication)(id, SEL, id, id, id, id, id);
 static void (*PXOriginalFrontDisplayDidChange)(id, SEL, id);
+static void (*PXOriginalOrientationChanged)(id, SEL, NSInteger, double, BOOL, BOOL, id);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL PXDeviceLocked;
@@ -236,6 +237,15 @@ static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application
         ((void (*)(id, SEL, id))objc_msgSend)(entry, activated, bundleID);
 }
 
+static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation,
+                                 double duration, BOOL mirrored, BOOL force, id message)
+{
+    PXOriginalOrientationChanged(manager, selector, orientation, duration, mirrored, force, message);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
+    });
+}
+
 static void PXKeyboardLayout(id view, SEL selector)
 {
     PXOriginalKeyboardLayout(view, selector);
@@ -285,6 +295,11 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
                             (IMP *)&PXOriginalActivateApplication);
         Class springBoard = NSClassFromString(@"SpringBoard");
+        Class transition = NSClassFromString(@"_SBAppTransitionManager");
+        SEL orientation = NSSelectorFromString(@"noteInterfaceOrientationChanged:duration:updateMirroredDisplays:force:logMessage:");
+        if (transition && class_getInstanceMethod(transition, orientation))
+            MSHookMessageEx(transition, orientation, (IMP)PXOrientationChanged,
+                            (IMP *)&PXOriginalOrientationChanged);
         SEL frontDisplay = NSSelectorFromString(@"frontDisplayDidChange:");
         if (springBoard && class_getInstanceMethod(springBoard, frontDisplay))
             MSHookMessageEx(springBoard, frontDisplay, (IMP)PXFrontDisplayDidChange,

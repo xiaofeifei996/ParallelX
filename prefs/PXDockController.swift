@@ -12,31 +12,36 @@ public final class PXDockController: UIViewController {
     private let card = UIView()
     private let heading = UILabel()
     private let lines = [UIView(), UIView()]
+    private var inputButtons: [UIButton] = []
+    private let scroll = UIScrollView()
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = "角落小窗"
         view.backgroundColor = .systemGroupedBackground
+        scroll.frame = view.bounds
+        scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(scroll)
         heading.text = "位置与容量"
         heading.font = .preferredFont(forTextStyle: .footnote)
         heading.textColor = .secondaryLabel
-        view.addSubview(heading)
+        scroll.addSubview(heading)
         card.backgroundColor = .secondarySystemGroupedBackground
         card.layer.cornerRadius = 16
         card.layer.cornerCurve = .continuous
-        view.addSubview(card)
+        scroll.addSubview(card)
         for line in lines {
             line.backgroundColor = .separator
-            view.addSubview(line)
+            scroll.addSubview(line)
         }
         for label in [widthLabel, countLabel, sideLabel] {
             label.font = .preferredFont(forTextStyle: .body)
-            view.addSubview(label)
+            scroll.addSubview(label)
         }
         sideLabel.text = "小窗默认放置位置"
         sideControl.selectedSegmentIndex = defaults?.integer(forKey: "dockSide") == -1 ? 0 : 1
         sideControl.addTarget(self, action: #selector(sideChanged), for: .valueChanged)
-        view.addSubview(sideControl)
+        scroll.addSubview(sideControl)
         widthSlider.minimumValue = 35
         widthSlider.maximumValue = 160
         widthSlider.value = Float(defaults?.object(forKey: "dockWidth") as? Int ?? 110)
@@ -47,14 +52,17 @@ public final class PXDockController: UIViewController {
             slider.addTarget(self, action: #selector(changed), for: .valueChanged)
             slider.addTarget(self, action: #selector(finished),
                              for: [.touchUpInside, .touchUpOutside, .touchCancel])
-            view.addSubview(slider)
+            scroll.addSubview(slider)
+            let button = PXSettingsStyle.inputButton(for: slider, title: slider === widthSlider ? "小窗宽度（pt）" : "小窗数量", in: self)
+            scroll.addSubview(button)
+            inputButtons.append(button)
         }
         changed()
     }
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let y = view.safeAreaInsets.top + 16
+        let y: CGFloat = 20
         let width = view.bounds.width - 64
         heading.frame = CGRect(x: 32, y: y, width: width, height: 22)
         card.frame = CGRect(x: 16, y: y + 30, width: view.bounds.width - 32, height: 264)
@@ -64,12 +72,14 @@ public final class PXDockController: UIViewController {
             label.frame = CGRect(x: 32, y: rowY + 10, width: width, height: 28)
             if row < 2 {
                 [widthSlider, countSlider][row].frame = CGRect(x: 32, y: rowY + 42,
-                                                                 width: width, height: 34)
+                                                                 width: width - 48, height: 34)
+                inputButtons[row].frame = CGRect(x: view.bounds.width - 70, y: rowY + 40, width: 38, height: 38)
                 lines[row].frame = CGRect(x: 32, y: rowY + 87, width: width, height: 0.5)
             } else {
                 sideControl.frame = CGRect(x: 32, y: rowY + 40, width: width, height: 36)
             }
         }
+        scroll.contentSize = CGSize(width: view.bounds.width, height: card.frame.maxY + 24)
     }
 
     @objc private func changed() {

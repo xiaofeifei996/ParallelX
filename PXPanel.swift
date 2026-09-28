@@ -85,6 +85,7 @@ private final class PXHandleWindow: UIWindow {
 
 private final class PXHostViewController: UIViewController {
     var onLayout: (() -> Void)?
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .all }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
@@ -134,6 +135,7 @@ private final class PXDockedHost {
 }
 
 private final class PXPanelViewController: UIViewController {
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .all }
     var apps: [(id: String, name: String)] = []
     var onBrightnessHold: ((CGPoint) -> Void)?
     var handleCenterY: CGFloat = 0
@@ -763,6 +765,7 @@ public final class PXPanelEntry: NSObject {
     private var keyboardDismissFadingOut = false
     private var keyboardAnimationDuration: TimeInterval = 0.25
     private var keyboardAnimationOptions: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
+    private var layoutScreenBounds = CGRect.zero
 
     @objc public static func start() {
         NotificationCenter.default.addObserver(shared,
@@ -770,6 +773,10 @@ public final class PXPanelEntry: NSObject {
         NotificationCenter.default.addObserver(shared,
             selector: #selector(sceneDeactivated), name: UIScene.willDeactivateNotification, object: nil)
         shared.installHandle()
+        NotificationCenter.default.addObserver(shared, selector: #selector(screenGeometryChanged),
+            name: Notification.Name("PXScreenGeometryChanged"), object: nil)
+        NotificationCenter.default.addObserver(shared, selector: #selector(hostedGeometryChanged(_:)),
+            name: Notification.Name("PXHostedGeometryChanged"), object: nil)
         NotificationCenter.default.addObserver(shared, selector: #selector(refreshKeyboardDismissLayer),
             name: Notification.Name("PXKeyboardStateChanged"), object: nil)
         for name in [Notification.Name("PXKeyboardFrameChanged"), UIResponder.keyboardWillChangeFrameNotification,
@@ -892,6 +899,32 @@ public final class PXPanelEntry: NSObject {
             .first { $0.activationState == .foregroundActive }
     }
 
+    @objc private func screenGeometryChanged() {
+        guard let scene = handleWindow?.windowScene else { return }
+        let screen = scene.coordinateSpace.bounds
+        guard screen != layoutScreenBounds else { return }
+        layoutScreenBounds = screen
+        resizePreview = nil
+        resizeStartFrame = nil
+        moveStartFrame = nil
+        hostWindow?.transform = .identity
+        updateHandleAppearance()
+        panelWindow?.frame = screen
+        panel?.handleCenterX = handle?.center.x ?? screen.maxX
+        panel?.handleCenterY = handle?.center.y ?? screen.midY
+        panel?.view.setNeedsLayout()
+        searchWindow?.frame = screen
+        matchHostAspect()
+        layoutDocks()
+        refreshKeyboardDismissLayer()
+    }
+
+    @objc private func hostedGeometryChanged(_ notification: Notification) {
+        if (notification.object as? PXSceneBridge) === activeBridge { matchHostAspect() }
+        for dock in dockedHosts { dock.bridge.layoutHost() }
+        layoutDocks()
+    }
+
     private func installHandle() {
         if handleWindow != nil { updateHandleAppearance(); return }
         guard let scene = activeScene() else { return }
@@ -899,9 +932,10 @@ public final class PXPanelEntry: NSObject {
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar - 1
         window.backgroundColor = .clear
-        let root = UIViewController()
+        let root = PXHostViewController()
         root.view.backgroundColor = .clear
         window.rootViewController = root
+        root.onLayout = { [weak self] in self?.screenGeometryChanged() }
         let pill = UIView(frame: .zero)
         pill.backgroundColor = .secondarySystemBackground
         pill.layer.cornerCurve = .continuous
@@ -921,6 +955,7 @@ public final class PXPanelEntry: NSObject {
         window.isHidden = false
         handle = pill
         handleWindow = window
+        layoutScreenBounds = scene.coordinateSpace.bounds
         updateHandleAppearance()
     }
 
@@ -1007,7 +1042,7 @@ public final class PXPanelEntry: NSObject {
         let height = min(160, max(44, CGFloat(defaults?.object(forKey: "handleHeight") as? Int ?? 86)))
         window.frame = window.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
         let fraction = min(0.78, max(0.22,
-            CGFloat(defaults?.object(forKey: "handleCenterFraction") as? Double ?? 0.5)))
+            CGFloat(defaults?.object(forKey: handlePositionKey) as? Double ?? 0.5)))
         pill.frame = CGRect(x: window.bounds.maxX - width,
                             y: window.bounds.height * fraction - height / 2, width: width, height: height)
         pill.layer.cornerRadius = min(width / 2, 16)
@@ -1016,6 +1051,11 @@ public final class PXPanelEntry: NSObject {
                                            y: (height - markHeight) / 2,
                                            width: 4, height: markHeight)
         Self.updateCaptureVisibility()
+    }
+
+    private var handlePositionKey: String {
+        let bounds = handleWindow?.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+        return bounds.width > bounds.height ? "handleCenterLandscapeFraction" : "handleCenterFraction"
     }
 
     private func selectedApps() -> [(id: String, name: String)] {
@@ -1127,7 +1167,7 @@ public final class PXPanelEntry: NSObject {
             }
             if handleDragMode == 2 {
                 UserDefaults(suiteName: preferenceDomain)?.set(Double(pill.center.y / root.bounds.height),
-                                                                  forKey: "handleCenterFraction")
+                                                                  forKey: handlePositionKey)
                 handleDragMode = 0
                 return
             }
@@ -1365,7 +1405,10 @@ public final class PXPanelEntry: NSObject {
                                                                    action: #selector(moveGripHeld(_:))))
         root.view.addSubview(moveGrip)
         hostMoveGrip = moveGrip
-        root.onLayout = { [weak self] in self?.layoutHostControls() }
+        root.onLayout = { [weak self] in
+            self?.screenGeometryChanged()
+            self?.layoutHostControls()
+        }
         window.isHidden = false
         hostWindow = window
         hostCard = card
@@ -1540,11 +1583,11 @@ public final class PXPanelEntry: NSObject {
         let requested = CGFloat(UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockWidth") as? Int ?? 110)
         for (index, dock) in dockedHosts.enumerated() {
-            let ratio = dock.sourceSize.height / max(1, dock.sourceSize.width)
+            let ratio = dock.originalCardFrame.height / max(1, dock.originalCardFrame.width)
             let width = max(35, min(requested, available / CGFloat(count) / max(1, ratio)))
             let height = width * ratio
             let preceding = dockedHosts.prefix(index).reduce(CGFloat.zero) { sum, item in
-                let r = item.sourceSize.height / max(1, item.sourceSize.width)
+                let r = item.originalCardFrame.height / max(1, item.originalCardFrame.width)
                 return sum + max(35, min(requested, available / CGFloat(count) / max(1, r))) * r + 12
             }
             let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
@@ -1704,7 +1747,9 @@ public final class PXPanelEntry: NSObject {
                 start.maxX - screen.minX - 12 : screen.maxX - start.minX - 12
             let maximum = min(horizontalRoom / start.width,
                               (screen.maxY - start.minY - 20) / start.height)
-            let scale = min(max(1 + change, 220 / start.width), max(220 / start.width, maximum))
+            let minimumWidth = min(220, max(80, (screen.height - 40) * start.width / start.height))
+            let minimum = minimumWidth / start.width
+            let scale = min(max(1 + change, minimum), max(minimum, maximum))
             let size = CGSize(width: start.width * scale, height: start.height * scale)
             let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
             if gesture.state == .changed {
