@@ -4,20 +4,20 @@ import UIKit
 public final class PXLauncherController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["launcherIconSize", "launcherRing1", "launcherRing2",
-                        "launcherRing3", "launcherRing4", "launcherDragDistance",
+                        "launcherRing3", "launcherRing4", "launcherRingGap", "launcherDragDistance",
                         "launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight"]
     private let titles = ["图标大小", "第一环应用数", "第二环应用数", "第三环应用数",
-                          "第四环应用数", "手柄滑动距离", "面板距右边缘", "长按全屏时长",
+                          "第四环应用数", "环间距", "手柄滑动距离", "面板距右边缘", "长按全屏时长",
                           "手柄宽度", "手柄高度"]
-    private let initial = [52, 3, 5, 7, 9, 120, 6, 700, 24, 86]
+    private let initial = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86]
     private let limits: [(Float, Float)] = [(36, 72), (1, 30), (1, 30),
-                                            (1, 30), (1, 30), (10, 240), (0, 120),
+                                            (1, 30), (1, 30), (0, 60), (10, 240), (0, 120),
                                             (300, 2000), (12, 52), (44, 160)]
-    private let labels = (0..<10).map { _ in UILabel() }
-    private let sliders = (0..<10).map { _ in UISlider() }
+    private let labels = (0..<11).map { _ in UILabel() }
+    private let sliders = (0..<11).map { _ in UISlider() }
     private let scroll = UIScrollView()
     private let hint = UILabel()
-    private var values = [52, 3, 5, 7, 9, 120, 6, 700, 24, 86]
+    private var values = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
@@ -70,7 +70,7 @@ public final class PXLauncherController: UIViewController {
     }
 
     private func updateLabel(_ index: Int) {
-        if index == 7 {
+        if index == 8 {
             labels[index].text = "\(titles[index])：\(String(format: "%.2f", Double(values[index]) / 1000)) 秒"
         } else {
             labels[index].text = "\(titles[index])：\(values[index])\((1...4).contains(index) ? " 个" : " pt")"

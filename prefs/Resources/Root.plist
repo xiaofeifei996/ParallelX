@@ -19,6 +19,6 @@
         { cell = PSSwitchCell; label = "锁屏时清理分屏和小窗"; defaults = "com.moxuan.parallelx"; key = "clearOnLock"; default = 0; },
         { cell = PSGroupCell; label = "截图与录屏"; footerText = "从系统或其他插件截图、录屏时排除手柄和面板，设备上仍可正常显示和操作；不隐藏分屏及键盘。"; },
         { cell = PSSwitchCell; label = "截图/录屏中隐藏手柄和面板"; defaults = "com.moxuan.parallelx"; key = "hideForScreenshot"; default = 0; PostNotification = "com.moxuan.parallelx.capture-updated"; },
-        { cell = PSGroupCell; footerText = "从右侧手柄滑出面板选择应用。点击分屏上方角落可停靠小窗；小窗可点击切换、上滑关闭、左右滑动换边。仅供 iOS 15 RootHide 测试。"; }
+        { cell = PSGroupCell; footerText = "从右侧手柄滑出面板选择应用。点击分屏上方任一角落可停靠到设置的默认侧；小窗可点击切换、上滑关闭、左右滑动换边。仅供 iOS 15 RootHide 测试。"; }
     );
 }

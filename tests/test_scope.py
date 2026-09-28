@@ -13,6 +13,8 @@ assert "PXPanel.swift" in makefile and "PXSceneBridge.m" in makefile
 assert 'stringArray(forKey: "applications")' in panel
 assert 'dictionary(forKey: "applicationNames")' in panel
 assert 'launcherIconSize' in panel and 'launcherRing\\(index + 1)' in panel
+assert 'let ringSpacing = size + ringGap' in panel
+assert 'previousRadius + (rings.isEmpty ? 0 : ringSpacing)' in panel
 assert 'ring.radius * cos(theta)' in panel and 'ring.radius * sin(theta)' in panel
 assert 'let angle: CGFloat = .pi / 2' in panel
 assert 'let desiredRadius = requested == 1' in panel
@@ -76,7 +78,8 @@ assert close_host.index('window.isHidden = true\n            if self?.hostWindow
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
 assert 'resizePreview = (scale, x, start.minY)\n                applyResizePreview()' in panel
-assert 'card.layer.shadowOpacity = 0' in panel.split('private func resizeHost', 1)[1]
+resize = panel.split('private func resizeHost', 1)[1].split('private func applyResizePreview', 1)[0]
+assert 'card.layer.shadowOpacity = 0' not in resize
 assert 'card.layer.cornerRadius = resizeStartRadius / preview.scale' in panel
 assert 'let change = (horizontal + vertical) / 2' in panel
 assert 'abs(horizontal) > abs(vertical)' not in panel
@@ -152,7 +155,7 @@ assert 'private func layoutDocks()' in panel and 'private func restoreDock(' in 
 assert 'dock.window.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
 assert 'dock.window.transform = .identity' in panel
 assert 'dock.card.frame = CGRect(origin: .zero, size: frame.size)' not in panel
-assert 'if hostWindow != nil { parkMain(side: dock.side) }' in panel
+assert 'if hostWindow != nil { parkMain(side: defaultDockSide) }' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
 park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks()', 1)[0]
@@ -174,6 +177,11 @@ assert 'applicationActivated:' in entry
 assert 'self.fullscreenHandoff = YES;\n    [self close];' in bridge
 assert 'hostTopCorners' in panel and '#selector(dockTapped(_:))' in panel
 assert 'PXDockController.swift' in (root / 'prefs' / 'Makefile').read_text(encoding='utf-8')
+dock_prefs = (root / 'prefs' / 'PXDockController.swift').read_text(encoding='utf-8')
+assert 'UISegmentedControl(items: ["左侧", "右侧"])' in dock_prefs
+assert 'forKey: "dockSide"' in dock_prefs
+assert 'parkMain(side: defaultDockSide)' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
+assert 'parkMain(side: sender.tag)' not in panel
 assert 'com.apple.springboard.lockstate' in entry
 assert 'guard !deviceLocked, needsHostRefresh' in panel
 assert 'bool(forKey: "clearOnLock")' in panel
@@ -226,7 +234,7 @@ assert bridge.count('postNotificationName:@"PXKeyboardStateChanged"') == 4
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
 assert 'removeKeyboardDismissLayer()' in close_host
 assert 'gesture.velocity(in: handleWindow).y < -500' in panel
-assert 'if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: 1) }' in panel
+assert 'if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }' in panel
 open_fullscreen = panel.split('private func openFullscreen(', 1)[1].split('private func performShortcut', 1)[0]
 assert open_fullscreen.index('closeHost(animated: false)') < open_fullscreen.index('openFullscreenApplication(bundleID)')
 assert 'px.action.screenshot.copy' in panel and 'px.action.screenshot.copy' in bridge
@@ -251,6 +259,7 @@ assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureO
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 launcher = (root / "prefs" / "PXLauncherController.swift").read_text(encoding="utf-8")
 assert all(key in launcher for key in ("launcherIconSize", "launcherRing1", "launcherRing4"))
+assert 'launcherRingGap' in launcher and '"环间距"' in launcher
 assert all(key in launcher for key in ("launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight"))
 assert "PXLauncherController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 picker = (root / "prefs" / "PXAppPickerController.swift").read_text(encoding="utf-8")

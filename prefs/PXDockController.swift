@@ -7,15 +7,21 @@ public final class PXDockController: UIViewController {
     private let widthSlider = UISlider()
     private let countLabel = UILabel()
     private let countSlider = UISlider()
+    private let sideLabel = UILabel()
+    private let sideControl = UISegmentedControl(items: ["左侧", "右侧"])
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = "角落小窗"
         view.backgroundColor = .systemGroupedBackground
-        for label in [widthLabel, countLabel] {
+        for label in [widthLabel, countLabel, sideLabel] {
             label.font = .preferredFont(forTextStyle: .body)
             view.addSubview(label)
         }
+        sideLabel.text = "小窗默认放置位置"
+        sideControl.selectedSegmentIndex = defaults?.integer(forKey: "dockSide") == -1 ? 0 : 1
+        sideControl.addTarget(self, action: #selector(sideChanged), for: .valueChanged)
+        view.addSubview(sideControl)
         widthSlider.minimumValue = 35
         widthSlider.maximumValue = 160
         widthSlider.value = Float(defaults?.object(forKey: "dockWidth") as? Int ?? 110)
@@ -39,6 +45,8 @@ public final class PXDockController: UIViewController {
         widthSlider.frame = CGRect(x: 20, y: y + 38, width: width, height: 38)
         countLabel.frame = CGRect(x: 20, y: y + 112, width: width, height: 28)
         countSlider.frame = CGRect(x: 20, y: y + 150, width: width, height: 38)
+        sideLabel.frame = CGRect(x: 20, y: y + 220, width: width, height: 28)
+        sideControl.frame = CGRect(x: 20, y: y + 256, width: width, height: 38)
     }
 
     @objc private func changed() {
@@ -52,5 +60,9 @@ public final class PXDockController: UIViewController {
         defaults?.set(Int(widthSlider.value), forKey: "dockWidth")
         defaults?.set(Int(countSlider.value), forKey: "dockCount")
         changed()
+    }
+
+    @objc private func sideChanged() {
+        defaults?.set(sideControl.selectedSegmentIndex == 0 ? -1 : 1, forKey: "dockSide")
     }
 }

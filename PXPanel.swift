@@ -175,6 +175,9 @@ private final class PXPanelViewController: UIViewController {
     private var edgeInset: CGFloat {
         min(120, max(0, CGFloat(defaults?.object(forKey: "launcherEdgeInset") as? Int ?? 6)))
     }
+    private var ringGap: CGFloat {
+        min(60, max(0, CGFloat(defaults?.object(forKey: "launcherRingGap") as? Int ?? 10)))
+    }
     private var ringCounts: [Int] {
         [3, 5, 7, 9].enumerated().map { index, fallback in
             min(max(1, apps.count), max(1, defaults?.object(forKey: "launcherRing\(index + 1)") as? Int ?? fallback))
@@ -279,6 +282,7 @@ private final class PXPanelViewController: UIViewController {
         buttonRings.removeAll()
         let size = iconSize
         let spacing = size + 10
+        let ringSpacing = size + ringGap
         let centerY = handleCenterY == 0 ? view.bounds.midY : handleCenterY
         let maxRadius = min(view.bounds.width - size - edgeInset - 16,
                             min(centerY - view.safeAreaInsets.top - size / 2 - 12,
@@ -290,7 +294,7 @@ private final class PXPanelViewController: UIViewController {
             let desiredRadius = requested == 1 ? 0 :
                 spacing / (2 * sin(.pi / (2 * CGFloat(requested - 1))))
             let radius = max(size * 1.2,
-                             max(previousRadius + (rings.isEmpty ? 0 : spacing),
+                             max(previousRadius + (rings.isEmpty ? 0 : ringSpacing),
                                  min(desiredRadius, maxRadius)))
             guard radius <= maxRadius else { break }
             let fits = radius + 0.01 >= desiredRadius ? requested :
@@ -1267,7 +1271,7 @@ public final class PXPanelEntry: NSObject {
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
-        if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: 1) }
+        if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }
         else { closeHost(animated: false) }
         hostedBundleID = bundleID
         let screen = scene.coordinateSpace.bounds
@@ -1331,7 +1335,7 @@ public final class PXPanelEntry: NSObject {
             top.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear
             PXSceneBridge.keepTransparentGestureViewHittable(top)
             top.isAccessibilityElement = true
-            top.accessibilityLabel = side < 0 ? "停靠到左上角" : "停靠到右上角"
+            top.accessibilityLabel = "停靠到小窗"
             top.addTarget(self, action: #selector(dockTapped(_:)), for: .touchUpInside)
             root.view.addSubview(top)
             hostTopCorners.append(top)
@@ -1437,6 +1441,10 @@ public final class PXPanelEntry: NSObject {
         return CGFloat(min(95, max(35, saved?.doubleValue ?? 78))) / 100
     }
 
+    private var defaultDockSide: Int {
+        UserDefaults(suiteName: preferenceDomain)?.integer(forKey: "dockSide") == -1 ? -1 : 1
+    }
+
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
         let defaults = UserDefaults(suiteName: preferenceDomain)
@@ -1474,7 +1482,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
-        parkMain(side: sender.tag)
+        parkMain(side: defaultDockSide)
     }
 
     @discardableResult private func parkMain(side: Int) -> Bool {
@@ -1572,7 +1580,7 @@ public final class PXPanelEntry: NSObject {
 
     private func restoreDock(_ dock: PXDockedHost) {
         dockedHosts.removeAll { $0 === dock }
-        if hostWindow != nil { parkMain(side: dock.side) }
+        if hostWindow != nil { parkMain(side: defaultDockSide) }
         dock.overlay.removeFromSuperview()
         dock.window.windowLevel = .statusBar - 2
         dock.window.isUserInteractionEnabled = true
@@ -1676,7 +1684,6 @@ public final class PXPanelEntry: NSObject {
                                       y: window.frame.minY + gripTop, width: card.bounds.width,
                                       height: card.bounds.height)
             resizeStartRadius = card.layer.cornerRadius
-            card.layer.shadowOpacity = 0
         }
         guard let start = resizeStartFrame else { return }
         if gesture.state == .changed || gesture.state == .ended {
@@ -1752,7 +1759,7 @@ public final class PXPanelEntry: NSObject {
            -translation.y > abs(translation.x) * 1.2,
            gesture.velocity(in: handleWindow).y < -500 {
             moveStartFrame = nil
-            parkMain(side: 1)
+            parkMain(side: defaultDockSide)
             return
         }
         if gesture.state == .changed || gesture.state == .ended {
