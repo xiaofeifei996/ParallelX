@@ -185,6 +185,27 @@ static UIInterfaceOrientation PXPreferredHostedOrientation(NSString *bundleID, i
     return UIInterfaceOrientationPortrait;
 }
 
+// PullOver-X resolves the application's live request from client settings,
+// independently of the physical screen orientation.
+static UIInterfaceOrientation PXRuntimeHostedOrientation(id client)
+{
+    SEL supported = NSSelectorFromString(@"supportedInterfaceOrientations");
+    UIInterfaceOrientationMask mask = [client respondsToSelector:supported]
+        ? ((NSUInteger (*)(id, SEL))objc_msgSend)(client, supported) : 0;
+    for (NSString *name in @[@"sb_effectiveInterfaceOrientation", @"preferredInterfaceOrientation"]) {
+        SEL selector = NSSelectorFromString(name);
+        UIInterfaceOrientation value = [client respondsToSelector:selector]
+            ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, selector) : UIInterfaceOrientationUnknown;
+        if (value >= UIInterfaceOrientationPortrait && value <= UIInterfaceOrientationLandscapeRight &&
+            (!mask || (mask & (1UL << value)))) return value;
+    }
+    if (mask && !(mask & (mask - 1)))
+        for (UIInterfaceOrientation value = UIInterfaceOrientationPortrait;
+             value <= UIInterfaceOrientationLandscapeRight; value++)
+            if (mask & (1UL << value)) return value;
+    return UIInterfaceOrientationUnknown;
+}
+
 static CGSize PXSourceSize(id settings)
 {
     // The server frame can retain a stale floating size. The display is the
@@ -249,6 +270,7 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, strong) id scene;
 @property(nonatomic, copy) NSString *bundleID;
 @property(nonatomic, strong) UIView *hostView;
+@property(nonatomic, strong) id hostManager;
 @property(nonatomic, assign) BOOL suppressSelection;
 @property(nonatomic, strong) id presentationContext;
 @property(nonatomic, assign) UIUserInterfaceStyle appearanceStyle;
@@ -693,11 +715,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         host.bounds = (CGRect){CGPointZero, source};
         [host setNeedsLayout];
         [host layoutIfNeeded];
-        for (UIView *layer in host.subviews) {
-            if (layer == self.keyboardHostView) continue;
-            layer.frame = host.bounds;
-            layer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        }
+        // The scene host positions its own layers. Forcing canonical iOS 15
+        // portrait layers into a landscape CGRect cropped half the picture.
         host.center = CGPointMake(target.width / 2, target.height / 2);
         host.transform = CGAffineTransformMakeScale(scale, scale);
     }];
@@ -870,57 +889,16 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     }
     if (scene != self.scene || !self.canvas || self.fullscreenHandoff) return;
     id client = PXCall(scene, @"clientSettings");
+    UIInterfaceOrientation orientation = PXRuntimeHostedOrientation(client);
+    UIInterfaceOrientation previous = PXRuntimeHostedOrientation(oldSettings);
     SEL supported = NSSelectorFromString(@"supportedInterfaceOrientations");
     UIInterfaceOrientationMask mask = [client respondsToSelector:supported] ?
         ((NSUInteger (*)(id, SEL))objc_msgSend)(client, supported) : 0;
-    // Keep the hosted orientation while the app supports it. A landscape-only
-    // video screen can still request a new orientation independently of the device.
-    SEL preferred = NSSelectorFromString(@"preferredInterfaceOrientation");
-    UIInterfaceOrientation requested = [client respondsToSelector:preferred]
-        ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, preferred) : UIInterfaceOrientationUnknown;
-    UIInterfaceOrientation oldPreferred = [oldSettings respondsToSelector:preferred]
-        ? ((NSInteger (*)(id, SEL))objc_msgSend)(oldSettings, preferred) : UIInterfaceOrientationUnknown;
-    SEL effective = NSSelectorFromString(@"sb_effectiveInterfaceOrientation");
-    UIInterfaceOrientation effectiveOrientation = [client respondsToSelector:effective]
-        ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective) : UIInterfaceOrientationUnknown;
-    UIInterfaceOrientation oldEffective = [oldSettings respondsToSelector:effective]
-        ? ((NSInteger (*)(id, SEL))objc_msgSend)(oldSettings, effective) : UIInterfaceOrientationUnknown;
-    UIInterfaceOrientation clientOrientation = PXSceneOrientation(client);
-    UIInterfaceOrientation oldClientOrientation = PXSceneOrientation(oldSettings);
-    BOOL clientInterfaceChange = oldClientOrientation >= UIInterfaceOrientationPortrait &&
-        oldClientOrientation <= UIInterfaceOrientationLandscapeRight &&
-        clientOrientation >= UIInterfaceOrientationPortrait &&
-        clientOrientation <= UIInterfaceOrientationLandscapeRight &&
-        clientOrientation != oldClientOrientation && clientOrientation != self.sourceOrientation &&
-        (mask & (1UL << clientOrientation)) &&
-        UIInterfaceOrientationIsLandscape([PXSceneBridge systemOrientation]) ==
-            UIInterfaceOrientationIsLandscape(self.sourceOrientation);
-    BOOL clientConfirmedChange = effectiveOrientation >= UIInterfaceOrientationPortrait &&
-        effectiveOrientation <= UIInterfaceOrientationLandscapeRight &&
-        oldEffective >= UIInterfaceOrientationPortrait && oldEffective <= UIInterfaceOrientationLandscapeRight &&
-        effectiveOrientation != oldEffective && effectiveOrientation != self.sourceOrientation &&
-        (mask & (1UL << effectiveOrientation)) &&
-        UIInterfaceOrientationIsLandscape([PXSceneBridge systemOrientation]) ==
-            UIInterfaceOrientationIsLandscape(self.sourceOrientation);
-    BOOL appRequestedChange = requested != oldPreferred &&
-        requested >= UIInterfaceOrientationPortrait && requested <= UIInterfaceOrientationLandscapeRight &&
-        (mask & (1UL << requested));
-    if (!appRequestedChange && !clientConfirmedChange && !clientInterfaceChange &&
-        (!mask || (mask & (1UL << self.sourceOrientation)))) return;
-    UIInterfaceOrientation orientation = clientOrientation;
-    if ([client respondsToSelector:effective]) {
-        UIInterfaceOrientation value = ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective);
-        if (value >= UIInterfaceOrientationPortrait && value <= UIInterfaceOrientationLandscapeRight)
-            orientation = value;
-    }
-    if (mask && !(mask & (1UL << self.sourceOrientation)))
-        orientation = PXPreferredHostedOrientation(self.bundleID, client);
-    else if (appRequestedChange) orientation = requested;
-    else if (clientInterfaceChange) orientation = clientOrientation;
-    else if (orientation == UIInterfaceOrientationUnknown) orientation = requested;
     if (orientation < UIInterfaceOrientationPortrait || orientation > UIInterfaceOrientationLandscapeRight ||
         orientation == self.sourceOrientation) return;
-    if (!(mask & (1UL << orientation))) return;
+    // An actual client update (or a new mask excluding the current direction)
+    // is authoritative; device rotation alone is never read here.
+    if (previous == orientation && (!mask || (mask & (1UL << self.sourceOrientation)))) return;
     id settings = PXCall(scene, @"settings");
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (![mutable respondsToSelector:NSSelectorFromString(@"setInterfaceOrientation:")]) return;
@@ -1175,6 +1153,22 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             [strongSelf keepHostedProcessAlive];
             if (scene && scene == preparedScene) {
                 NSArray *layers = [strongSelf mainLayersForScene:scene];
+                id manager = PXCall(scene, @"hostManager");
+                SEL enable = NSSelectorFromString(@"enableHostingForRequester:orderFront:");
+                SEL acquire = NSSelectorFromString(@"hostViewForRequester:enableAndOrderFront:");
+                if (!strongSelf.hostView && [manager respondsToSelector:enable] &&
+                    [manager respondsToSelector:acquire]) {
+                    NSString *requester = @"com.moxuan.parallelx";
+                    ((void (*)(id, SEL, id, BOOL))objc_msgSend)(manager, enable, requester, YES);
+                    id view = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(manager, acquire, requester, YES);
+                    if ([view isKindOfClass:UIView.class]) {
+                        strongSelf.hostManager = manager;
+                        strongSelf.hostView = view;
+                        strongSelf.hostView.userInteractionEnabled = !strongSelf.suppressSelection;
+                        [strongSelf.canvas addSubview:view];
+                        [strongSelf layoutHost];
+                    }
+                }
                 Class hostClass = NSClassFromString(@"_UISceneLayerHostContainerView");
                 Class contextClass = NSClassFromString(@"UIScenePresentationContext");
                 SEL initializer = NSSelectorFromString(@"initWithScene:debugDescription:");
@@ -1250,6 +1244,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
     UIView *host = self.hostView;
     self.hostView = nil;
+    id hostManager = self.hostManager;
+    self.hostManager = nil;
     id scene = self.scene;
     SEL removeObserver = NSSelectorFromString(@"removeObserver:");
     if ([scene respondsToSelector:removeObserver])
@@ -1262,12 +1258,18 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     self.canvas = nil;
     self.sourceSize = CGSizeZero;
     SEL invalidate = NSSelectorFromString(@"invalidate");
-    for (UIView *child in [host.subviews copy]) {
-        if ([child respondsToSelector:invalidate])
-            ((void (*)(id, SEL))objc_msgSend)(child, invalidate);
+    if (hostManager) {
+        SEL disable = NSSelectorFromString(@"disableHostingForRequester:");
+        if ([hostManager respondsToSelector:disable])
+            ((void (*)(id, SEL, id))objc_msgSend)(hostManager, disable, @"com.moxuan.parallelx");
+    } else {
+        for (UIView *child in [host.subviews copy]) {
+            if ([child respondsToSelector:invalidate])
+                ((void (*)(id, SEL))objc_msgSend)(child, invalidate);
+        }
+        if ([host respondsToSelector:invalidate])
+            ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
     }
-    if ([host respondsToSelector:invalidate])
-        ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
     [host removeFromSuperview];
     self.presentationContext = nil;
     self.appearanceStyle = UIUserInterfaceStyleUnspecified;

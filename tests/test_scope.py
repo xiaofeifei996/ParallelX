@@ -49,7 +49,7 @@ assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped(); r
 assert 'window.windowLevel = .statusBar + 0.2' in panel
 assert 'shadowStrength' in panel and 'shadowBlur' in panel
 assert 'card.layer.shadowPath = UIBezierPath' in panel
-assert 'let card = UIView(frame: cardFrame)' in panel
+assert 'let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)' in panel
 assert 'launcherHoldMilliseconds' in panel
 assert 'handleWidth' in panel and 'handleHeight' in panel
 assert 'showPanel()' not in panel
@@ -71,9 +71,13 @@ assert fullscreen.index('PXMotion.spring(') < fullscreen.index('openFullscreenAp
 assert 'card.frame = cardFrame' in fullscreen
 assert fullscreen.index('openFullscreenApplication(bundleID)') < fullscreen.index('self.closeHost(animated: false)')
 assert 'readyTicks >= 2 || ticks >= 15' in fullscreen
+assert 'fullscreenToWindowInProgress = wasFullscreen' in panel
+assert 'card.frame = target' in panel
+assert 'shared.closeHost(animated: false, fullscreenHandoff: true)' in panel
+assert '!shared.fullscreenLaunchInProgress' in panel
 assert 'deadline: .now() + 0.75' not in fullscreen
 assert 'exposeSystemHomeIndicator' not in panel
-close_host = panel.split('private func closeHost(animated: Bool)', 1)[1]
+close_host = panel.split('private func closeHost(animated: Bool, fullscreenHandoff: Bool = false)', 1)[1]
 assert close_host.index('window.isHidden = true\n            if self?.hostWindow == nil') < close_host.index('window.rootViewController = nil\n        }')
 assert "#selector(moveHost(_:))" in panel
 assert "card.layer.cornerRadius" in panel and '"cornerRadius"' in panel
@@ -113,8 +117,9 @@ assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel
 assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
 assert '"↙"' not in panel and '"↘"' not in panel
-assert 'prepareWindow(for: bundleID, wasFullscreen: true)' in panel
-assert panel.index('prepareWindow(for: bundleID, wasFullscreen: true)') < panel.index('self.presentHost(bundleID, wasFullscreen: false)')
+assert 'presentHost(bundleID, wasFullscreen: wasFullscreen)' in panel
+assert 'self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
+assert panel.index('let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)') < panel.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 assert 'UIScene.willDeactivateNotification' in panel
 assert 'needsHostRefresh' in panel
 assert 'BOOL shouldReturnHome = wasFullscreen && [currentID isEqualToString:bundleID]' in bridge
@@ -124,7 +129,7 @@ assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
 assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
 assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
 assert 'CGAffineTransformRotate' not in bridge
-assert 'layer.frame = host.bounds' in bridge
+assert 'layer.frame = host.bounds' not in bridge
 assert 'relocateKeyboardView:(UIView *)view' in bridge
 assert 'self.keyboardOverlay = keyboardOverlay' in bridge
 assert 'slot.opaque = NO' in bridge
@@ -146,6 +151,8 @@ assert 'finish(NO);' in prepare
 assert 'objc_msgSend)(controller, selector, ^{ finish(YES); })' in prepare
 assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
+assert 'hostViewForRequester:enableAndOrderFront:' in bridge
+assert 'disableHostingForRequester:' in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
 assert 'updateSettings:withTransitionContext:' not in bridge.replace('updateSettings:withTransitionContext:completion:', '')
 entry = (root / "Tweak.m").read_text(encoding="utf-8")
@@ -161,11 +168,11 @@ assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
 park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
 assert 'root.addSubview(overlay)' in park and 'controls.addSubview(overlay)' not in park
-assert 'window.windowLevel = .statusBar + 0.1' in park
+assert 'window.windowLevel = .statusBar + 0.3' in park
 assert 'card.layer.shadowOpacity = 0' in park
 assert 'let overlay = UIView(frame: card.frame)' in park
 assert 'dock.overlay.frame = frame' in panel
-assert 'dock.window.windowLevel = .statusBar + 0.2' in panel
+assert 'dock.window.windowLevel = .statusBar + 0.3' in panel
 assert 'dock.window.isUserInteractionEnabled = true' in panel
 assert 'activeBridge.setHostedInteractionEnabled(false)' in panel
 assert 'dock.bridge.setHostedInteractionEnabled(true)' in panel
@@ -378,7 +385,7 @@ assert 'handleCenterLandscapeFraction' in panel
 assert 'sourceOrientation = orientation' in bridge
 client_update = bridge.split('- (void)scene:(id)scene didUpdateClientSettingsWithDiff:', 1)[1].split('- (NSArray *)mainLayersForScene:', 1)[0]
 assert 'PXSetSceneFrame(mutable, PXServerFrameSize(mutable))' in client_update
-assert 'sb_effectiveInterfaceOrientation' in client_update
+assert 'sb_effectiveInterfaceOrientation' in bridge
 # Both sideways orientations fit isotropically; portrait-only apps keep their aspect.
 for landscape in (False, True):
     visual = (844, 390) if landscape else (390, 844)
@@ -430,7 +437,7 @@ for source_w, source_h in ((390, 844), (844, 390)):
     for fraction in (.25, .75, 1):
         touch_x = source_w * scale * fraction
         assert abs(touch_x / scale - source_w * fraction) < .001
-assert 'layer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight' in bridge
+assert 'The scene host positions its own layers' in bridge
 assert 'keyboardDismissSuppressed = keyboardHideInFlight || !visible' in panel
 assert 'indicator.backgroundColor = UIColor(white: 0.65, alpha: 0.65)' in panel
 assert 'let ratio = source.height / source.width' in panel
@@ -457,10 +464,9 @@ assert 'self.sourceOrientation = orientation' not in protected
 assert 'PXSetHostedOrientation(mutable, self.sourceOrientation)' in protected
 assert 'setDeviceOrientation:' in bridge and 'BSCanonicalOrientationMapResolver' in bridge
 assert 'supportedInterfaceOrientations' in client_update
-assert 'if (!appRequestedChange && !clientConfirmedChange && !clientInterfaceChange &&' in client_update
-assert 'clientOrientation != oldClientOrientation' in client_update
-assert 'effectiveOrientation != oldEffective' in client_update
-assert 'requested != oldPreferred' in client_update
+assert 'UIInterfaceOrientation orientation = PXRuntimeHostedOrientation(client)' in client_update
+assert 'UIInterfaceOrientation previous = PXRuntimeHostedOrientation(oldSettings)' in client_update
+assert 'previous == orientation' in client_update
 assert 'PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"))' in bridge
 assert 'CGSize sourceSize = PXSourceSize(mutable)' in bridge
 assert 'row.autoresizingMask = [.flexibleWidth]' in panel

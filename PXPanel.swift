@@ -743,6 +743,8 @@ public final class PXPanelEntry: NSObject {
     private var panel: PXPanelViewController?
     private var handle: UIView?
     private var hostedBundleID: String?
+    private var fullscreenToWindowInProgress = false
+    private var fullscreenLaunchInProgress = false
     private var externalPendingBundleID: String?
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
@@ -800,6 +802,13 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func applicationActivated(_ bundleID: String) {
         let clear = {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                if shared.hostedBundleID == bundleID, shared.hostWindow != nil,
+                   !shared.fullscreenToWindowInProgress, !shared.fullscreenLaunchInProgress,
+                   PXSceneBridge.shared().frontmostBundleID() == bundleID {
+                    shared.closeHost(animated: false, fullscreenHandoff: true)
+                }
+            }
             for dock in shared.dockedHosts.filter({ $0.bundleID == bundleID }) {
                 shared.removeDock(dock, fullscreenHandoff: true)
             }
@@ -930,7 +939,7 @@ public final class PXPanelEntry: NSObject {
         panel?.handleCenterX = handle?.center.x ?? screen.maxX
         panel?.handleCenterY = handle?.center.y ?? screen.midY
         panel?.view.setNeedsLayout()
-        UIView.performWithoutAnimation { matchHostAspect() }
+        if !fullscreenToWindowInProgress { UIView.performWithoutAnimation { matchHostAspect() } }
         activeBridge.refreshKeyboardPlacement()
         layoutDocks(animated: false)
         refreshKeyboardDismissLayer()
@@ -938,7 +947,7 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func hostedGeometryChanged(_ notification: Notification) {
         UIView.performWithoutAnimation {
-            if (notification.object as? PXSceneBridge) === activeBridge { matchHostAspect() }
+            if (notification.object as? PXSceneBridge) === activeBridge && !fullscreenToWindowInProgress { matchHostAspect() }
             for dock in dockedHosts { dock.bridge.layoutHost() }
             layoutDocks(animated: false)
         }
@@ -1265,13 +1274,7 @@ public final class PXPanelEntry: NSObject {
         }
         let wasFullscreen = panelFrontmostBundleID == bundleID
         panelFrontmostBundleID = nil
-        guard wasFullscreen else { presentHost(bundleID, wasFullscreen: false); return }
-        // Let SpringBoard finish retiring the native full-screen surface before
-        // attaching the same scene to our window, or both surfaces are visible.
-        activeBridge.prepareWindow(for: bundleID, wasFullscreen: true) { [weak self] ready in
-            guard let self = self, ready else { return }
-            self.presentHost(bundleID, wasFullscreen: false)
-        }
+        presentHost(bundleID, wasFullscreen: wasFullscreen)
     }
 
     private func openFullscreen(_ bundleID: String) {
@@ -1370,6 +1373,7 @@ public final class PXPanelEntry: NSObject {
               let controls = handleWindow?.rootViewController?.view else { return }
         if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }
         else { closeHost(animated: false) }
+        fullscreenToWindowInProgress = wasFullscreen
         hostedBundleID = bundleID
         let screen = controls.bounds
         let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
@@ -1382,13 +1386,13 @@ public final class PXPanelEntry: NSObject {
         window.windowLevel = .statusBar + 0.2
         window.backgroundColor = .clear
         let root = PXHostViewController()
-        root.view.backgroundColor = .clear
+        root.view.backgroundColor = wasFullscreen ? .systemBackground : .clear
         window.rootViewController = root
         window.applySystemOrientation()
-        let card = UIView(frame: cardFrame)
+        let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)
         card.backgroundColor = .secondarySystemBackground
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        card.layer.cornerRadius = configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
+        card.layer.cornerRadius = wasFullscreen ? 0 : configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
         card.layer.cornerCurve = .continuous
         card.layer.shadowColor = UIColor.black.cgColor
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
@@ -1416,7 +1420,7 @@ public final class PXPanelEntry: NSObject {
         clip.addSubview(indicator)
         hostCanvas = canvas
         let spinner = UIActivityIndicatorView(style: .medium)
-        spinner.center = CGPoint(x: width / 2, y: height / 2)
+        spinner.center = CGPoint(x: card.bounds.midX, y: card.bounds.midY)
         spinner.startAnimating()
         card.addSubview(spinner)
         let coldStart = !activeBridge.hasScene(forApplication: bundleID)
@@ -1472,10 +1476,9 @@ public final class PXPanelEntry: NSObject {
         hostCard = card
         layoutHostControls()
         window.isUserInteractionEnabled = false
-        card.transform = CGAffineTransform(scaleX: wasFullscreen ? 1.1 : 0.84,
-                                            y: wasFullscreen ? 1.1 : 0.84)
-        PXMotion.spring(0.4) {
-            card.transform = .identity
+        if !wasFullscreen {
+            card.transform = CGAffineTransform(scaleX: 0.84, y: 0.84)
+            PXMotion.spring(0.4) { card.transform = .identity }
         }
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
@@ -1491,7 +1494,7 @@ public final class PXPanelEntry: NSObject {
                     preview.removeFromSuperview()
                 }
             }
-            self.matchHostAspect()
+            if !wasFullscreen { self.matchHostAspect() }
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else {
@@ -1500,8 +1503,33 @@ public final class PXPanelEntry: NSObject {
                     return
                 }
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
-                window?.isUserInteractionEnabled = true
-                self.layoutHostControls()
+                if wasFullscreen {
+                    // Mirror the fullscreen handoff: the live hosted surface covers
+                    // SpringBoard's native transition, then shrinks into its card.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self, weak window] in
+                        guard let self = self, let window = window, self.hostWindow === window else { return }
+                        let source = self.activeBridge.hostedSourceSize()
+                        let bounds = window.rootViewController?.view.bounds ?? screen
+                        let target = self.initialCardFrame(in: bounds, size: self.initialCardSize(in: bounds, source: source))
+                        let radius = self.configuredCornerRadius(in: bounds, source: source)
+                        window.rootViewController?.view.backgroundColor = .clear
+                        PXMotion.spring(0.40, animations: {
+                            card.frame = target
+                            card.layer.cornerRadius = radius
+                            clip.layer.cornerRadius = radius
+                            card.layoutIfNeeded()
+                            self.activeBridge.layoutHost()
+                        }, completion: { _ in
+                            guard self.hostWindow === window else { return }
+                            self.fullscreenToWindowInProgress = false
+                            window.isUserInteractionEnabled = true
+                            self.layoutHostControls()
+                        })
+                    }
+                } else {
+                    window?.isUserInteractionEnabled = true
+                    self.layoutHostControls()
+                }
             }
         }
         if coldStart, let image = activeBridge.launchImage(forApplication: bundleID, size: card.bounds.size),
@@ -1686,7 +1714,7 @@ public final class PXPanelEntry: NSObject {
             overlay.addGestureRecognizer(swipe)
         }
         root.addSubview(overlay)
-        window.windowLevel = .statusBar + 0.1
+        window.windowLevel = .statusBar + 0.3
         card.layer.shadowOpacity = 0
         card.viewWithTag(0x505847)?.isHidden = true
         canvas.isUserInteractionEnabled = false
@@ -1777,7 +1805,7 @@ public final class PXPanelEntry: NSObject {
         dockedHosts.removeAll { $0 === dock }
         if hostWindow != nil { parkMain(side: defaultDockSide) }
         dock.overlay.removeFromSuperview()
-        dock.window.windowLevel = .statusBar + 0.2
+        dock.window.windowLevel = .statusBar + 0.3
         dock.window.isUserInteractionEnabled = true
         dock.canvas.isUserInteractionEnabled = true
         dock.bridge.setHostedInteractionEnabled(true)
@@ -1830,7 +1858,9 @@ public final class PXPanelEntry: NSObject {
             card.layer.shadowOpacity = 0
         }, completion: { [weak self, weak window] _ in
             guard let self = self, let window = window, self.hostWindow === window else { return }
+            self.fullscreenLaunchInProgress = true
             guard self.activeBridge.openFullscreenApplication(bundleID) else {
+                self.fullscreenLaunchInProgress = false
                 card.transform = .identity
                 card.frame = cardFrame
                 card.layer.cornerRadius = cornerRadius
@@ -1959,7 +1989,7 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
-    private func closeHost(animated: Bool) {
+    private func closeHost(animated: Bool, fullscreenHandoff: Bool = false) {
         guard let window = hostWindow else { return }
         removeKeyboardDismissLayer()
         keyboardFocusBase = nil
@@ -1980,10 +2010,15 @@ public final class PXPanelEntry: NSObject {
         resizeStartFrame = nil
         moveStartFrame = nil
         needsHostRefresh = false
+        fullscreenToWindowInProgress = false
+        fullscreenLaunchInProgress = false
         let bridge = activeBridge
         let finish = { [weak self] in
             window.isHidden = true
-            if self?.hostWindow == nil { bridge.close() }
+            if self?.hostWindow == nil {
+                if fullscreenHandoff { bridge.closeForFullscreen() }
+                else { bridge.close() }
+            }
             window.rootViewController = nil
         }
         if animated, let card = closingCard {
