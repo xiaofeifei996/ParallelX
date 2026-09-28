@@ -898,7 +898,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         orientation == self.sourceOrientation) return;
     // An actual client update (or a new mask excluding the current direction)
     // is authoritative; device rotation alone is never read here.
-    if (previous == orientation && (!mask || (mask & (1UL << self.sourceOrientation)))) return;
+    if ((previous == UIInterfaceOrientationUnknown || previous == orientation) &&
+        (!mask || (mask & (1UL << self.sourceOrientation)))) return;
     id settings = PXCall(scene, @"settings");
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (![mutable respondsToSelector:NSSelectorFromString(@"setInterfaceOrientation:")]) return;
