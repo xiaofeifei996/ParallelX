@@ -109,7 +109,6 @@ private final class PXDockedHost {
     let bridge: PXSceneBridge
     let bundleID: String
     var side: Int
-    var originalCardFrame: CGRect
     let originalCornerRadius: CGFloat
     let corners: [UIView]
     let topCorners: [UIView]
@@ -125,7 +124,6 @@ private final class PXDockedHost {
         self.bridge = bridge
         self.bundleID = bundleID
         self.side = side
-        self.originalCardFrame = card.frame
         self.originalCornerRadius = card.layer.cornerRadius
         self.corners = corners
         self.topCorners = topCorners
@@ -1782,7 +1780,6 @@ public final class PXPanelEntry: NSObject {
             let scale = width / max(1, baseSize.width)
             let changes = {
                 dock.card.bounds = CGRect(origin: .zero, size: baseSize)
-                dock.originalCardFrame.size = baseSize
                 dock.card.layoutIfNeeded()
                 dock.bridge.layoutHost()
                 dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)

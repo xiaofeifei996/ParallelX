@@ -79,8 +79,9 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         defaults?.set(urls, forKey: "urlShortcuts")
         defaults?.set(customActions, forKey: "customActions")
         defaults?.set(symbols, forKey: "shortcutSymbols")
-        defaults?.set(Dictionary(uniqueKeysWithValues:
-            apps.map { ($0.id, $0.name) } + shortcuts.map { ($0.id, $0.name) } + extraItems.map { ($0.id, $0.name) }),
+        defaults?.set(Dictionary(
+            apps.map { ($0.id, $0.name) } + shortcuts.map { ($0.id, $0.name) } + extraItems.map { ($0.id, $0.name) },
+            uniquingKeysWith: { _, latest in latest }),
                       forKey: "applicationNames")
     }
 
@@ -164,8 +165,8 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         let alert = UIAlertController(title: title, message: help, preferredStyle: .alert)
         alert.addTextField { $0.text = value }
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "保存", style: .default) { _ in
-            onSave(alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+        alert.addAction(UIAlertAction(title: "保存", style: .default) { [weak alert] _ in
+            onSave(alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
         })
         present(alert, animated: true)
     }
@@ -177,18 +178,20 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         alert.addTextField { $0.placeholder = "名称"; $0.text = old["title"] }
         alert.addTextField { $0.placeholder = "https:// 或应用 URL Scheme"; $0.text = old["url"] }
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "保存", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "保存", style: .default) { [weak self, weak alert] _ in
             guard let self = self,
-                  let name = alert.textFields?[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
-                  let text = alert.textFields?[1].text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let fields = alert?.textFields, fields.count == 2,
+                  let name = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+                  let text = fields[1].text?.trimmingCharacters(in: .whitespacesAndNewlines),
                   let url = URL(string: text), let scheme = url.scheme?.lowercased(),
                   !["file", "javascript", "data"].contains(scheme), !text.contains(where: { $0.isWhitespace })
             else { self?.showInvalidURL(); return }
-            let entry = ["id": old["id"] ?? "px.url.\(UUID().uuidString)", "title": name, "url": text]
+            let id = old["id"] ?? "px.url.\(UUID().uuidString)"
+            let entry = ["id": id, "title": name, "url": text]
             if let index = index { self.urls[index] = entry }
             else if self.urls.count < 10 {
                 self.urls.append(entry)
-                self.selected.append(entry["id"]!)
+                self.selected.append(id)
             }
             self.saveSelection()
             self.table.reloadData()
@@ -302,8 +305,8 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                 let alert = UIAlertController(title: "集合名称", message: nil, preferredStyle: .alert)
                 alert.addTextField { $0.text = old["title"] as? String ?? "快捷指令集合" }
                 alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-                alert.addAction(UIAlertAction(title: "保存", style: .default) { _ in
-                    let title = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                alert.addAction(UIAlertAction(title: "保存", style: .default) { [weak alert] _ in
+                    let title = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     if !title.isEmpty { persist(title) }
                 })
                 picker?.present(alert, animated: true)

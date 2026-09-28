@@ -36,7 +36,7 @@ final class PXActionPickerController: UITableViewController, UISearchResultsUpda
                 return (id, item["name"] ?? id)
             }
             appIDs = apps.map { $0.id }
-            appNames = Dictionary(uniqueKeysWithValues: apps.map { ($0.id, $0.name) })
+            appNames = Dictionary(apps.map { ($0.id, $0.name) }, uniquingKeysWith: { _, latest in latest })
             loading = !apps.isEmpty
             reload()
             var remaining = apps.count

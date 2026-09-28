@@ -304,13 +304,17 @@ static id PXHostedAppearanceContext(id context, BOOL hosted)
     Class settingsClass = NSClassFromString(@"BSAnimationSettings");
     SEL zeroDuration = NSSelectorFromString(@"settingsWithDuration:");
     SEL setAnimation = NSSelectorFromString(@"setAnimationSettings:");
-    if (![settingsClass respondsToSelector:zeroDuration] || ![context respondsToSelector:setAnimation])
+    if (![settingsClass respondsToSelector:zeroDuration] ||
+        ![context respondsToSelector:@selector(mutableCopy)] ||
+        ![context respondsToSelector:setAnimation])
         return context;
-    id copy = [context mutableCopy];
-    id settings = ((id (*)(id, SEL, double))objc_msgSend)(settingsClass, zeroDuration, 0);
-    if (!copy || !settings) return context;
-    ((void (*)(id, SEL, id))objc_msgSend)(copy, setAnimation, settings);
-    return copy;
+    @try {
+        id copy = [context mutableCopy];
+        id settings = ((id (*)(id, SEL, double))objc_msgSend)(settingsClass, zeroDuration, 0);
+        if (!copy || !settings) return context;
+        ((void (*)(id, SEL, id))objc_msgSend)(copy, setAnimation, settings);
+        return copy;
+    } @catch (__unused NSException *exception) { return context; }
 }
 
 static void PXSceneUpdate(id scene, SEL selector, id settings, id context, id completion)
