@@ -200,15 +200,15 @@ static int PXApplicationPID(NSString *bundleID)
 
 + (UIInterfaceOrientation)systemOrientation
 {
-    PXSceneBridge *bridge = [self sharedBridge];
-    NSString *bundleID = [bridge frontmostBundleID];
-    id settings = PXCall([bridge sceneForBundleID:bundleID], @"settings");
-    UIInterfaceOrientation orientation = PXSceneOrientation(settings);
+    // The transition callback supplies the new direction before the desktop
+    // or foreground app scene has finished updating its cached orientation.
+    if (PXSystemOrientation != UIInterfaceOrientationUnknown) return PXSystemOrientation;
+    SEL active = NSSelectorFromString(@"activeInterfaceOrientation");
+    UIInterfaceOrientation orientation = [UIApplication.sharedApplication respondsToSelector:active]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(UIApplication.sharedApplication, active)
+        : UIInterfaceOrientationUnknown;
     if (orientation >= UIInterfaceOrientationPortrait && orientation <= UIInterfaceOrientationLandscapeRight)
         return orientation;
-    // The transition callback supplies the new direction before the desktop
-    // UIScreen/scene has finished updating its cached orientation.
-    if (PXSystemOrientation != UIInterfaceOrientationUnknown) return PXSystemOrientation;
     SEL screenOrientation = NSSelectorFromString(@"_interfaceOrientation");
     if ([UIScreen.mainScreen respondsToSelector:screenOrientation]) {
         UIInterfaceOrientation orientation = ((NSInteger (*)(id, SEL))objc_msgSend)(UIScreen.mainScreen, screenOrientation);

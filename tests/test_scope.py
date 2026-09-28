@@ -435,6 +435,19 @@ assert 'keyboardDismissSuppressed = keyboardHideInFlight || !visible' in panel
 assert 'indicator.backgroundColor = UIColor(white: 0.65, alpha: 0.65)' in panel
 assert 'let ratio = source.height / source.width' in panel
 assert '[PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation]' in entry
+assert 'MSHookMessageEx(springBoard, orientation, (IMP)PXOrientationChanged' in entry
+assert '_SBAppTransitionManager' not in entry
+assert '_postActiveInterfaceOrientationChangedNotificationAnimated:' in entry
+orientation_reader = bridge.split('+ (UIInterfaceOrientation)systemOrientation', 1)[1].split('- (void)updateAppearanceForStyle:', 1)[0]
+assert orientation_reader.index('return PXSystemOrientation') < orientation_reader.index('activeInterfaceOrientation')
+assert 'sceneForBundleID' not in orientation_reader
+# A new system target wins even while the old desktop/app scene is portrait.
+for target in (1, 2, 3, 4):
+    cached_target, stale_scene = target, 1
+    resolved = cached_target if cached_target in (1, 2, 3, 4) else stale_scene
+    screen = (844, 390) if resolved in (3, 4) else (390, 844)
+    handle_x = screen[0] - 24
+    assert handle_x == (820 if target in (3, 4) else 366)
 assert 'layoutDocks(animated: false)' in panel
 assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel
 dismiss = panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]

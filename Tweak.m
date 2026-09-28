@@ -13,6 +13,7 @@ static void (*PXOriginalKeyboardLayout)(id, SEL);
 static void (*PXOriginalActivateApplication)(id, SEL, id, id, id, id, id);
 static void (*PXOriginalFrontDisplayDidChange)(id, SEL, id);
 static void (*PXOriginalOrientationChanged)(id, SEL, NSInteger, double, BOOL, BOOL, id);
+static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL PXDeviceLocked;
@@ -247,6 +248,17 @@ static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation
     });
 }
 
+static void PXActiveOrientationChanged(id application, SEL selector, BOOL animated)
+{
+    PXOriginalActiveOrientationChanged(application, selector, animated);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        SEL active = NSSelectorFromString(@"activeInterfaceOrientation");
+        if ([application respondsToSelector:active])
+            [PXSceneBridge noteSystemOrientation:((NSInteger (*)(id, SEL))objc_msgSend)(application, active)];
+        [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
+    });
+}
+
 static void PXKeyboardLayout(id view, SEL selector)
 {
     PXOriginalKeyboardLayout(view, selector);
@@ -296,11 +308,18 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
                             (IMP *)&PXOriginalActivateApplication);
         Class springBoard = NSClassFromString(@"SpringBoard");
-        Class transition = NSClassFromString(@"_SBAppTransitionManager");
         SEL orientation = NSSelectorFromString(@"noteInterfaceOrientationChanged:duration:updateMirroredDisplays:force:logMessage:");
-        if (transition && class_getInstanceMethod(transition, orientation))
-            MSHookMessageEx(transition, orientation, (IMP)PXOrientationChanged,
+        Method rotation = class_getInstanceMethod(springBoard, orientation);
+        if (rotation && method_getNumberOfArguments(rotation) == 7)
+            MSHookMessageEx(springBoard, orientation, (IMP)PXOrientationChanged,
                             (IMP *)&PXOriginalOrientationChanged);
+        else {
+            SEL active = NSSelectorFromString(@"_postActiveInterfaceOrientationChangedNotificationAnimated:");
+            Method changed = class_getInstanceMethod(springBoard, active);
+            if (changed && method_getNumberOfArguments(changed) == 3)
+                MSHookMessageEx(springBoard, active, (IMP)PXActiveOrientationChanged,
+                                (IMP *)&PXOriginalActiveOrientationChanged);
+        }
         SEL frontDisplay = NSSelectorFromString(@"frontDisplayDidChange:");
         if (springBoard && class_getInstanceMethod(springBoard, frontDisplay))
             MSHookMessageEx(springBoard, frontDisplay, (IMP)PXFrontDisplayDidChange,
