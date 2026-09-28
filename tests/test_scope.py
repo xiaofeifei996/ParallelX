@@ -412,7 +412,23 @@ assert 'gesture.translation(in: window.rootViewController?.view)' in panel
 
 # Overlay orientation is explicit and immediate; the app owns surface rotation.
 assert 'private final class PXHandleWindow: PXOverlayWindow' in panel
-assert '[super _rotateWindowToOrientation:orientation updateStatusBar:NO duration:0 skipCallbacks:NO]' in bridge
+assert 'self.screen.fixedCoordinateSpace.bounds' in bridge
+assert 'self.center = center' in bridge and 'root.frame = content' in bridge
+assert 'orientation != layoutOrientation' in panel
+assert 'pill.autoresizingMask = []' in panel
+assert 'dockedHosts.filter { $0.side == dock.side }.count' in panel
+# Rotated local bounds must cover the physical screen, not shift off screen.
+import math
+for angle in (0, math.pi / 2, -math.pi / 2, math.pi):
+    physical_w, physical_h = 390, 844
+    local_w, local_h = (844, 390) if abs(math.sin(angle)) > .5 else (390, 844)
+    corners = [(physical_w / 2 + x * math.cos(angle) - y * math.sin(angle),
+                physical_h / 2 + x * math.sin(angle) + y * math.cos(angle))
+               for x in (-local_w / 2, local_w / 2) for y in (-local_h / 2, local_h / 2)]
+    assert abs(min(x for x, y in corners)) < .001
+    assert abs(min(y for x, y in corners)) < .001
+    assert abs(max(x for x, y in corners) - physical_w) < .001
+    assert abs(max(y for x, y in corners) - physical_h) < .001
 assert '[PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation]' in entry
 assert 'layoutDocks(animated: false)' in panel
 assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel

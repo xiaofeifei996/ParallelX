@@ -8,11 +8,6 @@
 #import <signal.h>
 #import <unistd.h>
 
-@interface UIWindow (PXRotation)
-- (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
-                         duration:(double)duration skipCallbacks:(BOOL)skipCallbacks;
-@end
-
 @implementation PXOverlayWindow {
     UIInterfaceOrientation _appliedOrientation;
 }
@@ -24,23 +19,32 @@
 - (void)applySystemOrientation
 {
     UIInterfaceOrientation orientation = [PXSceneBridge systemOrientation];
-    BOOL changed = _appliedOrientation != orientation;
-    if (changed) {
-        _appliedOrientation = orientation;
-        [UIView performWithoutAnimation:^{
-            [super _rotateWindowToOrientation:orientation updateStatusBar:NO duration:0 skipCallbacks:NO];
-        }];
-    }
-    CGSize physical = self.screen.fixedCoordinateSpace.bounds.size;
+    CGRect physical = self.screen.fixedCoordinateSpace.bounds;
     CGSize size = UIInterfaceOrientationIsLandscape(orientation)
-        ? CGSizeMake(MAX(physical.width, physical.height), MIN(physical.width, physical.height))
-        : CGSizeMake(MIN(physical.width, physical.height), MAX(physical.width, physical.height));
-    CGPoint center = CGPointMake(size.width / 2, size.height / 2);
-    if (!changed && CGSizeEqualToSize(self.bounds.size, size) && CGPointEqualToPoint(self.center, center)) return;
-    self.bounds = (CGRect){CGPointZero, size};
-    self.center = center;
-    [self setNeedsLayout];
-    [self layoutIfNeeded];
+        ? CGSizeMake(MAX(physical.size.width, physical.size.height), MIN(physical.size.width, physical.size.height))
+        : CGSizeMake(MIN(physical.size.width, physical.size.height), MAX(physical.size.width, physical.size.height));
+    CGFloat angle = orientation == UIInterfaceOrientationLandscapeLeft ? M_PI_2 :
+        orientation == UIInterfaceOrientationLandscapeRight ? -M_PI_2 :
+        orientation == UIInterfaceOrientationPortraitUpsideDown ? M_PI : 0;
+    CGAffineTransform transform = CGAffineTransformMakeRotation(angle);
+    CGPoint center = CGPointMake(CGRectGetMidX(physical), CGRectGetMidY(physical));
+    UIView *root = self.rootViewController.view;
+    CGRect content = (CGRect){CGPointZero, size};
+    if (_appliedOrientation == orientation && CGAffineTransformEqualToTransform(self.transform, transform) &&
+        CGRectEqualToRect(self.bounds, content) && CGPointEqualToPoint(self.center, center) &&
+        CGRectEqualToRect(root.frame, content)) return;
+    _appliedOrientation = orientation;
+    // Keep the window centred in physical screen coordinates. Only its local
+    // content bounds swap axes; do not move the centre to (long/2, short/2).
+    [UIView performWithoutAnimation:^{
+        self.transform = transform;
+        self.bounds = content;
+        self.center = center;
+        root.transform = CGAffineTransformIdentity;
+        root.frame = content;
+        [root setNeedsLayout];
+        [root layoutIfNeeded];
+    }];
 }
 @end
 
@@ -193,6 +197,13 @@ static int PXApplicationPID(NSString *bundleID)
 
 + (UIInterfaceOrientation)systemOrientation
 {
+    SEL screenOrientation = NSSelectorFromString(@"_interfaceOrientation");
+    if ([UIScreen.mainScreen respondsToSelector:screenOrientation]) {
+        UIInterfaceOrientation orientation = ((NSInteger (*)(id, SEL))objc_msgSend)(UIScreen.mainScreen, screenOrientation);
+        if (orientation == UIInterfaceOrientationPortrait || orientation == UIInterfaceOrientationPortraitUpsideDown ||
+            orientation == UIInterfaceOrientationLandscapeLeft || orientation == UIInterfaceOrientationLandscapeRight)
+            return orientation;
+    }
     if (PXSystemOrientation != UIInterfaceOrientationUnknown) return PXSystemOrientation;
     PXSceneBridge *bridge = [self sharedBridge];
     NSString *bundleID = [bridge frontmostBundleID];

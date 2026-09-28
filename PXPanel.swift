@@ -759,6 +759,7 @@ public final class PXPanelEntry: NSObject {
     private var keyboardAnimationDuration: TimeInterval = 0.25
     private var keyboardAnimationOptions: UIView.AnimationOptions = [.beginFromCurrentState, .allowUserInteraction]
     private var layoutScreenBounds = CGRect.zero
+    private var layoutOrientation = UIInterfaceOrientation.unknown
     private var applyingScreenGeometry = false
     private var keyboardFocusBase: CGRect?
     private var keyboardFocusFrame = CGRect.null
@@ -912,8 +913,10 @@ public final class PXPanelEntry: NSObject {
         }
         guard let scene = handleWindow?.windowScene else { return }
         let screen = handleWindow?.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
-        guard screen != layoutScreenBounds else { return }
+        let orientation = PXSceneBridge.systemOrientation()
+        guard screen != layoutScreenBounds || orientation != layoutOrientation else { return }
         layoutScreenBounds = screen
+        layoutOrientation = orientation
         resizePreview = nil
         resizeStartFrame = nil
         moveStartFrame = nil
@@ -959,7 +962,7 @@ public final class PXPanelEntry: NSObject {
         pill.layer.shadowOpacity = 0.18
         pill.layer.shadowRadius = 6
         pill.layer.shadowOffset = CGSize(width: -2, height: 1)
-        pill.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin, .flexibleBottomMargin]
+        pill.autoresizingMask = []
         let mark = UIView(frame: .zero)
         mark.backgroundColor = UIColor.label.withAlphaComponent(0.55)
         mark.layer.cornerRadius = 2
@@ -970,6 +973,7 @@ public final class PXPanelEntry: NSObject {
         handle = pill
         handleWindow = window
         layoutScreenBounds = root.view.bounds
+        layoutOrientation = PXSceneBridge.systemOrientation()
         updateHandleAppearance()
     }
 
@@ -1066,9 +1070,8 @@ public final class PXPanelEntry: NSObject {
         let width = min(52, max(12, CGFloat(defaults?.object(forKey: "handleWidth") as? Int ?? 24)))
         let height = min(160, max(44, CGFloat(defaults?.object(forKey: "handleHeight") as? Int ?? 86)))
         window.applySystemOrientation()
-        let fraction = min(0.78, max(0.22,
-            CGFloat(defaults?.object(forKey: handlePositionKey) as? Double ?? 0.5)))
         let bounds = window.rootViewController?.view.bounds ?? window.bounds
+        let fraction = min(0.78, max(0.22, CGFloat(defaults?.object(forKey: handlePositionKey) as? Double ?? 0.5)))
         pill.frame = CGRect(x: bounds.maxX - width,
                             y: bounds.height * fraction - height / 2, width: width, height: height)
         pill.layer.cornerRadius = min(width / 2, 16)
@@ -1661,13 +1664,13 @@ public final class PXPanelEntry: NSObject {
 
     private func layoutDocks(animated: Bool = true) {
         let screen = handleWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
-        let count = max(1, dockedHosts.count)
         let landscape = screen.width > screen.height
         let top: CGFloat = landscape ? 16 : max(50, handleWindow?.rootViewController?.view.safeAreaInsets.top ?? 50) + 12
-        let available = max(120, screen.height - top - 40 - CGFloat(count - 1) * 12)
         let requested = landscape ? landscapeDockWidth(in: screen) : CGFloat(UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockWidth") as? Int ?? 110)
         for (index, dock) in dockedHosts.enumerated() {
+            let count = max(1, dockedHosts.filter { $0.side == dock.side }.count)
+            let available = max(120, screen.height - top - 40 - CGFloat(count - 1) * 12)
             let ratio = dock.originalCardFrame.height / max(1, dock.originalCardFrame.width)
             let width = max(35, min(requested, available / CGFloat(count) / max(1, ratio)))
             let height = width * ratio
