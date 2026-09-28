@@ -12,10 +12,8 @@ app_picker = (root / "prefs/PXAppPickerController.swift").read_text(encoding="ut
 action_picker = (root / "prefs/PXActionPickerController.swift").read_text(encoding="utf-8")
 
 assert 'originalCardFrame' not in panel
-assert 'PXLandscapeProbeEvents++ >= 160' in bridge
-assert 'CFAbsoluteTimeGetCurrent() + 8' in bridge
-assert 'mount timeout bundle=' in bridge and 'mount exception=' in bridge
-assert 'for delay in [0.2, 0.8, 1.6]' in panel
+assert 'PXLandscapeProbe' not in bridge and 'LandscapeProbe' not in bridge_header
+assert 'traceLandscape' not in panel and 'for delay in [0.2, 0.8, 1.6]' not in panel
 screen_geometry = panel.split('@objc private func screenGeometryChanged()', 1)[1].split('@objc private func hostedGeometryChanged', 1)[0]
 assert 'if !fullscreenToWindowInProgress' not in screen_geometry
 assert 'UIView.performWithoutAnimation { matchHostAspect() }' in screen_geometry
@@ -264,6 +262,18 @@ assert 'overlay.backgroundColor = UIColor(white: 1, alpha: 0.02)' in panel
 assert 'max(35, min(requested' in panel
 dock_settings = (root / 'prefs' / 'PXDockController.swift').read_text(encoding='utf-8')
 assert 'widthSlider.minimumValue = 35' in dock_settings
+assert 'landscapeWidthSlider.maximumValue = 240' in dock_settings
+assert 'forKey: "landscapeDockWidth"' in dock_settings
+assert 'source.width > source.height ? "landscapeDockWidth" : "dockWidth"' in panel
+assert 'let itemWidth = dockWidth(for: itemSource, in: screen)' in panel
+for source, expected_width in (((926, 428), 220), ((428, 926), 110)):
+    settings = {'dockWidth': 110, 'landscapeDockWidth': 220}
+    key = 'landscapeDockWidth' if source[0] > source[1] else 'dockWidth'
+    width = min(428 - 54, min(240, max(35, settings.get(key, settings['dockWidth']))))
+    assert width == expected_width
+# The next slot starts below the actual landscape height, not portrait width.
+landscape_height = 220 * 428 / 926
+assert abs((62 + landscape_height + 12) - 175.68466522678186) < .001
 assert 'onBrightnessHold' in panel and 'start.value + (start.y - y)' in panel
 assert 'setBrightnessLevel:(float)level' in bridge
 picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding='utf-8')

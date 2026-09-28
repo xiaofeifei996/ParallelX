@@ -10,21 +10,6 @@
 
 static NSString *PXHomeHandoffBundleID;
 static CFAbsoluteTime PXHomeHandoffDeadline;
-static CFAbsoluteTime PXLandscapeProbeDeadline;
-static NSUInteger PXLandscapeProbeEvents;
-static NSString * const PXLandscapeProbePath = @"/var/mobile/Library/Logs/com.moxuan.parallelx.landscape.log";
-
-static void PXLandscapeProbe(NSString *message)
-{
-    if (CFAbsoluteTimeGetCurrent() > PXLandscapeProbeDeadline || PXLandscapeProbeEvents++ >= 160) return;
-    @try {
-        NSString *line = [NSString stringWithFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), message];
-        NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:PXLandscapeProbePath];
-        [file seekToEndOfFile];
-        [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-        [file closeFile];
-    } @catch (__unused NSException *exception) { }
-}
 
 @interface UIWindow (PXRotation)
 - (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
@@ -318,21 +303,6 @@ static int PXApplicationPID(NSString *bundleID)
 @end
 
 @implementation PXSceneBridge
-+ (void)beginLandscapeProbe
-{
-    if (!UIInterfaceOrientationIsLandscape([self systemOrientation])) return;
-    [NSFileManager.defaultManager createDirectoryAtPath:PXLandscapeProbePath.stringByDeletingLastPathComponent
-        withIntermediateDirectories:YES attributes:nil error:nil];
-    [@"ParallelX alpha98 landscape handoff probe\n" writeToFile:PXLandscapeProbePath
-        atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    PXLandscapeProbeDeadline = CFAbsoluteTimeGetCurrent() + 8;
-    PXLandscapeProbeEvents = 0;
-}
-
-+ (void)recordLandscapeProbe:(NSString *)message
-{
-    PXLandscapeProbe(message);
-}
 + (BOOL)consumeHomeHandoffForBundleID:(NSString *)bundleID
 {
     if (!NSThread.isMainThread) return NO;
@@ -724,7 +694,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!completion) return;
     NSString *currentID = [self frontmostBundleID];
     BOOL shouldReturnHome = wasFullscreen && [currentID isEqualToString:bundleID];
-    PXLandscapeProbe([NSString stringWithFormat:@"prepare bundle=%@ front=%@ returnHome=%d", bundleID, currentID, shouldReturnHome]);
     void (^finish)(BOOL) = ^(BOOL success){
         if (NSThread.isMainThread) completion(success);
         else dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
@@ -892,9 +861,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if ([[self frontmostBundleID] isEqualToString:self.bundleID] &&
         current >= UIInterfaceOrientationPortrait && current <= UIInterfaceOrientationLandscapeRight)
         orientation = current;
-    PXLandscapeProbe([NSString stringWithFormat:@"foreground bundle=%@ scene=%p screen=%ld before=%ld preferred=%ld frame=%@",
-        self.bundleID, scene, (long)[PXSceneBridge systemOrientation], (long)PXSceneOrientation(settings),
-        (long)orientation, NSStringFromCGRect(PXRect(settings, @"frame"))]);
     PXSetHostedOrientation(mutable, orientation);
     CGSize sourceSize = PXSourceSize(mutable);
     if (!PXSetSceneFrame(mutable, PXServerFrameSize(mutable))) return NO;
@@ -1285,9 +1251,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                     }
                 }
                 if (layers.count && strongSelf.hostView) {
-                    PXLandscapeProbe([NSString stringWithFormat:@"mounted bundle=%@ generation=%lu layers=%lu source=%@ host=%@ canvas=%@",
-                        bundleID, (unsigned long)generation, (unsigned long)layers.count, NSStringFromCGSize(strongSelf.sourceSize),
-                        NSStringFromCGRect(strongSelf.hostView.frame), NSStringFromCGRect(strongSelf.canvas.bounds)]);
                     [strongSelf.hostView layoutIfNeeded];
                     [strongSelf relocateExistingKeyboard:strongSelf.hostView];
                     completion(YES);
@@ -1299,12 +1262,10 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                     return;
                 }
             }
-        } @catch (NSException *exception) {
+        } @catch (__unused NSException *exception) {
             // Private interfaces vary; fail closed instead of crashing SpringBoard.
-            PXLandscapeProbe([NSString stringWithFormat:@"mount exception=%@ reason=%@", exception.name, exception.reason]);
         }
         if (++attempts >= 40) {
-            PXLandscapeProbe([NSString stringWithFormat:@"mount timeout bundle=%@", bundleID]);
             [strongSelf close];
             completion(NO);
             retry = nil;
@@ -1327,8 +1288,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 - (void)close
 {
     NSAssert(NSThread.isMainThread, @"ParallelX Scene access must be on the main thread");
-    PXLandscapeProbe([NSString stringWithFormat:@"bridge close bundle=%@ generation=%lu fullscreen=%d",
-        self.bundleID, (unsigned long)self.generation, self.fullscreenHandoff]);
     self.generation += 1;
     self.latestSwitcherBundleID = nil;
     if (self.keyboardSlot) self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel;

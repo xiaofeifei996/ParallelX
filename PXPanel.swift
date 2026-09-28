@@ -816,7 +816,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc public static func applicationActivated(_ bundleID: String) {
-        shared.traceLandscape("applicationActivated \(bundleID)")
         let clear = {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 if shared.hostedBundleID == bundleID, shared.hostWindow != nil,
@@ -834,7 +833,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc public static func frontDisplayChanged(_ bundleID: String?) {
-        shared.traceLandscape("frontDisplayChanged \(bundleID ?? "nil")")
         if shared.fullscreenToWindowInProgress && bundleID != shared.hostedBundleID {
             shared.fullscreenToWindowInProgress = false
             shared.layoutHostControls()
@@ -900,14 +898,12 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func sceneDeactivated(_ notification: Notification) {
-        traceLandscape("sceneDeactivated \(String(describing: notification.object))")
         if (notification.object as? UIWindowScene) === hostWindow?.windowScene {
             needsHostRefresh = true
         }
     }
 
     @objc private func sceneActivated(_ notification: Notification) {
-        traceLandscape("sceneActivated \(String(describing: notification.object))")
         installHandle()
         if (notification.object as? UIWindowScene) === hostWindow?.windowScene {
             if fullscreenToWindowInProgress, PXSceneBridge.shared().frontmostBundleID() != hostedBundleID {
@@ -971,7 +967,6 @@ public final class PXPanelEntry: NSObject {
         guard screen != layoutScreenBounds || orientation != layoutOrientation else { return }
         layoutScreenBounds = screen
         layoutOrientation = orientation
-        traceLandscape("screenGeometryChanged")
         resizePreview = nil
         resizeStartFrame = nil
         moveStartFrame = nil
@@ -1418,8 +1413,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
-        PXSceneBridge.beginLandscapeProbe()
-        traceLandscape("presentHost \(bundleID) wasFullscreen=\(wasFullscreen)")
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
         if hostWindow != nil, hostedBundleID != bundleID {
@@ -1552,7 +1545,6 @@ public final class PXPanelEntry: NSObject {
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
-            self.traceLandscape("openApplication completion success=\(success)")
             guard success else {
                 self.closeHost(animated: false)
                 self.externalOpenFailed(bundleID)
@@ -1570,13 +1562,6 @@ public final class PXPanelEntry: NSObject {
                 card.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
             }
             window?.isHidden = false
-            self.traceLandscape("host revealed")
-            for delay in [0.2, 0.8, 1.6] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak window] in
-                    guard let self = self, self.hostWindow === window else { return }
-                    self.traceLandscape("after reveal \(delay)s")
-                }
-            }
             if wasFullscreen {
                 PXMotion.spring(0.4, animations: { card.transform = .identity }) { _ in
                     guard self.hostWindow === window else { return }
@@ -1585,7 +1570,6 @@ public final class PXPanelEntry: NSObject {
             }
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
-                self.traceLandscape("prepareWindow completion ready=\(ready)")
                 guard ready else {
                     self.closeHost(animated: false)
                     self.externalOpenFailed(bundleID)
@@ -1641,8 +1625,17 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func landscapeDockWidth(in screen: CGRect) -> CGFloat {
-        let requested = CGFloat(UserDefaults(suiteName: preferenceDomain)?.object(forKey: "dockWidth") as? Int ?? 110)
-        return max(35, min(requested, screen.height * 0.12))
+        let widest = max(dockWidth(for: CGSize(width: 1, height: 2), in: screen),
+                         dockWidth(for: CGSize(width: 2, height: 1), in: screen))
+        return min(widest, screen.width * 0.25)
+    }
+
+    private func dockWidth(for source: CGSize, in screen: CGRect) -> CGFloat {
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let key = source.width > source.height ? "landscapeDockWidth" : "dockWidth"
+        let saved = defaults?.object(forKey: key) as? NSNumber
+        let legacy = defaults?.object(forKey: "dockWidth") as? NSNumber
+        return min(max(35, screen.width - 54), CGFloat(min(240, max(35, saved?.doubleValue ?? legacy?.doubleValue ?? 110))))
     }
 
     private func updateKeyboardFocus() {
@@ -1794,11 +1787,10 @@ public final class PXPanelEntry: NSObject {
         let screen = handleWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let landscape = screen.width > screen.height
         let top: CGFloat = landscape ? 16 : max(50, handleWindow?.rootViewController?.view.safeAreaInsets.top ?? 50) + 12
-        let requested = landscape ? landscapeDockWidth(in: screen) : CGFloat(UserDefaults(suiteName: preferenceDomain)?
-            .object(forKey: "dockWidth") as? Int ?? 110)
         for (index, dock) in dockedHosts.enumerated() {
             let source = dock.bridge.hostedSourceSize()
             guard source.width > 0, source.height > 0 else { continue }
+            let requested = dockWidth(for: source, in: screen)
             let baseSize = initialCardSize(in: screen, source: source)
             let count = max(1, dockedHosts.filter { $0.side == dock.side }.count)
             let available = max(120, screen.height - top - 40 - CGFloat(count - 1) * 12)
@@ -1808,7 +1800,8 @@ public final class PXPanelEntry: NSObject {
             let preceding = dockedHosts.prefix(index).filter { $0.side == dock.side }.reduce(CGFloat.zero) { sum, item in
                 let itemSource = item.bridge.hostedSourceSize()
                 let r = itemSource.height / max(1, itemSource.width)
-                return sum + max(35, min(requested, available / CGFloat(count) / max(1, r))) * r + 12
+                let itemWidth = dockWidth(for: itemSource, in: screen)
+                return sum + max(35, min(itemWidth, available / CGFloat(count) / max(1, r))) * r + 12
             }
             let edge: CGFloat = landscape ? 27 : 12
             let frame = CGRect(x: dock.side < 0 ? edge : screen.maxX - width - edge,
@@ -2045,7 +2038,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func closeHost(animated: Bool, fullscreenHandoff: Bool = false) {
-        traceLandscape("closeHost animated=\(animated) fullscreen=\(fullscreenHandoff)")
         guard let window = hostWindow else { return }
         removeKeyboardDismissLayer()
         keyboardFocusBase = nil
@@ -2086,8 +2078,4 @@ public final class PXPanelEntry: NSObject {
         } else { finish() }
     }
 
-    private func traceLandscape(_ event: String) {
-        let window = hostWindow
-        PXSceneBridge.recordLandscapeProbe("\(event) bundle=\(hostedBundleID ?? "nil") front=\(PXSceneBridge.shared().frontmostBundleID() ?? "nil") screen=\(PXSceneBridge.systemOrientation().rawValue) handoff=\(fullscreenToWindowInProgress) hidden=\(window?.isHidden ?? true) window=\(String(describing: window?.frame)) root=\(String(describing: window?.rootViewController?.view.bounds)) card=\(String(describing: hostCard?.frame)) source=\(activeBridge.hostedSourceSize())")
-    }
 }

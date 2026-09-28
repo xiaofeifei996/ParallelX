@@ -5,8 +5,6 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)consumeHomeHandoffForBundleID:(NSString *)bundleID;
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation;
 + (UIInterfaceOrientation)systemOrientation;
-+ (void)beginLandscapeProbe;
-+ (void)recordLandscapeProbe:(NSString *)message;
 + (instancetype)sharedBridge;
 + (nullable id)protectedSettings:(id)settings forAnyScene:(id)scene;
 + (void)relocateAnyKeyboardView:(UIView *)view;
