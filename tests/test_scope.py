@@ -65,7 +65,7 @@ assert "height: start.height * scale" in panel
 assert "#selector(resizeHost(_:))" in panel
 assert "if gesture.state == .began { fullscreenTapped() }" in panel
 fullscreen = panel.split('@objc private func fullscreenTapped()', 1)[1].split('@objc private func moveGripHeld', 1)[0]
-assert fullscreen.index('UIView.animate(') < fullscreen.index('openFullscreenApplication(bundleID)')
+assert fullscreen.index('PXMotion.spring(') < fullscreen.index('openFullscreenApplication(bundleID)')
 assert 'card.frame = cardFrame' in fullscreen
 assert fullscreen.index('openFullscreenApplication(bundleID)') < fullscreen.index('self.closeHost(animated: false)')
 assert 'readyTicks >= 2 || ticks >= 15' in fullscreen
@@ -293,13 +293,16 @@ assert 'px.custom.' in panel and 'customActions' in picker
 assert 'groupMenuActive' in panel and 'selectedGroupAction' in panel
 assert 'cancel.text = "取消"' in panel and 'scroll.scrollRectToVisible(groupRows[next].frame, animated: false)' in panel
 assert 'groupScrollLink' not in panel
-assert 'menu.frame = CGRect(x: view.bounds.midX - width / 2, y: view.bounds.midY - height / 2' in panel
+assert 'menu.frame = CGRect(x: view.bounds.maxX - width - 10' in panel
+assert 'handleCenterY - height / 2' in panel
+assert 'guard menu.bounds.contains(local) else' in panel
 assert 'let delta = point.y - groupOriginY' in panel
-assert 'let distance = abs(delta)' in panel
-assert 'let step = min(36, max(12, (travel - 8) / CGFloat(groupItems.count + 1)))' in panel
+assert 'let step = min(36, max(8, scroll.bounds.height / CGFloat(groupItems.count + 1)))' in panel
 assert 'let row = min(groupItems.count, max(0, groupItems.count / 2 + Int(delta / step)))' in panel
 assert 'max(150, ceil(widest) + 32)' in panel and 'label.textAlignment = .center' in panel
-assert 'groupItems.count + 1' in panel and 'let moved = distance >= 8' in panel
+assert 'groupItems.count + 1' in panel and 'let moved = abs(delta) >= 8' in panel
+assert 'private enum PXMotion' in panel and panel.count('PXMotion.spring(') >= 7
+assert panel.count('PXMotion.ease(') >= 7
 assert 'multiple && indexPath.section == 0' in action_picker
 assert 'chosen.insert(chosen.remove(at: sourceIndexPath.row)' in action_picker
 assert 'shade.frame = view.bounds' in panel
@@ -329,8 +332,8 @@ assert 'frontDisplayDidChange:' in (root / 'Tweak.m').read_text(encoding='utf-8'
 assert 'PXOriginalFrontDisplayDidChange(springBoard, selector, application)' in (root / 'Tweak.m').read_text(encoding='utf-8')
 
 for count in (1, 6, 20):
-    travel = 400
-    step = min(36, max(12, (travel - 8) / (count + 1)))
+    height = min(6, count) * 52
+    step = min(36, max(8, height / (count + 1)))
     middle = count // 2
     assert min(count, max(0, middle + int(step / step))) == min(count, middle + 1)
     assert min(count, max(0, middle + int(-step / step))) == max(0, middle - 1)

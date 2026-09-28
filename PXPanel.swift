@@ -4,6 +4,24 @@ private let preferenceDomain = "com.moxuan.parallelx"
 private let gripMargin: CGFloat = 28
 private let gripTop: CGFloat = 28
 private let gripBottom: CGFloat = 168
+private enum PXMotion {
+    static func ease(_ duration: TimeInterval, delay: TimeInterval = 0,
+                     options: UIView.AnimationOptions = .curveEaseOut,
+                     animations: @escaping () -> Void, completion: ((Bool) -> Void)? = nil) {
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : duration,
+                       delay: UIAccessibility.isReduceMotionEnabled ? 0 : delay,
+                       options: [options, .allowUserInteraction, .beginFromCurrentState],
+                       animations: animations, completion: completion)
+    }
+
+    static func spring(_ duration: TimeInterval, animations: @escaping () -> Void,
+                       completion: ((Bool) -> Void)? = nil) {
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : duration,
+                       delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 2,
+                       options: [.allowUserInteraction, .beginFromCurrentState],
+                       animations: animations, completion: completion)
+    }
+}
 private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.dark", "深色模式", "moon.fill"),
     ("px.action.record", "屏幕录制", "record.circle"),
@@ -143,6 +161,7 @@ private final class PXPanelViewController: UIViewController {
     private var groupItems: [[String: Any]] = []
     private var groupSelected: Int?
     private var groupOriginY: CGFloat = 0
+    private var groupInside = false
     private var groupCancel: UILabel?
     var groupMenuActive: Bool { groupMenu != nil }
     private var page = 0
@@ -248,9 +267,7 @@ private final class PXPanelViewController: UIViewController {
     func completeOpening() {
         guard !opening else { return }
         opening = true
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.23,
-                       delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0,
-                       options: [.beginFromCurrentState]) { self.setProgress(1) }
+        PXMotion.spring(0.23) { self.setProgress(1) }
     }
 
     private func layoutPage() {
@@ -349,7 +366,7 @@ private final class PXPanelViewController: UIViewController {
             fullscreenReadyView = nil
             if let selectedIndex = selectedIndex,
                let old = buttons.first(where: { $0.tag == selectedIndex }) {
-                UIView.animate(withDuration: 0.13) { old.subviews.first?.transform = .identity }
+                PXMotion.ease(0.13) { old.subviews.first?.transform = .identity }
             }
             selectedIndex = next
             selectedSince = next.map { applicationID(apps[$0].id) != nil || apps[$0].id == "px.action.screenshot" } == true ? CACurrentMediaTime() : nil
@@ -385,15 +402,13 @@ private final class PXPanelViewController: UIViewController {
                 selectionPreview.backgroundColor = PXSceneBridge.shared().shortcutIsActive(id) ?
                     UIColor(white: 0.42, alpha: 1) : .systemGray5
                 selectionPreview.transform = CGAffineTransform(scaleX: 0.76, y: 0.76)
-                UIView.animate(withDuration: 0.23, delay: 0,
-                               usingSpringWithDamping: 0.72, initialSpringVelocity: 0,
-                               options: .beginFromCurrentState) {
+                PXMotion.spring(0.23) {
                     hit.subviews.first?.transform = CGAffineTransform(scaleX: 1.12, y: 1.12)
                     self.selectionPreview.transform = .identity
                     self.selectionPreview.alpha = self.progress
                 }
             } else {
-                UIView.animate(withDuration: 0.10) { self.selectionPreview.alpha = 0 }
+                PXMotion.ease(0.10) { self.selectionPreview.alpha = 0 }
             }
         }
         return next.map { apps[$0].id }
@@ -417,13 +432,13 @@ private final class PXPanelViewController: UIViewController {
             .scaledBy(x: 110 / trail.bounds.width, y: 110 / trail.bounds.height)
         view.addSubview(trail)
         fullscreenReadyView = trail
-        UIView.animate(withDuration: 0.32, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+        PXMotion.ease(0.32, animations: {
             trail.transform = .identity
             trail.alpha = 0
-        } completion: { [weak self, weak trail] _ in
+        }, completion: { [weak self, weak trail] _ in
             trail?.removeFromSuperview()
             if self?.fullscreenReadyView === trail { self?.fullscreenReadyView = nil }
-        }
+        })
     }
 
     func cancelSelectionFeedback() {
@@ -450,9 +465,13 @@ private final class PXPanelViewController: UIViewController {
         let widest = items.map { (($0["title"] as? String ?? "快捷指令") as NSString)
             .size(withAttributes: [.font: font]).width }.max() ?? 0
         let width = min(view.bounds.width - 48, max(150, ceil(widest) + 32))
-        let availableHeight = max(96, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - 32)
+        let availableHeight = max(96, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - 20)
         let height = min(availableHeight, CGFloat(min(6, items.count)) * 52 + 104)
-        menu.frame = CGRect(x: view.bounds.midX - width / 2, y: view.bounds.midY - height / 2, width: width, height: height)
+        let top = view.safeAreaInsets.top + 10
+        let bottom = view.bounds.maxY - view.safeAreaInsets.bottom - 10
+        menu.frame = CGRect(x: view.bounds.maxX - width - 10,
+                            y: min(max(top, handleCenterY - height / 2), bottom - height),
+                            width: width, height: height)
         let heading = UILabel(frame: CGRect(x: 16, y: 0, width: width - 32, height: 56))
         heading.text = "上下滑动选择，松手运行"
         heading.textAlignment = .center
@@ -487,10 +506,11 @@ private final class PXPanelViewController: UIViewController {
         groupMenu = menu
         groupScroll = scroll
         groupCancel = cancel
-        groupOriginY = point.y
+        groupOriginY = 0
+        groupInside = false
         menu.alpha = 0
         menu.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.18) {
+        PXMotion.ease(0.18) {
             menu.alpha = 1; menu.transform = .identity
         }
         updateGroupSelection(at: point)
@@ -498,15 +518,20 @@ private final class PXPanelViewController: UIViewController {
 
     func updateGroupSelection(at point: CGPoint) {
         lastSelectionPoint = point
-        guard groupMenu != nil, let scroll = groupScroll else { return }
-        // Small, finger-relative steps still work anywhere on the screen.
+        guard let menu = groupMenu, let scroll = groupScroll else { return }
+        let local = menu.convert(point, from: view)
+        guard menu.bounds.contains(local) else {
+            groupInside = false
+            groupSelected = nil
+            groupRows.forEach { $0.backgroundColor = .clear; $0.textColor = .label }
+            groupCancel?.backgroundColor = .clear
+            return
+        }
+        if !groupInside { groupOriginY = point.y; groupInside = true }
         let delta = point.y - groupOriginY
-        let distance = abs(delta)
-        let travel = max(groupOriginY - view.safeAreaInsets.top,
-                         view.bounds.height - view.safeAreaInsets.bottom - groupOriginY)
-        let step = min(36, max(12, (travel - 8) / CGFloat(groupItems.count + 1)))
+        let step = min(36, max(8, scroll.bounds.height / CGFloat(groupItems.count + 1)))
         let row = min(groupItems.count, max(0, groupItems.count / 2 + Int(delta / step)))
-        let moved = distance >= 8
+        let moved = abs(delta) >= 8
         let next: Int? = moved && groupItems.indices.contains(row) ? row : nil
         if next != groupSelected {
             selectionFeedback.selectionChanged()
@@ -516,7 +541,8 @@ private final class PXPanelViewController: UIViewController {
             label.backgroundColor = index == next ? UIColor.systemBlue.withAlphaComponent(0.16) : .clear
             label.textColor = index == next ? .systemBlue : .label
         }
-        groupCancel?.backgroundColor = moved && row == groupItems.count ? UIColor.systemRed.withAlphaComponent(0.12) : .clear
+        groupCancel?.backgroundColor = moved && row == groupItems.count ?
+            UIColor.systemRed.withAlphaComponent(0.12) : .clear
         if let next = next { scroll.scrollRectToVisible(groupRows[next].frame, animated: false) }
     }
 
@@ -545,21 +571,21 @@ private final class PXPanelViewController: UIViewController {
         let duration = UIAccessibility.isReduceMotionEnabled ? 0 : 0.20
         let outer = buttonRings.max() ?? 0
         for (index, button) in buttons.enumerated() {
-            UIView.animate(withDuration: duration, delay: Double(outer - buttonRings[index]) * 0.028,
-                           options: [.curveEaseIn, .beginFromCurrentState]) {
+            PXMotion.ease(duration, delay: Double(outer - buttonRings[index]) * 0.028,
+                          options: .curveEaseIn) {
                 button.alpha = 0
                 button.transform = CGAffineTransform(translationX: self.handleCenterX - button.center.x,
                                                      y: self.handleCenterY - button.center.y)
                     .scaledBy(x: 0.72, y: 0.72)
             }
         }
-        UIView.animate(withDuration: duration + Double(outer) * 0.028) {
+        PXMotion.ease(duration + Double(outer) * 0.028, options: .curveEaseIn, animations: {
             self.shade.alpha = 0
             self.pageControl.alpha = 0
             self.selectionPreview.alpha = 0
             self.brightnessOverlay.alpha = 0
             self.groupMenu?.alpha = 0
-        } completion: { _ in completion() }
+        }, completion: { _ in completion() })
     }
 }
 
@@ -624,9 +650,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
         card.transform = CGAffineTransform(translationX: 0, y: 28)
         view.alpha = 1
         field.becomeFirstResponder()
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.25,
-                       delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0,
-                       options: [.beginFromCurrentState]) {
+        PXMotion.spring(0.25) {
             self.card.alpha = 1
             self.card.transform = .identity
         }
@@ -635,7 +659,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
     @objc private func keyboardChanged(_ note: Notification) {
         guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         keyboardTop = max(0, view.convert(rect, from: nil).minY)
-        UIView.animate(withDuration: 0.22) { self.view.setNeedsLayout(); self.view.layoutIfNeeded() }
+        PXMotion.ease(0.22) { self.view.setNeedsLayout(); self.view.layoutIfNeeded() }
     }
 
     @objc private func filterApps() {
@@ -1343,9 +1367,7 @@ public final class PXPanelEntry: NSObject {
         window.isUserInteractionEnabled = false
         card.transform = CGAffineTransform(scaleX: wasFullscreen ? 1.1 : 0.84,
                                             y: wasFullscreen ? 1.1 : 0.84)
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.4,
-                       delay: 0, usingSpringWithDamping: 0.84,
-                       initialSpringVelocity: 0, options: .beginFromCurrentState) {
+        PXMotion.spring(0.4) {
             card.transform = .identity
         }
         activeBridge.openApplication(bundleID, in: canvas,
@@ -1358,7 +1380,7 @@ public final class PXPanelEntry: NSObject {
                 return
             }
             if let preview = card.subviews.first(where: { $0.tag == 0x50584c }) {
-                UIView.animate(withDuration: 0.15, animations: { preview.alpha = 0 }) { _ in
+                PXMotion.ease(0.15, animations: { preview.alpha = 0 }) { _ in
                     preview.removeFromSuperview()
                 }
             }
@@ -1519,8 +1541,7 @@ public final class PXPanelEntry: NSObject {
             let scale = width / max(1, dock.originalCardFrame.width)
             let cardOffset = CGPoint(x: dock.originalCardFrame.midX - dock.window.bounds.midX,
                                      y: dock.originalCardFrame.midY - dock.window.bounds.midY)
-            UIView.animate(withDuration: 0.30, delay: 0, usingSpringWithDamping: 0.86,
-                           initialSpringVelocity: 0, options: .beginFromCurrentState) {
+            PXMotion.spring(0.30) {
                 dock.window.transform = CGAffineTransform(scaleX: scale, y: scale)
                 dock.window.center = CGPoint(x: frame.midX - cardOffset.x * scale,
                                              y: frame.midY - cardOffset.y * scale)
@@ -1578,15 +1599,14 @@ public final class PXPanelEntry: NSObject {
                                   y: frame.minY - gripTop,
                                   width: width + 2 * gripMargin,
                                   height: height + gripTop + gripBottom)
-        UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.86,
-                       initialSpringVelocity: 0, options: .beginFromCurrentState) {
+        PXMotion.spring(0.32, animations: {
             dock.window.transform = .identity
             dock.window.center = CGPoint(x: targetWindow.midX, y: targetWindow.midY)
             dock.card.layer.shadowOpacity = 0
-        } completion: { [weak self, weak dock] _ in
+        }, completion: { [weak self, weak dock] _ in
             guard let self = self, let dock = dock, self.hostWindow === dock.window else { return }
             self.layoutHostControls()
-        }
+        })
         layoutDocks()
     }
 
@@ -1607,9 +1627,7 @@ public final class PXPanelEntry: NSObject {
         window.isUserInteractionEnabled = false
         window.frame = scene.coordinateSpace.bounds
         card.frame = oldFrame
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.40,
-                       delay: 0, usingSpringWithDamping: 0.88,
-                       initialSpringVelocity: 0, options: .beginFromCurrentState) {
+        PXMotion.spring(0.40, animations: {
             let screen = scene.coordinateSpace.bounds
             card.transform = CGAffineTransform(scaleX: screen.width / oldFrame.width,
                                                 y: screen.height / oldFrame.height)
@@ -1617,7 +1635,7 @@ public final class PXPanelEntry: NSObject {
             card.layer.cornerRadius = 0
             card.subviews.first?.layer.cornerRadius = 0
             card.layer.shadowOpacity = 0
-        } completion: { [weak self, weak window] _ in
+        }, completion: { [weak self, weak window] _ in
             guard let self = self, let window = window, self.hostWindow === window else { return }
             guard self.activeBridge.openFullscreenApplication(bundleID) else {
                 card.transform = .identity
@@ -1648,7 +1666,7 @@ public final class PXPanelEntry: NSObject {
                 }
             }
             RunLoop.main.add(timer, forMode: .common)
-        }
+        })
     }
 
     @objc private func moveGripHeld(_ gesture: UILongPressGestureRecognizer) {
@@ -1776,12 +1794,10 @@ public final class PXPanelEntry: NSObject {
             window.rootViewController = nil
         }
         if animated, let card = closingCard {
-            UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.28,
-                           delay: 0, usingSpringWithDamping: 0.88,
-                           initialSpringVelocity: 0, options: .beginFromCurrentState) {
+            PXMotion.spring(0.28, animations: {
                 card.alpha = 0
                 card.transform = CGAffineTransform(scaleX: 0.88, y: 0.88)
-            } completion: { _ in finish() }
+            }, completion: { _ in finish() })
         } else { finish() }
     }
 }
