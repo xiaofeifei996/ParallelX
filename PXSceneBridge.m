@@ -197,8 +197,15 @@ static int PXApplicationPID(NSString *bundleID)
     NSString *bundleID = [bridge frontmostBundleID];
     id settings = PXCall([bridge sceneForBundleID:bundleID], @"settings");
     UIInterfaceOrientation orientation = PXSceneOrientation(settings);
-    if (orientation == UIInterfaceOrientationUnknown)
-        orientation = UIApplication.sharedApplication.statusBarOrientation;
+    if (orientation == UIInterfaceOrientationUnknown) {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if ([scene isKindOfClass:UIWindowScene.class] &&
+                [scene.session.persistentIdentifier isEqualToString:@"com.apple.springboard"]) {
+                orientation = ((UIWindowScene *)scene).interfaceOrientation;
+                break;
+            }
+        }
+    }
     return orientation == UIInterfaceOrientationUnknown ? UIInterfaceOrientationPortrait : orientation;
 }
 
