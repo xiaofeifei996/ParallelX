@@ -12,6 +12,10 @@ app_picker = (root / "prefs/PXAppPickerController.swift").read_text(encoding="ut
 action_picker = (root / "prefs/PXActionPickerController.swift").read_text(encoding="utf-8")
 
 assert 'originalCardFrame' not in panel
+assert 'PXLandscapeProbeEvents++ >= 160' in bridge
+assert 'CFAbsoluteTimeGetCurrent() + 8' in bridge
+assert 'mount timeout bundle=' in bridge and 'mount exception=' in bridge
+assert 'for delay in [0.2, 0.8, 1.6]' in panel
 assert 'uniquingKeysWith:' in app_picker and 'uniquingKeysWith:' in action_picker
 assert app_picker.count('[weak alert]') >= 2 and '[weak self, weak alert]' in app_picker
 assert 'context respondsToSelector:@selector(mutableCopy)' in tweak
