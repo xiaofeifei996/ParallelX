@@ -454,13 +454,25 @@ assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel
 # Device rotation must not replace a still-supported hosted orientation.
 protected = bridge.split('- (id)protectedSettings:(id)settings forScene:', 1)[1].split('- (void)scene:', 1)[0]
 assert 'self.sourceOrientation = orientation' not in protected
-assert 'setOrientation, self.sourceOrientation' in protected
+assert 'PXSetHostedOrientation(mutable, self.sourceOrientation)' in protected
+assert 'setDeviceOrientation:' in bridge and 'BSCanonicalOrientationMapResolver' in bridge
 assert 'supportedInterfaceOrientations' in client_update
-assert 'if (!appRequestedChange && (!mask || (mask & (1UL << self.sourceOrientation)))) return;' in client_update
+assert 'if (!appRequestedChange && !clientConfirmedChange &&' in client_update
+assert 'effectiveOrientation != oldEffective' in client_update
 assert 'requested != oldPreferred' in client_update
 assert 'PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"))' in bridge
 assert 'CGSize sourceSize = PXSourceSize(mutable)' in bridge
 assert 'row.autoresizingMask = [.flexibleWidth]' in panel
+assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
+assert 'window.windowLevel = .statusBar + 0.5' in panel
+for source, screen, old_effective, effective, expected in (
+    (1, 1, 1, 3, True),   # Portrait device, app enters landscape video.
+    (1, 3, 1, 3, False),  # Device rotation alone does not turn the hosted app.
+    (1, 1, 0, 3, False),  # Incomplete startup settings are not a rotation request.
+):
+    confirmed = old_effective in (1, 2, 3, 4) and effective != old_effective and \
+        effective != source and (screen in (3, 4)) == (source in (3, 4))
+    assert confirmed == expected
 for screen_landscape in (False, True):
     for app_mask, expected_landscape in ((2, False), (2 | 8 | 16, False), (8 | 16, True)):
         orientation = next(value for value in (1, 2, 3, 4) if app_mask & (1 << value))

@@ -949,7 +949,7 @@ public final class PXPanelEntry: NSObject {
         guard let scene = activeScene() else { return }
         let window = PXHandleWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = .statusBar - 1
+        window.windowLevel = .statusBar + 0.5
         window.backgroundColor = .clear
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
@@ -1078,6 +1078,8 @@ public final class PXPanelEntry: NSObject {
 
     private func updateHandleAppearance() {
         guard let window = handleWindow, let pill = handle else { return }
+        window.windowLevel = .statusBar + 0.5
+        window.isHidden = false
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let width = min(52, max(12, CGFloat(defaults?.object(forKey: "handleWidth") as? Int ?? 24)))
         let height = min(160, max(44, CGFloat(defaults?.object(forKey: "handleHeight") as? Int ?? 86)))
@@ -1714,7 +1716,8 @@ public final class PXPanelEntry: NSObject {
                 let r = itemSource.height / max(1, itemSource.width)
                 return sum + max(35, min(requested, available / CGFloat(count) / max(1, r))) * r + 12
             }
-            let frame = CGRect(x: dock.side < 0 ? 12 : screen.maxX - width - 12,
+            let edge: CGFloat = landscape ? 27 : 12
+            let frame = CGRect(x: dock.side < 0 ? edge : screen.maxX - width - edge,
                                y: top + preceding, width: width, height: height)
             let scale = width / max(1, baseSize.width)
             let changes = {

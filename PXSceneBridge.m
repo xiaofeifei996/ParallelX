@@ -116,6 +116,44 @@ static UIInterfaceOrientation PXSceneOrientation(id settings)
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(settings, selector) : UIInterfaceOrientationUnknown;
 }
 
+static void PXSetHostedOrientation(id settings, UIInterfaceOrientation orientation)
+{
+    if (!settings || orientation < UIInterfaceOrientationPortrait ||
+        orientation > UIInterfaceOrientationLandscapeRight) return;
+    UIDeviceOrientation device = orientation == UIInterfaceOrientationLandscapeLeft
+        ? UIDeviceOrientationLandscapeRight : orientation == UIInterfaceOrientationLandscapeRight
+        ? UIDeviceOrientationLandscapeLeft : (UIDeviceOrientation)orientation;
+    SEL setDevice = NSSelectorFromString(@"setDeviceOrientation:");
+    SEL getDevice = NSSelectorFromString(@"deviceOrientation");
+    UIDeviceOrientation currentDevice = [settings respondsToSelector:getDevice]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(settings, getDevice) : UIDeviceOrientationUnknown;
+    if (currentDevice != device && [settings respondsToSelector:setDevice])
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(settings, setDevice, device);
+    SEL setInterface = NSSelectorFromString(@"setInterfaceOrientation:");
+    if (PXSceneOrientation(settings) != orientation && [settings respondsToSelector:setInterface])
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(settings, setInterface, orientation);
+
+    // A scene whose direction differs from the screen needs the native
+    // orientation map as well as its interface/device orientation. The map
+    // keeps the rendered surface and touch coordinates in the same space.
+    SEL setResolver = NSSelectorFromString(@"setInterfaceOrientationMapResolver:");
+    if (![settings respondsToSelector:setResolver]) return;
+    UIInterfaceOrientation screen = [PXSceneBridge systemOrientation];
+    if (UIInterfaceOrientationIsLandscape(screen) == UIInterfaceOrientationIsLandscape(orientation)) {
+        ((void (*)(id, SEL, id))objc_msgSend)(settings, setResolver, nil);
+        return;
+    }
+    Class resolverClass = NSClassFromString(@"BSCanonicalOrientationMapResolver");
+    SEL init = NSSelectorFromString(@"initWithTargetOrientation:currentOrientation:");
+    SEL mode = NSSelectorFromString(@"setInterfaceOrientationMode:");
+    if (![resolverClass instancesRespondToSelector:init] || ![settings respondsToSelector:mode]) return;
+    id resolver = ((id (*)(id, SEL, NSInteger, NSInteger))objc_msgSend)(
+        [resolverClass alloc], init, screen, orientation);
+    if (!resolver) return;
+    ((void (*)(id, SEL, NSInteger))objc_msgSend)(settings, mode, 1);
+    ((void (*)(id, SEL, id))objc_msgSend)(settings, setResolver, resolver);
+}
+
 static UIInterfaceOrientation PXPreferredHostedOrientation(NSString *bundleID, id client)
 {
     UIInterfaceOrientationMask mask = 0;
@@ -742,9 +780,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
     UIInterfaceOrientation orientation = PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"));
-    SEL setOrientation = NSSelectorFromString(@"setInterfaceOrientation:");
-    if ([mutable respondsToSelector:setOrientation])
-        ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setOrientation, orientation);
+    PXSetHostedOrientation(mutable, orientation);
     CGSize sourceSize = PXSourceSize(mutable);
     if (!PXSetSceneFrame(mutable, sourceSize)) return NO;
     if (!PXUpdateScene(scene, mutable)) return NO;
@@ -802,9 +838,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ![settings respondsToSelector:@selector(mutableCopy)]) return nil;
     id mutable = [settings mutableCopy];
     // Screen rotation moves the overlay, not the hosted application's scene.
-    SEL setOrientation = NSSelectorFromString(@"setInterfaceOrientation:");
-    if (self.sourceOrientation != UIInterfaceOrientationUnknown && [mutable respondsToSelector:setOrientation])
-        ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setOrientation, self.sourceOrientation);
+    PXSetHostedOrientation(mutable, self.sourceOrientation);
     if (!PXSetBool(mutable, @"setBackgrounded:", NO)) return nil;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
@@ -838,12 +872,24 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, preferred) : UIInterfaceOrientationUnknown;
     UIInterfaceOrientation oldPreferred = [oldSettings respondsToSelector:preferred]
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(oldSettings, preferred) : UIInterfaceOrientationUnknown;
+    SEL effective = NSSelectorFromString(@"sb_effectiveInterfaceOrientation");
+    UIInterfaceOrientation effectiveOrientation = [client respondsToSelector:effective]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective) : UIInterfaceOrientationUnknown;
+    UIInterfaceOrientation oldEffective = [oldSettings respondsToSelector:effective]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(oldSettings, effective) : UIInterfaceOrientationUnknown;
+    BOOL clientConfirmedChange = effectiveOrientation >= UIInterfaceOrientationPortrait &&
+        effectiveOrientation <= UIInterfaceOrientationLandscapeRight &&
+        oldEffective >= UIInterfaceOrientationPortrait && oldEffective <= UIInterfaceOrientationLandscapeRight &&
+        effectiveOrientation != oldEffective && effectiveOrientation != self.sourceOrientation &&
+        (mask & (1UL << effectiveOrientation)) &&
+        UIInterfaceOrientationIsLandscape([PXSceneBridge systemOrientation]) ==
+            UIInterfaceOrientationIsLandscape(self.sourceOrientation);
     BOOL appRequestedChange = requested != oldPreferred &&
         requested >= UIInterfaceOrientationPortrait && requested <= UIInterfaceOrientationLandscapeRight &&
         (mask & (1UL << requested));
-    if (!appRequestedChange && (!mask || (mask & (1UL << self.sourceOrientation)))) return;
+    if (!appRequestedChange && !clientConfirmedChange &&
+        (!mask || (mask & (1UL << self.sourceOrientation)))) return;
     UIInterfaceOrientation orientation = PXSceneOrientation(client);
-    SEL effective = NSSelectorFromString(@"sb_effectiveInterfaceOrientation");
     if ([client respondsToSelector:effective]) {
         UIInterfaceOrientation value = ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective);
         if (value >= UIInterfaceOrientationPortrait && value <= UIInterfaceOrientationLandscapeRight)
@@ -856,9 +902,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!(mask & (1UL << orientation))) return;
     id settings = PXCall(scene, @"settings");
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
-    SEL setOrientation = NSSelectorFromString(@"setInterfaceOrientation:");
-    if (![mutable respondsToSelector:setOrientation]) return;
-    ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setOrientation, orientation);
+    if (![mutable respondsToSelector:NSSelectorFromString(@"setInterfaceOrientation:")]) return;
+    PXSetHostedOrientation(mutable, orientation);
     self.sourceOrientation = orientation;
     self.sourceSize = PXSourceSize(mutable);
     PXSetSceneFrame(mutable, self.sourceSize);
