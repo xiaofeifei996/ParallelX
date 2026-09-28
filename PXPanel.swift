@@ -982,7 +982,10 @@ public final class PXPanelEntry: NSObject {
         panel?.handleCenterX = handle?.center.x ?? screen.maxX
         panel?.handleCenterY = handle?.center.y ?? screen.midY
         panel?.view.setNeedsLayout()
-        if !fullscreenToWindowInProgress { UIView.performWithoutAnimation { matchHostAspect() } }
+        // Home can rotate to portrait during the handoff. The hosted scene
+        // keeps its direction, but its card must enter the new screen bounds.
+        UIView.performWithoutAnimation { matchHostAspect() }
+        activeBridge.refreshHostedOrientationMap()
         activeBridge.refreshKeyboardPlacement()
         layoutDocks(animated: false)
         refreshKeyboardDismissLayer()

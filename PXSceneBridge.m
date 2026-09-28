@@ -312,6 +312,8 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, copy) NSString *latestSwitcherBundleID;
 @property(nonatomic, assign) CGSize sourceSize;
 @property(nonatomic, assign) UIInterfaceOrientation sourceOrientation;
+@property(nonatomic, strong) id originalOrientationMapResolver;
+@property(nonatomic, strong) NSNumber *originalOrientationMode;
 @property(nonatomic, assign) NSUInteger generation;
 @end
 
@@ -321,7 +323,7 @@ static int PXApplicationPID(NSString *bundleID)
     if (!UIInterfaceOrientationIsLandscape([self systemOrientation])) return;
     [NSFileManager.defaultManager createDirectoryAtPath:PXLandscapeProbePath.stringByDeletingLastPathComponent
         withIntermediateDirectories:YES attributes:nil error:nil];
-    [@"ParallelX alpha96 landscape handoff probe\n" writeToFile:PXLandscapeProbePath
+    [@"ParallelX alpha97 landscape handoff probe\n" writeToFile:PXLandscapeProbePath
         atomically:YES encoding:NSUTF8StringEncoding error:nil];
     PXLandscapeProbeDeadline = CFAbsoluteTimeGetCurrent() + 8;
     PXLandscapeProbeEvents = 0;
@@ -800,6 +802,16 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     return self.hostView != nil;
 }
 
+- (void)refreshHostedOrientationMap
+{
+    if (!self.scene || !self.canvas || self.fullscreenHandoff) return;
+    id settings = PXCall(self.scene, @"settings");
+    id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+    if (!mutable) return;
+    PXSetHostedOrientation(mutable, self.sourceOrientation);
+    PXUpdateScene(self.scene, mutable);
+}
+
 - (BOOL)usesExternalKeyboard
 {
     CGSize size = self.keyboardOverlay.bounds.size;
@@ -863,6 +875,12 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 - (BOOL)foregroundScene:(id)scene
 {
     id settings = PXCall(scene, @"settings");
+    if (self.scene != scene) {
+        self.originalOrientationMapResolver = PXCall(settings, @"interfaceOrientationMapResolver");
+        SEL mode = NSSelectorFromString(@"interfaceOrientationMode");
+        self.originalOrientationMode = [settings respondsToSelector:mode]
+            ? @(((NSInteger (*)(id, SEL))objc_msgSend)(settings, mode)) : nil;
+    }
     id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
     if (!mutable || !PXSetBool(mutable, @"setBackgrounded:", NO)) return NO;
     PXSetBool(mutable, @"setForeground:", YES);
@@ -1332,6 +1350,20 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     self.bundleID = nil;
     self.canvas = nil;
     self.sourceSize = CGSizeZero;
+    // Remove our hosted mapping before handing the scene back to SpringBoard.
+    // Preserve its current interface orientation and other activation settings.
+    id settings = PXCall(scene, @"settings");
+    id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+    SEL resolver = NSSelectorFromString(@"setInterfaceOrientationMapResolver:");
+    SEL mode = NSSelectorFromString(@"setInterfaceOrientationMode:");
+    if (mutable && [mutable respondsToSelector:resolver]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(mutable, resolver, self.originalOrientationMapResolver);
+        if (self.originalOrientationMode && [mutable respondsToSelector:mode])
+            ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, mode, self.originalOrientationMode.integerValue);
+        PXUpdateScene(scene, mutable);
+    }
+    self.originalOrientationMapResolver = nil;
+    self.originalOrientationMode = nil;
     SEL invalidate = NSSelectorFromString(@"invalidate");
     if (hostManager) {
         SEL disable = NSSelectorFromString(@"disableHostingForRequester:");

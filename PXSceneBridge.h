@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setHostedInteractionEnabled:(BOOL)enabled;
 - (CGSize)hostedSourceSize;
 - (BOOL)hasHostedSurface;
+- (void)refreshHostedOrientationMap;
 - (BOOL)isKeyboardRelocated;
 - (BOOL)isHostedKeyboardVisible;
 - (BOOL)usesExternalKeyboard;

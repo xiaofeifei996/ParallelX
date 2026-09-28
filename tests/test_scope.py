@@ -16,6 +16,21 @@ assert 'PXLandscapeProbeEvents++ >= 160' in bridge
 assert 'CFAbsoluteTimeGetCurrent() + 8' in bridge
 assert 'mount timeout bundle=' in bridge and 'mount exception=' in bridge
 assert 'for delay in [0.2, 0.8, 1.6]' in panel
+screen_geometry = panel.split('@objc private func screenGeometryChanged()', 1)[1].split('@objc private func hostedGeometryChanged', 1)[0]
+assert 'if !fullscreenToWindowInProgress' not in screen_geometry
+assert 'UIView.performWithoutAnimation { matchHostAspect() }' in screen_geometry
+assert 'activeBridge.refreshHostedOrientationMap()' in screen_geometry
+assert 'self.originalOrientationMapResolver = PXCall(settings, @"interfaceOrientationMapResolver")' in bridge
+assert 'objc_msgSend)(mutable, resolver, self.originalOrientationMapResolver)' in bridge
+# Device log: Home narrows 926 to 428 while the card remains at x=660.6.
+# Recompute against the new screen even while fullscreen handoff is active.
+source_width, source_height = 428, 926
+screen_width, screen_height = 428, 926
+scale = min(screen_width * .78 / source_width, (screen_height - 80) / source_height)
+card_width, card_height = source_width * scale, source_height * scale
+card_x, card_y = screen_width - card_width - 12, (screen_height - card_height) / 2
+assert 0 <= card_x and card_x + card_width <= screen_width
+assert 0 <= card_y and card_y + card_height <= screen_height
 assert 'uniquingKeysWith:' in app_picker and 'uniquingKeysWith:' in action_picker
 assert app_picker.count('[weak alert]') >= 2 and '[weak self, weak alert]' in app_picker
 assert 'context respondsToSelector:@selector(mutableCopy)' in tweak
