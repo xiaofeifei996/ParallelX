@@ -3,6 +3,7 @@
 #import <Preferences/PSViewController.h>
 
 @interface PXPageHostController : PSViewController
+@property(nonatomic, strong) UIViewController *contentController;
 @end
 
 @implementation PXPageHostController
@@ -15,6 +16,24 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    [self installContentIfReady];
+}
+
+- (void)setSpecifier:(PSSpecifier *)specifier
+{
+    [super setSpecifier:specifier];
+    if (self.isViewLoaded) [self installContentIfReady];
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [self installContentIfReady];
+}
+
+- (void)installContentIfReady
+{
+    if (self.contentController || !self.specifier) return;
     NSString *identifier = [self.specifier propertyForKey:@"id"];
     NSDictionary<NSString *, NSString *> *pages = @{
         @"picker": @"PXAppPickerController",
@@ -28,6 +47,7 @@
     Class pageClass = className ? NSClassFromString(className) : Nil;
     if (![pageClass isSubclassOfClass:UIViewController.class]) return;
     UIViewController *page = [pageClass new];
+    self.contentController = page;
     [self addChildViewController:page];
     page.view.frame = self.view.bounds;
     page.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;

@@ -359,3 +359,9 @@ for name in ('AppPicker', 'Launcher', 'CornerRadius', 'Dock', 'GestureArea'):
 assert 'canvas.traitCollection.userInterfaceStyle' in bridge
 assert 'activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)' in panel
 assert 'button.contentHorizontalAlignment = .left' in panel
+import plistlib
+prefs_info = plistlib.loads((root / 'prefs' / 'Resources' / 'Info.plist').read_bytes())
+assert prefs_info['NSPrincipalClass'] == 'PXRootListController'
+assert 'overridePrincipalClass = 1' in (root / 'layout' / 'Library' / 'PreferenceLoader' / 'Preferences' / 'ParallelX.plist').read_text()
+assert '- (void)setSpecifier:(PSSpecifier *)specifier' in prefs_host
+assert 'if (self.contentController || !self.specifier) return;' in prefs_host
