@@ -91,7 +91,11 @@ assert 'window.isUserInteractionEnabled = false' in panel
 assert 'hostMoveGrip?.frame = CGRect' in panel
 assert 'gestureWidth' in panel and 'gestureHeight' in panel and 'gestureOffset' in panel
 assert 'gestureDebug' in panel and 'moveLine' not in panel
-assert 'moveGrip.backgroundColor = UIColor(white: 1, alpha: 0.02)' in panel
+assert 'moveGrip.backgroundColor = .clear' in panel
+assert 'corner.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear' in panel
+assert 'top.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear' in panel
+assert panel.count('PXSceneBridge.keepTransparentGestureViewHittable(') == 3
+assert 'PXSetBool(view.layer, @"setHitTestsAsOpaque:", YES)' in bridge
 assert 'hostCorners.forEach { $0.removeFromSuperview() }' in panel
 assert 'moveGrip.addGestureRecognizer(doubleTap)' in panel
 assert 'numberOfTapsRequired = 2' in panel
@@ -212,12 +216,15 @@ assert 'if (strongSelf.generation == generation)\n                            [s
 assert 'deadline: .now() + 0.16' not in panel
 assert 'while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }' in park
 assert 'captureOutsideKeyboard' not in panel and 'isKeyboardRelocated()' in panel
-assert 'private final class PXKeyboardDismissLayer: UIControl' in panel
-assert 'root.insertSubview(layer, at: 0)' in panel
-assert '!excludedRects.contains { $0.contains(point) }' in panel
+assert 'private final class PXKeyboardDismissLayer: UIControl' not in panel
+assert 'let window = UIWindow(windowScene: scene)' in panel.split('private func refreshKeyboardDismissLayer()', 1)[1]
+assert 'layer.backgroundColor = UIColor.black.withAlphaComponent(0.12)' in panel
+assert 'keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5' in panel
+assert 'keyboardDismissWindow?.frame = scene.coordinateSpace.bounds' in panel
+assert 'excludedRects' not in panel
 assert bridge.count('postNotificationName:@"PXKeyboardStateChanged"') == 4
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
-assert 'keyboardDismissLayer?.removeFromSuperview()' in close_host
+assert 'removeKeyboardDismissLayer()' in close_host
 assert 'gesture.velocity(in: handleWindow).y < -500' in panel
 assert 'if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: 1) }' in panel
 open_fullscreen = panel.split('private func openFullscreen(', 1)[1].split('private func performShortcut', 1)[0]
@@ -284,12 +291,17 @@ assert 'WFSpringBoardWorkflowRunnerClient' in bridge and 'initWithWorkflowIdenti
 assert 'UIHandleApplicationShortcutAction' in bridge and 'initWithSBSShortcutItem:' in bridge
 assert 'px.custom.' in panel and 'customActions' in picker
 assert 'groupMenuActive' in panel and 'selectedGroupAction' in panel
-assert 'cancel.text = "取消"' in panel and 'scroll.contentOffset.y = offset' in panel
-assert 'groupScrollLink?.invalidate()' in panel
+assert 'cancel.text = "取消"' in panel and 'scroll.scrollRectToVisible(groupRows[next].frame, animated: false)' in panel
+assert 'groupScrollLink' not in panel
+assert 'menu.frame = CGRect(x: view.bounds.midX - width / 2, y: view.bounds.midY - height / 2' in panel
+assert 'let fraction = min(1, max(0, (point.y - view.safeAreaInsets.top)' in panel
+assert 'groupItems.count + 1' in panel and 'let moved = abs(point.y - groupOriginY) >= 8' in panel
 assert 'multiple && indexPath.section == 0' in action_picker
 assert 'chosen.insert(chosen.remove(at: sourceIndexPath.row)' in action_picker
-assert 'shade.frame = bounds' in panel
+assert 'shade.frame = view.bounds' in panel
 assert 'doubleTap.numberOfTapsRequired = 2' in panel
 assert 'UIResponder.keyboardDidHideNotification' in panel
 assert '!keyboardFrame.isNull' in panel
 assert 'PXKeyboardFrameChanged' in bridge
+assert 'PXDismissOpenedNotificationBanner(options);' in (root / 'Tweak.m').read_text(encoding='utf-8')
+assert (root / 'Tweak.m').read_text(encoding='utf-8').count('PXDismissOpenedNotificationBanner(options);') == 2

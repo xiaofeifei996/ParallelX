@@ -132,6 +132,28 @@ static void PXExternalOpen(NSString *bundleID)
     });
 }
 
+static void PXDismissOpenedNotificationBanner(id options)
+{
+    // Only an accepted banner tap, never a URL launch or an unrelated notification.
+    if (![PXOptionsDictionary(options)[@"__LaunchOrigin"] isEqual:@"BulletinDestinationBanner"]) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            id dispatcher = PXValue(UIApplication.sharedApplication, @"notificationDispatcher");
+            id destination = PXValue(dispatcher, @"bannerDestination");
+            SEL dismiss = NSSelectorFromString(@"_dismissPresentedBannerOnly:reason:animated:forceIfSticky:");
+            if ([destination respondsToSelector:dismiss]) {
+                ((void (*)(id, SEL, BOOL, id, BOOL, BOOL))objc_msgSend)(destination, dismiss,
+                    YES, @"ParallelXNotificationOpen", NO, YES);
+                return;
+            }
+            id controller = PXValue(NSClassFromString(@"SBBannerController"), @"sharedInstance");
+            SEL fallback = NSSelectorFromString(@"dismissBannerWithAnimation:reason:forceEvenIfBusy:");
+            if ([controller respondsToSelector:fallback])
+                ((void (*)(id, SEL, BOOL, long long, BOOL))objc_msgSend)(controller, fallback, NO, 0, YES);
+        } @catch (__unused NSException *exception) { }
+    });
+}
+
 static BOOL PXRouteRecentlyHandled(NSString *bundleID)
 {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
@@ -151,7 +173,10 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
     id source = PXValue(request, @"clientProcess");
     BOOL route = PXExternalTarget(options, PXRequestBundleID(request), source, &bundleID) &&
         !PXRouteRecentlyHandled(bundleID) && PXOptionsWithSuspendedLaunch(options) != nil;
-    if (route) PXRememberRoute(bundleID);
+    if (route) {
+        PXRememberRoute(bundleID);
+        PXDismissOpenedNotificationBanner(options);
+    }
     id routed = completion;
     if (route) {
         void (^original)(NSError *) = completion;
@@ -171,7 +196,10 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
         !PXRouteRecentlyHandled(bundleID);
     id prepared = candidate ? PXOptionsWithSuspendedLaunch(options) : nil;
     BOOL route = prepared != nil;
-    if (route) PXRememberRoute(bundleID);
+    if (route) {
+        PXRememberRoute(bundleID);
+        PXDismissOpenedNotificationBanner(options);
+    }
     id routed = result;
     if (route) {
         void (^original)(NSError *) = result;

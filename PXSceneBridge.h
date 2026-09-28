@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable id)protectedSettings:(id)settings forAnyScene:(id)scene;
 + (void)relocateAnyKeyboardView:(UIView *)view;
 + (void)setCaptureHidden:(BOOL)hidden forView:(UIView *)view NS_SWIFT_NAME(setCaptureHidden(_:for:));
++ (void)keepTransparentGestureViewHittable:(UIView *)view NS_SWIFT_NAME(keepTransparentGestureViewHittable(_:));
 - (void)openApplication:(NSString *)bundleID
                 inView:(UIView *)canvas
        keyboardOverlay:(UIView *)keyboardOverlay

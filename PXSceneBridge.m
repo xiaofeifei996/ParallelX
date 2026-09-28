@@ -131,6 +131,11 @@ static int PXApplicationPID(NSString *bundleID)
 
 @implementation PXSceneBridge
 
++ (void)keepTransparentGestureViewHittable:(UIView *)view
+{
+    PXSetBool(view.layer, @"setHitTestsAsOpaque:", YES);
+}
+
 static NSHashTable<PXSceneBridge *> *PXBridges;
 
 - (instancetype)init

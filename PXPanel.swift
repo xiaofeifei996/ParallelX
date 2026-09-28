@@ -65,37 +65,6 @@ private final class PXHandleWindow: UIWindow {
     }
 }
 
-private final class PXKeyboardDismissLayer: UIControl {
-    var excludedRects: [CGRect] = [] {
-        didSet {
-            shade.frame = bounds
-            let area = CGRect(x: 0, y: 0, width: bounds.width,
-                              height: max(0, excludedRects.dropFirst().first?.minY ?? bounds.height))
-            let path = UIBezierPath(rect: area)
-            if let card = excludedRects.first, card.intersects(area) {
-                path.append(UIBezierPath(rect: card.intersection(area)))
-            }
-            shade.path = path.cgPath
-        }
-    }
-    private let shade = CAShapeLayer()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        isOpaque = false
-        shade.fillRule = .evenOdd
-        shade.fillColor = UIColor.gray.withAlphaComponent(0.08).cgColor
-        layer.addSublayer(shade)
-        accessibilityLabel = "双击关闭分屏"
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        bounds.contains(point) && !excludedRects.contains { $0.contains(point) }
-    }
-}
-
 private final class PXHostViewController: UIViewController {
     var onLayout: (() -> Void)?
 
@@ -173,8 +142,8 @@ private final class PXPanelViewController: UIViewController {
     private var groupRows: [UILabel] = []
     private var groupItems: [[String: Any]] = []
     private var groupSelected: Int?
-    private var groupScrollLink: CADisplayLink?
-    private var groupLastTick: CFTimeInterval = 0
+    private var groupOriginY: CGFloat = 0
+    private var groupCancel: UILabel?
     var groupMenuActive: Bool { groupMenu != nil }
     private var page = 0
     private var pageCapacity = 1
@@ -461,8 +430,6 @@ private final class PXPanelViewController: UIViewController {
         holdFeedbackTask?.cancel()
         fullscreenReadyView?.removeFromSuperview()
         fullscreenReadyView = nil
-        groupScrollLink?.invalidate()
-        groupScrollLink = nil
     }
 
     private func showGroupMenu(_ items: [[String: Any]], at point: CGPoint) {
@@ -472,26 +439,35 @@ private final class PXPanelViewController: UIViewController {
         buttons.forEach { $0.alpha = 0 }
         selectionPreview.alpha = 0
         pageControl.alpha = 0
-        let menu = UIView()
-        menu.backgroundColor = .secondarySystemBackground
-        menu.layer.cornerRadius = 18
+        shade.backgroundColor = UIColor.black.withAlphaComponent(0.32)
+        let menu = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        menu.layer.cornerRadius = 24
         menu.layer.cornerCurve = .continuous
+        menu.layer.borderWidth = 1 / UIScreen.main.scale
+        menu.layer.borderColor = UIColor.separator.cgColor
         menu.clipsToBounds = true
-        let width = min(260, view.bounds.width - 32)
+        let width = min(300, view.bounds.width - 48)
         let availableHeight = max(96, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom - 32)
-        let height = min(availableHeight, CGFloat(items.count) * 48 + 48)
-        menu.frame = CGRect(x: min(view.bounds.width - width - 16, max(16, point.x - width / 2)),
-                            y: min(view.bounds.height - view.safeAreaInsets.bottom - height - 16,
-                                   max(view.safeAreaInsets.top + 16, point.y - height / 2)), width: width, height: height)
-        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: width, height: height - 48))
+        let height = min(availableHeight, CGFloat(min(6, items.count)) * 52 + 104)
+        menu.frame = CGRect(x: view.bounds.midX - width / 2, y: view.bounds.midY - height / 2, width: width, height: height)
+        let heading = UILabel(frame: CGRect(x: 16, y: 0, width: width - 32, height: 56))
+        heading.text = "上下滑动选择，松手运行"
+        heading.textAlignment = .center
+        heading.font = .preferredFont(forTextStyle: .footnote)
+        heading.textColor = .secondaryLabel
+        menu.contentView.addSubview(heading)
+        let scroll = UIScrollView(frame: CGRect(x: 0, y: 56, width: width, height: height - 104))
         scroll.isUserInteractionEnabled = false
-        scroll.contentSize = CGSize(width: width, height: CGFloat(items.count) * 48)
-        menu.addSubview(scroll)
+        scroll.contentSize = CGSize(width: width, height: CGFloat(items.count) * 52)
+        menu.contentView.addSubview(scroll)
         groupRows = items.enumerated().map { index, entry in
-            let label = UILabel(frame: CGRect(x: 0, y: CGFloat(index) * 48, width: width, height: 48))
+            let label = UILabel(frame: CGRect(x: 0, y: CGFloat(index) * 52, width: width, height: 52))
             label.text = "  \(entry["title"] as? String ?? "快捷指令")"
             label.font = .preferredFont(forTextStyle: .body)
             label.textColor = .label
+            let separator = UIView(frame: CGRect(x: 16, y: 51, width: width - 32, height: 1 / UIScreen.main.scale))
+            separator.backgroundColor = .separator
+            label.addSubview(separator)
             scroll.addSubview(label)
             return label
         }
@@ -499,51 +475,41 @@ private final class PXPanelViewController: UIViewController {
         cancel.text = "取消"
         cancel.textAlignment = .center
         cancel.textColor = .systemRed
-        cancel.backgroundColor = .tertiarySystemBackground
-        menu.addSubview(cancel)
+        cancel.font = .preferredFont(forTextStyle: .body)
+        cancel.accessibilityTraits = .button
+        menu.contentView.addSubview(cancel)
         view.addSubview(menu)
         groupMenu = menu
         groupScroll = scroll
+        groupCancel = cancel
+        groupOriginY = point.y
         menu.alpha = 0
         menu.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
         UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.18) {
             menu.alpha = 1; menu.transform = .identity
         }
         updateGroupSelection(at: point)
-        // Frame-driven scrolling runs only while this menu is held, never while idle.
-        let link = CADisplayLink(target: self, selector: #selector(scrollGroupMenu(_:)))
-        groupLastTick = 0
-        groupScrollLink = link
-        link.add(to: .main, forMode: .common)
     }
 
     func updateGroupSelection(at point: CGPoint) {
         lastSelectionPoint = point
-        guard let menu = groupMenu, let scroll = groupScroll else { return }
-        let local = menu.convert(point, from: view)
-        let row = Int(floor((local.y + scroll.contentOffset.y) / 48))
-        let next: Int? = local.x >= -24 && local.x <= menu.bounds.width + 24 &&
-            local.y >= 0 && local.y < scroll.bounds.height && groupItems.indices.contains(row) ? row : nil
+        guard groupMenu != nil, let scroll = groupScroll else { return }
+        // Map the whole screen, not the menu rectangle; every entry remains reachable.
+        let fraction = min(1, max(0, (point.y - view.safeAreaInsets.top) /
+            max(1, view.bounds.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom)))
+        let row = min(groupItems.count, Int(floor(fraction * CGFloat(groupItems.count + 1))))
+        let moved = abs(point.y - groupOriginY) >= 8
+        let next: Int? = moved && groupItems.indices.contains(row) ? row : nil
         if next != groupSelected {
             selectionFeedback.selectionChanged()
             groupSelected = next
         }
         for (index, label) in groupRows.enumerated() {
-            label.backgroundColor = index == next ? .systemGray4 : .clear
+            label.backgroundColor = index == next ? UIColor.systemBlue.withAlphaComponent(0.16) : .clear
+            label.textColor = index == next ? .systemBlue : .label
         }
-    }
-
-    @objc private func scrollGroupMenu(_ link: CADisplayLink) {
-        defer { groupLastTick = link.timestamp }
-        guard groupLastTick > 0, let menu = groupMenu, let scroll = groupScroll else { return }
-        let point = menu.convert(lastSelectionPoint, from: view)
-        guard point.x >= -24, point.x <= menu.bounds.width + 24, point.y >= 0, point.y < scroll.bounds.height else { return }
-        let speed: CGFloat = point.y < 32 ? -180 : point.y > scroll.bounds.height - 32 ? 180 : 0
-        guard speed != 0 else { return }
-        let offset = min(max(0, scroll.contentSize.height - scroll.bounds.height),
-                         max(0, scroll.contentOffset.y + speed * CGFloat(min(0.05, link.timestamp - groupLastTick))))
-        scroll.contentOffset.y = offset
-        updateGroupSelection(at: lastSelectionPoint)
+        groupCancel?.backgroundColor = moved && row == groupItems.count ? UIColor.systemRed.withAlphaComponent(0.12) : .clear
+        if let next = next { scroll.scrollRectToVisible(groupRows[next].frame, animated: false) }
     }
 
     var selectedGroupAction: [String: Any]? { groupSelected.map { groupItems[$0] } }
@@ -754,7 +720,7 @@ public final class PXPanelEntry: NSObject {
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
     private var handleDragStartY: CGFloat = 0
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
-    private var keyboardDismissLayer: PXKeyboardDismissLayer?
+    private var keyboardDismissWindow: UIWindow?
     private var observedKeyboardFrame = CGRect.null
     private var keyboardDismissSuppressed = false
 
@@ -936,23 +902,34 @@ public final class PXPanelEntry: NSObject {
         let enabled = defaults?.object(forKey: "closeOutsideWithKeyboard") == nil ||
             defaults?.bool(forKey: "closeOutsideWithKeyboard") == true
         let keyboardFrame = activeBridge.isKeyboardRelocated() ? activeBridge.relocatedKeyboardFrame() : observedKeyboardFrame
-        guard enabled, !deviceLocked, !keyboardDismissSuppressed, hostWindow != nil, !keyboardFrame.isNull,
-              let root = handleWindow?.rootViewController?.view, let card = hostCard else {
-            keyboardDismissLayer?.removeFromSuperview()
-            keyboardDismissLayer = nil
+        guard enabled, !deviceLocked, !keyboardDismissSuppressed, !keyboardFrame.isNull,
+              let host = hostWindow, let scene = host.windowScene else {
+            removeKeyboardDismissLayer()
             return
         }
-        let layer = keyboardDismissLayer ?? PXKeyboardDismissLayer(frame: root.bounds)
-        if keyboardDismissLayer == nil {
+        if keyboardDismissWindow == nil {
+            let window = UIWindow(windowScene: scene)
+            window.backgroundColor = .clear
+            let root = UIViewController()
+            let layer = UIControl()
+            layer.backgroundColor = UIColor.black.withAlphaComponent(0.12)
+            layer.accessibilityLabel = "双击关闭分屏"
             let doubleTap = UITapGestureRecognizer(target: self, action: #selector(outsideKeyboardTapped))
             doubleTap.numberOfTapsRequired = 2
             layer.addGestureRecognizer(doubleTap)
-            root.insertSubview(layer, at: 0)
-            keyboardDismissLayer = layer
+            root.view = layer
+            window.rootViewController = root
+            keyboardDismissWindow = window
         }
-        layer.frame = root.bounds
-        layer.excludedRects = [card.convert(card.bounds, to: root), keyboardFrame] +
-            (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).map { $0.convert($0.bounds, to: root) }
+        keyboardDismissWindow?.frame = scene.coordinateSpace.bounds
+        keyboardDismissWindow?.windowLevel = host.windowLevel - 0.5
+        keyboardDismissWindow?.isHidden = false
+    }
+
+    private func removeKeyboardDismissLayer() {
+        keyboardDismissWindow?.isHidden = true
+        keyboardDismissWindow?.rootViewController = nil
+        keyboardDismissWindow = nil
     }
 
     private func updateHandleAppearance() {
@@ -1282,8 +1259,8 @@ public final class PXPanelEntry: NSObject {
             let corner = UIView(frame: .zero)
             corner.tag = side
             corner.isOpaque = false
-            corner.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) :
-                UIColor(white: 1, alpha: 0.02)
+            corner.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear
+            PXSceneBridge.keepTransparentGestureViewHittable(corner)
             corner.isUserInteractionEnabled = true
             corner.isAccessibilityElement = true
             corner.accessibilityLabel = "拖动调整窗口大小"
@@ -1293,8 +1270,8 @@ public final class PXPanelEntry: NSObject {
             hostCorners.append(corner)
             let top = UIControl(frame: .zero)
             top.tag = side
-            top.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) :
-                UIColor(white: 1, alpha: 0.02)
+            top.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear
+            PXSceneBridge.keepTransparentGestureViewHittable(top)
             top.isAccessibilityElement = true
             top.accessibilityLabel = side < 0 ? "停靠到左上角" : "停靠到右上角"
             top.addTarget(self, action: #selector(dockTapped(_:)), for: .touchUpInside)
@@ -1302,7 +1279,8 @@ public final class PXPanelEntry: NSObject {
             hostTopCorners.append(top)
         }
         let moveGrip = UIView(frame: .zero)
-        moveGrip.backgroundColor = UIColor(white: 1, alpha: 0.02)
+        moveGrip.backgroundColor = .clear
+        PXSceneBridge.keepTransparentGestureViewHittable(moveGrip)
         if debug {
             moveGrip.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.25)
             moveGrip.layer.borderColor = UIColor.systemBlue.cgColor
@@ -1736,8 +1714,7 @@ public final class PXPanelEntry: NSObject {
 
     private func closeHost(animated: Bool) {
         guard let window = hostWindow else { return }
-        keyboardDismissLayer?.removeFromSuperview()
-        keyboardDismissLayer = nil
+        removeKeyboardDismissLayer()
         let closingCard = hostCard
         resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }
