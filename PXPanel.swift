@@ -161,7 +161,6 @@ private final class PXPanelViewController: UIViewController {
     private var groupItems: [[String: Any]] = []
     private var groupSelected: Int?
     private var groupOriginY: CGFloat = 0
-    private var groupInside = false
     private var groupCancel: UILabel?
     var groupMenuActive: Bool { groupMenu != nil }
     private var page = 0
@@ -506,8 +505,7 @@ private final class PXPanelViewController: UIViewController {
         groupMenu = menu
         groupScroll = scroll
         groupCancel = cancel
-        groupOriginY = 0
-        groupInside = false
+        groupOriginY = menu.frame.midY
         menu.alpha = 0
         menu.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
         PXMotion.ease(0.18) {
@@ -521,13 +519,11 @@ private final class PXPanelViewController: UIViewController {
         guard let menu = groupMenu, let scroll = groupScroll else { return }
         let local = menu.convert(point, from: view)
         guard menu.bounds.contains(local) else {
-            groupInside = false
             groupSelected = nil
             groupRows.forEach { $0.backgroundColor = .clear; $0.textColor = .label }
             groupCancel?.backgroundColor = .clear
             return
         }
-        if !groupInside { groupOriginY = point.y; groupInside = true }
         let delta = point.y - groupOriginY
         let step = min(36, max(8, scroll.bounds.height / CGFloat(groupItems.count + 1)))
         let row = min(groupItems.count, max(0, groupItems.count / 2 + Int(delta / step)))

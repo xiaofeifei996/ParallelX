@@ -295,6 +295,7 @@ assert 'cancel.text = "取消"' in panel and 'scroll.scrollRectToVisible(groupRo
 assert 'groupScrollLink' not in panel
 assert 'menu.frame = CGRect(x: view.bounds.maxX - width - 10' in panel
 assert 'handleCenterY - height / 2' in panel
+assert 'groupOriginY = menu.frame.midY' in panel
 assert 'guard menu.bounds.contains(local) else' in panel
 assert 'let delta = point.y - groupOriginY' in panel
 assert 'let step = min(36, max(8, scroll.bounds.height / CGFloat(groupItems.count + 1)))' in panel
