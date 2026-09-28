@@ -63,12 +63,15 @@ static void PXStartAppearanceTrace(NSString *reason)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(sample * 0.1 * NSEC_PER_SEC)),
             dispatch_get_main_queue(), ^{
                 PXTrace([NSString stringWithFormat:@"sample=%lu", (unsigned long)sample]);
-                for (UIWindow *window in UIApplication.sharedApplication.windows) {
-                    CALayer *shown = window.layer.presentationLayer;
-                    PXTrace([NSString stringWithFormat:@"window=%@ level=%.1f hidden=%d frame=%@ shown=%@",
-                        NSStringFromClass(window.class), window.windowLevel, window.hidden,
-                        NSStringFromCGRect(window.frame), NSStringFromCGRect(shown.frame)]);
-                    PXTraceView(window.rootViewController.view, 0);
+                for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+                    if (![scene isKindOfClass:UIWindowScene.class]) continue;
+                    for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                        CALayer *shown = window.layer.presentationLayer;
+                        PXTrace([NSString stringWithFormat:@"window=%@ level=%.1f hidden=%d frame=%@ shown=%@",
+                            NSStringFromClass(window.class), window.windowLevel, window.hidden,
+                            NSStringFromCGRect(window.frame), NSStringFromCGRect(shown.frame)]);
+                        PXTraceView(window.rootViewController.view, 0);
+                    }
                 }
                 if (sample == 12) {
                     NSString *directory = @"/var/mobile/Library/Logs";
