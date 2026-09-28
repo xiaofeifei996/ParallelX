@@ -201,6 +201,17 @@ static CGSize PXSourceSize(id settings)
     return size;
 }
 
+static CGSize PXServerFrameSize(id settings)
+{
+    CGSize size = PXRect(PXCall(settings, @"displayConfiguration"), @"bounds").size;
+    if (size.width <= 0 || size.height <= 0) size = UIScreen.mainScreen.bounds.size;
+    // iOS 15 keeps the scene's server surface in canonical coordinates even
+    // while its presentation and hit testing use a landscape orientation map.
+    return NSProcessInfo.processInfo.operatingSystemVersion.majorVersion == 15
+        ? CGSizeMake(MIN(size.width, size.height), MAX(size.width, size.height))
+        : PXSourceSize(settings);
+}
+
 static BOOL PXUpdateScene(id scene, id settings)
 {
     SEL selector = NSSelectorFromString(@"updateSettings:withTransitionContext:completion:");
@@ -650,24 +661,21 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         finish(YES);
         return;
     }
+    id controller = UIApplication.sharedApplication;
+    SEL selector = NSSelectorFromString(@"_returnToHomeScreenWithCompletion:");
+    NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
+    if (signature && signature.numberOfArguments == 3 &&
+        signature.methodReturnType[0] == 'v' &&
+        [signature getArgumentTypeAtIndex:2][0] == '@') {
+        ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, ^{ finish(YES); });
+        return;
+    }
     id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
     SEL press = NSSelectorFromString(@"performSinglePressUpActions");
     if ([actions respondsToSelector:press]) {
         ((void (*)(id, SEL))objc_msgSend)(actions, press);
         finish(YES);
-        return;
-    }
-    id controller = UIApplication.sharedApplication;
-    SEL selector = NSSelectorFromString(@"_returnToHomeScreenWithCompletion:");
-    NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments != 3 ||
-        signature.methodReturnType[0] != 'v' ||
-        [signature getArgumentTypeAtIndex:2][0] != '@') {
-        finish(NO);
-        return;
-    }
-    ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, nil);
-    finish(YES);
+    } else finish(NO);
 }
 
 - (void)layoutHost
@@ -782,7 +790,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     UIInterfaceOrientation orientation = PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"));
     PXSetHostedOrientation(mutable, orientation);
     CGSize sourceSize = PXSourceSize(mutable);
-    if (!PXSetSceneFrame(mutable, sourceSize)) return NO;
+    if (!PXSetSceneFrame(mutable, PXServerFrameSize(mutable))) return NO;
     if (!PXUpdateScene(scene, mutable)) return NO;
     if (self.scene != scene) {
         SEL remove = NSSelectorFromString(@"removeObserver:");
@@ -843,7 +851,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
     if (self.sourceSize.width > 0 && self.sourceSize.height > 0)
-        PXSetSceneFrame(mutable, self.sourceSize);
+        PXSetSceneFrame(mutable, PXServerFrameSize(mutable));
     SEL deactivation = NSSelectorFromString(@"setDeactivationReasons:");
     NSMethodSignature *signature = [mutable methodSignatureForSelector:deactivation];
     if (signature && signature.numberOfArguments == 3)
@@ -877,6 +885,16 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective) : UIInterfaceOrientationUnknown;
     UIInterfaceOrientation oldEffective = [oldSettings respondsToSelector:effective]
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(oldSettings, effective) : UIInterfaceOrientationUnknown;
+    UIInterfaceOrientation clientOrientation = PXSceneOrientation(client);
+    UIInterfaceOrientation oldClientOrientation = PXSceneOrientation(oldSettings);
+    BOOL clientInterfaceChange = oldClientOrientation >= UIInterfaceOrientationPortrait &&
+        oldClientOrientation <= UIInterfaceOrientationLandscapeRight &&
+        clientOrientation >= UIInterfaceOrientationPortrait &&
+        clientOrientation <= UIInterfaceOrientationLandscapeRight &&
+        clientOrientation != oldClientOrientation && clientOrientation != self.sourceOrientation &&
+        (mask & (1UL << clientOrientation)) &&
+        UIInterfaceOrientationIsLandscape([PXSceneBridge systemOrientation]) ==
+            UIInterfaceOrientationIsLandscape(self.sourceOrientation);
     BOOL clientConfirmedChange = effectiveOrientation >= UIInterfaceOrientationPortrait &&
         effectiveOrientation <= UIInterfaceOrientationLandscapeRight &&
         oldEffective >= UIInterfaceOrientationPortrait && oldEffective <= UIInterfaceOrientationLandscapeRight &&
@@ -887,15 +905,18 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     BOOL appRequestedChange = requested != oldPreferred &&
         requested >= UIInterfaceOrientationPortrait && requested <= UIInterfaceOrientationLandscapeRight &&
         (mask & (1UL << requested));
-    if (!appRequestedChange && !clientConfirmedChange &&
+    if (!appRequestedChange && !clientConfirmedChange && !clientInterfaceChange &&
         (!mask || (mask & (1UL << self.sourceOrientation)))) return;
-    UIInterfaceOrientation orientation = PXSceneOrientation(client);
+    UIInterfaceOrientation orientation = clientOrientation;
     if ([client respondsToSelector:effective]) {
         UIInterfaceOrientation value = ((NSInteger (*)(id, SEL))objc_msgSend)(client, effective);
         if (value >= UIInterfaceOrientationPortrait && value <= UIInterfaceOrientationLandscapeRight)
             orientation = value;
     }
-    if (appRequestedChange) orientation = requested;
+    if (mask && !(mask & (1UL << self.sourceOrientation)))
+        orientation = PXPreferredHostedOrientation(self.bundleID, client);
+    else if (appRequestedChange) orientation = requested;
+    else if (clientInterfaceChange) orientation = clientOrientation;
     else if (orientation == UIInterfaceOrientationUnknown) orientation = requested;
     if (orientation < UIInterfaceOrientationPortrait || orientation > UIInterfaceOrientationLandscapeRight ||
         orientation == self.sourceOrientation) return;
@@ -906,7 +927,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     PXSetHostedOrientation(mutable, orientation);
     self.sourceOrientation = orientation;
     self.sourceSize = PXSourceSize(mutable);
-    PXSetSceneFrame(mutable, self.sourceSize);
+    PXSetSceneFrame(mutable, PXServerFrameSize(mutable));
     PXUpdateScene(scene, mutable);
     dispatch_async(dispatch_get_main_queue(), ^{
         if (scene != self.scene || !self.canvas || self.fullscreenHandoff) return;

@@ -16,8 +16,12 @@ public final class PXCornerRadiusController: UIViewController {
     private let initialWidthLabel = UILabel()
     private let portraitWidth = UISlider()
     private let portraitWidthLabel = UILabel()
+    private let portraitLandscapeWidth = UISlider()
+    private let portraitLandscapeWidthLabel = UILabel()
     private let portraitRadius = UISlider()
     private let portraitRadiusLabel = UILabel()
+    private let portraitLandscapeRadius = UISlider()
+    private let portraitLandscapeRadiusLabel = UILabel()
     private let scroll = UIScrollView()
     private var cards: [UIView] = []
     private var headings: [UILabel] = []
@@ -36,7 +40,7 @@ public final class PXCornerRadiusController: UIViewController {
             headings.append(PXSettingsStyle.heading(title, in: scroll))
             cards.append(PXSettingsStyle.card(in: scroll))
         }
-        lines = (0..<4).map { _ in PXSettingsStyle.separator(in: scroll) }
+        lines = (0..<6).map { _ in PXSettingsStyle.separator(in: scroll) }
         caption.text = "圆角大小"
         caption.font = .preferredFont(forTextStyle: .body)
         scroll.addSubview(caption)
@@ -65,7 +69,9 @@ public final class PXCornerRadiusController: UIViewController {
             (rightInset, rightInsetLabel, "initialRightInset", 12, 120),
             (initialWidth, initialWidthLabel, "initialWidthPercent", 78, 95),
             (portraitWidth, portraitWidthLabel, "portraitInitialWidthPercent", (defaults?.object(forKey: "initialWidthPercent") as? NSNumber)?.intValue ?? 78, 95),
-            (portraitRadius, portraitRadiusLabel, "portraitCornerRadius", (defaults?.object(forKey: "cornerRadius") as? NSNumber)?.intValue ?? 20, 60)
+            (portraitLandscapeWidth, portraitLandscapeWidthLabel, "portraitLandscapeInitialWidthPercent", (defaults?.object(forKey: "portraitInitialWidthPercent") as? NSNumber)?.intValue ?? 78, 95),
+            (portraitRadius, portraitRadiusLabel, "portraitCornerRadius", (defaults?.object(forKey: "cornerRadius") as? NSNumber)?.intValue ?? 20, 60),
+            (portraitLandscapeRadius, portraitLandscapeRadiusLabel, "portraitLandscapeCornerRadius", (defaults?.object(forKey: "portraitCornerRadius") as? NSNumber)?.intValue ?? 20, 60)
         ] {
             label.font = .preferredFont(forTextStyle: .body)
             scroll.addSubview(label)
@@ -76,7 +82,7 @@ public final class PXCornerRadiusController: UIViewController {
             control.addTarget(self, action: #selector(shadowFinished),
                               for: [.touchUpInside, .touchUpOutside, .touchCancel])
             scroll.addSubview(control)
-            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : key == "initialRightInset" ? "初始右边距（pt）" : key == "portraitCornerRadius" ? "竖屏圆角（pt）" : key == "portraitInitialWidthPercent" ? "竖屏初始尺寸（%）" : "横屏初始尺寸（%）", in: self)
+            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : key == "initialRightInset" ? "初始右边距（pt）" : key == "portraitCornerRadius" ? "竖屏圆角（pt）" : key == "portraitLandscapeCornerRadius" ? "竖屏横屏应用圆角（pt）" : key == "portraitInitialWidthPercent" ? "竖屏初始尺寸（%）" : key == "portraitLandscapeInitialWidthPercent" ? "竖屏横屏应用尺寸（%）" : "横屏初始尺寸（%）", in: self)
             scroll.addSubview(button)
             inputButtons[control] = button
         }
@@ -88,8 +94,8 @@ public final class PXCornerRadiusController: UIViewController {
         super.viewDidLayoutSubviews()
         let width = scroll.bounds.width
         let groups: [[(UILabel, UISlider)]] = [
-            [(rightInsetLabel, rightInset), (portraitWidthLabel, portraitWidth), (initialWidthLabel, initialWidth)],
-            [(portraitRadiusLabel, portraitRadius), (caption, slider)],
+            [(rightInsetLabel, rightInset), (portraitWidthLabel, portraitWidth), (portraitLandscapeWidthLabel, portraitLandscapeWidth), (initialWidthLabel, initialWidth)],
+            [(portraitRadiusLabel, portraitRadius), (portraitLandscapeRadiusLabel, portraitLandscapeRadius), (caption, slider)],
             [(shadowStrengthLabel, shadowStrength), (shadowBlurLabel, shadowBlur)]
         ]
         var y: CGFloat = 20
@@ -138,7 +144,9 @@ public final class PXCornerRadiusController: UIViewController {
         rightInsetLabel.text = "初始窗口距离右边缘：\(Int(rightInset.value.rounded())) pt"
         initialWidthLabel.text = "横屏初始尺寸：屏幕高度的 \(Int(initialWidth.value.rounded()))%"
         portraitWidthLabel.text = "竖屏初始尺寸：屏幕宽度的 \(Int(portraitWidth.value.rounded()))%"
+        portraitLandscapeWidthLabel.text = "竖屏横屏应用尺寸：屏幕宽度的 \(Int(portraitLandscapeWidth.value.rounded()))%"
         portraitRadiusLabel.text = "竖屏圆角：\(Int(portraitRadius.value.rounded())) pt"
+        portraitLandscapeRadiusLabel.text = "竖屏横屏应用圆角：\(Int(portraitLandscapeRadius.value.rounded())) pt"
     }
 
     @objc private func shadowFinished() {
@@ -147,14 +155,18 @@ public final class PXCornerRadiusController: UIViewController {
         rightInset.value = rightInset.value.rounded()
         initialWidth.value = initialWidth.value.rounded()
         portraitWidth.value = portraitWidth.value.rounded()
+        portraitLandscapeWidth.value = portraitLandscapeWidth.value.rounded()
         portraitRadius.value = portraitRadius.value.rounded()
+        portraitLandscapeRadius.value = portraitLandscapeRadius.value.rounded()
         shadowChanged()
         defaults?.set(Int(shadowStrength.value), forKey: "shadowStrength")
         defaults?.set(Int(shadowBlur.value), forKey: "shadowBlur")
         defaults?.set(Int(rightInset.value), forKey: "initialRightInset")
         defaults?.set(Int(initialWidth.value), forKey: "initialWidthPercent")
         defaults?.set(Int(portraitWidth.value), forKey: "portraitInitialWidthPercent")
+        defaults?.set(Int(portraitLandscapeWidth.value), forKey: "portraitLandscapeInitialWidthPercent")
         defaults?.set(Int(portraitRadius.value), forKey: "portraitCornerRadius")
+        defaults?.set(Int(portraitLandscapeRadius.value), forKey: "portraitLandscapeCornerRadius")
     }
 
     @objc private func editNumber(_ gesture: UILongPressGestureRecognizer) {

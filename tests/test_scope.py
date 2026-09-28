@@ -46,7 +46,7 @@ assert 'width: 110, height: 110' in panel
 assert 'selectionPreview.layer.borderWidth = 6' in panel
 assert 'shortcuts: [(id: String, name: String, symbol: String)]' in panel
 assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped(); return }' in panel
-assert 'window.windowLevel = .statusBar - 2' in panel
+assert 'window.windowLevel = .statusBar + 0.2' in panel
 assert 'shadowStrength' in panel and 'shadowBlur' in panel
 assert 'card.layer.shadowPath = UIBezierPath' in panel
 assert 'let card = UIView(frame: cardFrame)' in panel
@@ -113,13 +113,13 @@ assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel
 assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
 assert '"↙"' not in panel and '"↘"' not in panel
-assert 'prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
-assert panel.index('openApplication(bundleID, in: canvas') < panel.index('prepareWindow(for: bundleID')
+assert 'prepareWindow(for: bundleID, wasFullscreen: true)' in panel
+assert panel.index('prepareWindow(for: bundleID, wasFullscreen: true)') < panel.index('self.presentHost(bundleID, wasFullscreen: false)')
 assert 'UIScene.willDeactivateNotification' in panel
 assert 'needsHostRefresh' in panel
 assert 'BOOL shouldReturnHome = wasFullscreen && [currentID isEqualToString:bundleID]' in bridge
 assert 'screen.maxX' not in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
-assert "PXSetSceneFrame(mutable, sourceSize)" in bridge
+assert "PXSetSceneFrame(mutable, PXServerFrameSize(mutable))" in bridge
 assert 'PXRect(PXCall(settings, @"displayConfiguration"), @"bounds")' in bridge
 assert "CGFloat scale = MIN(target.width / source.width, target.height / source.height)" in bridge
 assert "host.transform = CGAffineTransformMakeScale(scale, scale)" in bridge
@@ -141,9 +141,9 @@ assert "_returnToHomeScreenWithCompletion:" in bridge
 prepare = bridge.split("- (void)prepareWindowForBundleID:", 1)[1].split("- (void)layoutHost", 1)[0]
 assert "id controller = UIApplication.sharedApplication;" in prepare
 assert "SBHomeHardwareButtonActions" in prepare and "performSinglePressUpActions" in prepare
-assert prepare.index('performSinglePressUpActions') < prepare.index('_returnToHomeScreenWithCompletion:')
+assert prepare.index('_returnToHomeScreenWithCompletion:') < prepare.index('performSinglePressUpActions')
 assert 'finish(NO);' in prepare
-assert 'objc_msgSend)(controller, selector, nil)' in prepare
+assert 'objc_msgSend)(controller, selector, ^{ finish(YES); })' in prepare
 assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert 'updateSettings:withTransitionContext:completion:' in bridge
@@ -161,11 +161,11 @@ assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
 park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
 assert 'root.addSubview(overlay)' in park and 'controls.addSubview(overlay)' not in park
-assert 'window.windowLevel = .statusBar - 3' in park
+assert 'window.windowLevel = .statusBar + 0.1' in park
 assert 'card.layer.shadowOpacity = 0' in park
 assert 'let overlay = UIView(frame: card.frame)' in park
 assert 'dock.overlay.frame = frame' in panel
-assert 'dock.window.windowLevel = .statusBar - 2' in panel
+assert 'dock.window.windowLevel = .statusBar + 0.2' in panel
 assert 'dock.window.isUserInteractionEnabled = true' in panel
 assert 'activeBridge.setHostedInteractionEnabled(false)' in panel
 assert 'dock.bridge.setHostedInteractionEnabled(true)' in panel
@@ -212,7 +212,7 @@ assert 'key = "clearOnLock"' in root_plist
 assert 'self.canvas.window.windowLevel + 1' in bridge
 assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in bridge
 assert 'self.relocatingKeyboard' in bridge
-assert 'PXSetSceneFrame(mutable, self.sourceSize)' in bridge
+assert 'PXSetSceneFrame(mutable, PXServerFrameSize(mutable))' in bridge
 assert 'UILaunchStoryboardName' in bridge and 'renderInContext:context' in bridge
 assert 'NSClassFromString(@"LSApplicationProxy")' in bridge
 assert 'codes.aurora.kayoko.core.show' in bridge
@@ -377,7 +377,7 @@ assert 'PXScreenGeometryChanged' in panel and 'PXHostedGeometryChanged' in bridg
 assert 'handleCenterLandscapeFraction' in panel
 assert 'sourceOrientation = orientation' in bridge
 client_update = bridge.split('- (void)scene:(id)scene didUpdateClientSettingsWithDiff:', 1)[1].split('- (NSArray *)mainLayersForScene:', 1)[0]
-assert 'PXSetSceneFrame(mutable, self.sourceSize)' in client_update
+assert 'PXSetSceneFrame(mutable, PXServerFrameSize(mutable))' in client_update
 assert 'sb_effectiveInterfaceOrientation' in client_update
 # Both sideways orientations fit isotropically; portrait-only apps keep their aspect.
 for landscape in (False, True):
@@ -457,7 +457,8 @@ assert 'self.sourceOrientation = orientation' not in protected
 assert 'PXSetHostedOrientation(mutable, self.sourceOrientation)' in protected
 assert 'setDeviceOrientation:' in bridge and 'BSCanonicalOrientationMapResolver' in bridge
 assert 'supportedInterfaceOrientations' in client_update
-assert 'if (!appRequestedChange && !clientConfirmedChange &&' in client_update
+assert 'if (!appRequestedChange && !clientConfirmedChange && !clientInterfaceChange &&' in client_update
+assert 'clientOrientation != oldClientOrientation' in client_update
 assert 'effectiveOrientation != oldEffective' in client_update
 assert 'requested != oldPreferred' in client_update
 assert 'PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"))' in bridge
@@ -484,9 +485,10 @@ for screen_landscape in (False, True):
 for current, mask, requested, expected in ((1, 30, 3, 1), (1, 24, 3, 3), (3, 2, 1, 1), (1, 0, 3, 1)):
     result = current if not mask or mask & (1 << current) else requested
     assert result == expected
-for key in ('portraitInitialWidthPercent', 'portraitCornerRadius'):
+for key in ('portraitInitialWidthPercent', 'portraitCornerRadius',
+            'portraitLandscapeInitialWidthPercent', 'portraitLandscapeCornerRadius'):
     assert key in panel and key in radius
-assert 'configuredCornerRadius(in: screen)' in panel
+assert 'configuredCornerRadius(in: screen, source: source)' in panel
 dismiss = panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
 assert 'guard enabled, activeBridge.usesExternalKeyboard()' in dismiss
 assert '$0.session.persistentIdentifier == "com.apple.springboard"' in panel

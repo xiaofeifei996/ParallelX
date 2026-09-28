@@ -1265,7 +1265,13 @@ public final class PXPanelEntry: NSObject {
         }
         let wasFullscreen = panelFrontmostBundleID == bundleID
         panelFrontmostBundleID = nil
-        presentHost(bundleID, wasFullscreen: wasFullscreen)
+        guard wasFullscreen else { presentHost(bundleID, wasFullscreen: false); return }
+        // Let SpringBoard finish retiring the native full-screen surface before
+        // attaching the same scene to our window, or both surfaces are visible.
+        activeBridge.prepareWindow(for: bundleID, wasFullscreen: true) { [weak self] ready in
+            guard let self = self, ready else { return }
+            self.presentHost(bundleID, wasFullscreen: false)
+        }
     }
 
     private func openFullscreen(_ bundleID: String) {
@@ -1373,7 +1379,7 @@ public final class PXPanelEntry: NSObject {
         let cardFrame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
         let window = PXHandleWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = .statusBar - 2
+        window.windowLevel = .statusBar + 0.2
         window.backgroundColor = .clear
         let root = PXHostViewController()
         root.view.backgroundColor = .clear
@@ -1382,7 +1388,7 @@ public final class PXPanelEntry: NSObject {
         let card = UIView(frame: cardFrame)
         card.backgroundColor = .secondarySystemBackground
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        card.layer.cornerRadius = configuredCornerRadius(in: screen)
+        card.layer.cornerRadius = configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
         card.layer.cornerCurve = .continuous
         card.layer.shadowColor = UIColor.black.cgColor
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
@@ -1522,7 +1528,7 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
         card.transform = .identity
         card.frame = initialCardFrame(in: screen, size: size)
-        card.layer.cornerRadius = configuredCornerRadius(in: screen)
+        card.layer.cornerRadius = configuredCornerRadius(in: screen, source: source)
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
@@ -1540,9 +1546,13 @@ public final class PXPanelEntry: NSObject {
         guard source.width > 0, source.height > 0 else { return .zero }
         let landscape = screen.width > screen.height
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let saved = defaults?.object(forKey: landscape ? "initialWidthPercent" : "portraitInitialWidthPercent") as? NSNumber
+        let key = landscape ? "initialWidthPercent" : source.width > source.height
+            ? "portraitLandscapeInitialWidthPercent" : "portraitInitialWidthPercent"
+        let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "initialWidthPercent") as? NSNumber
-        let initialWidthFraction = CGFloat(min(95, max(35, saved?.doubleValue ?? legacy?.doubleValue ?? 78))) / 100
+        let portrait = defaults?.object(forKey: "portraitInitialWidthPercent") as? NSNumber
+        let fallback = !landscape && source.width > source.height ? portrait : legacy
+        let initialWidthFraction = CGFloat(min(95, max(35, saved?.doubleValue ?? fallback?.doubleValue ?? 78))) / 100
         let scale = landscape
             ? min(screen.height * initialWidthFraction / max(source.width, source.height),
                   (screen.width - landscapeDockWidth(in: screen) - 48) / source.width)
@@ -1595,11 +1605,15 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
     }
 
-    private func configuredCornerRadius(in screen: CGRect) -> CGFloat {
+    private func configuredCornerRadius(in screen: CGRect, source: CGSize) -> CGFloat {
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let saved = defaults?.object(forKey: screen.width > screen.height ? "cornerRadius" : "portraitCornerRadius") as? NSNumber
+        let key = screen.width > screen.height ? "cornerRadius" : source.width > source.height
+            ? "portraitLandscapeCornerRadius" : "portraitCornerRadius"
+        let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "cornerRadius") as? NSNumber
-        return CGFloat(min(60, max(0, saved?.doubleValue ?? legacy?.doubleValue ?? 20)))
+        let portrait = defaults?.object(forKey: "portraitCornerRadius") as? NSNumber
+        let fallback = screen.width <= screen.height && source.width > source.height ? portrait : legacy
+        return CGFloat(min(60, max(0, saved?.doubleValue ?? fallback?.doubleValue ?? 20)))
     }
 
     private var defaultDockSide: Int {
@@ -1672,7 +1686,7 @@ public final class PXPanelEntry: NSObject {
             overlay.addGestureRecognizer(swipe)
         }
         root.addSubview(overlay)
-        window.windowLevel = .statusBar - 3
+        window.windowLevel = .statusBar + 0.1
         card.layer.shadowOpacity = 0
         card.viewWithTag(0x505847)?.isHidden = true
         canvas.isUserInteractionEnabled = false
@@ -1763,7 +1777,7 @@ public final class PXPanelEntry: NSObject {
         dockedHosts.removeAll { $0 === dock }
         if hostWindow != nil { parkMain(side: defaultDockSide) }
         dock.overlay.removeFromSuperview()
-        dock.window.windowLevel = .statusBar - 2
+        dock.window.windowLevel = .statusBar + 0.2
         dock.window.isUserInteractionEnabled = true
         dock.canvas.isUserInteractionEnabled = true
         dock.bridge.setHostedInteractionEnabled(true)
@@ -1778,7 +1792,7 @@ public final class PXPanelEntry: NSObject {
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
         let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let frame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: dock.bridge.hostedSourceSize()))
-        dock.card.layer.cornerRadius = configuredCornerRadius(in: screen)
+        dock.card.layer.cornerRadius = configuredCornerRadius(in: screen, source: dock.bridge.hostedSourceSize())
         PXMotion.spring(0.32, animations: {
             dock.card.transform = .identity
             dock.card.frame = frame
