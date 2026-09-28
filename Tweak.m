@@ -4,7 +4,6 @@
 #import <substrate.h>
 #import <notify.h>
 #import <dlfcn.h>
-#import <QuartzCore/QuartzCore.h>
 #import "PXSceneBridge.h"
 
 static void (*PXOriginalSceneUpdate)(id, SEL, id, id, id);
@@ -18,94 +17,15 @@ static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL (*PXOriginalExecuteTransition)(id, SEL, id);
-static void (*PXOriginalStyleTransition)(id, SEL, id, id, id);
-static void (*PXOriginalLayerAnimation)(CALayer *, SEL, CAAnimation *, NSString *);
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
-static NSMutableString *PXAppearanceTrace;
-static CFAbsoluteTime PXAppearanceTraceUntil;
-static NSUInteger PXAppearanceTraceCount;
-
-static void PXTrace(NSString *line)
-{
-    if (!PXAppearanceTrace || PXAppearanceTraceCount >= 300) return;
-    [PXAppearanceTrace appendFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), line];
-    PXAppearanceTraceCount++;
-}
-
-static void PXTraceView(UIView *view, NSUInteger depth)
-{
-    if (depth > 4 || PXAppearanceTraceCount >= 300) return;
-    CALayer *layer = view.layer;
-    CALayer *shown = layer.presentationLayer;
-    NSArray *keys = layer.animationKeys;
-    if (keys.count || (shown && !CGRectEqualToRect(layer.frame, shown.frame)))
-        PXTrace([NSString stringWithFormat:@"view=%@ frame=%@ shown=%@ animations=%@",
-            NSStringFromClass(view.class), NSStringFromCGRect(layer.frame),
-            NSStringFromCGRect(shown.frame), keys]);
-    for (UIView *child in view.subviews) PXTraceView(child, depth + 1);
-}
-
-static void PXStartAppearanceTrace(NSString *reason)
-{
-    if (!NSThread.isMainThread) {
-        dispatch_async(dispatch_get_main_queue(), ^{ PXStartAppearanceTrace(reason); });
-        return;
-    }
-    if (CFAbsoluteTimeGetCurrent() < PXAppearanceTraceUntil) {
-        PXTrace(reason);
-        return;
-    }
-    PXAppearanceTrace = [NSMutableString string];
-    PXAppearanceTraceCount = 0;
-    PXAppearanceTraceUntil = CFAbsoluteTimeGetCurrent() + 1.2;
-    PXTrace([@"begin " stringByAppendingString:reason]);
-    for (NSUInteger sample = 0; sample <= 12; sample++) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(sample * 0.1 * NSEC_PER_SEC)),
-            dispatch_get_main_queue(), ^{
-                PXTrace([NSString stringWithFormat:@"sample=%lu", (unsigned long)sample]);
-                for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-                    if (![scene isKindOfClass:UIWindowScene.class]) continue;
-                    for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                        CALayer *shown = window.layer.presentationLayer;
-                        PXTrace([NSString stringWithFormat:@"window=%@ level=%.1f hidden=%d frame=%@ shown=%@",
-                            NSStringFromClass(window.class), window.windowLevel, window.hidden,
-                            NSStringFromCGRect(window.frame), NSStringFromCGRect(shown.frame)]);
-                        PXTraceView(window.rootViewController.view, 0);
-                    }
-                }
-                if (sample == 12) {
-                    NSString *directory = @"/var/mobile/Library/Logs";
-                    [NSFileManager.defaultManager createDirectoryAtPath:directory
-                        withIntermediateDirectories:YES attributes:nil error:nil];
-                    [PXAppearanceTrace writeToFile:[directory stringByAppendingPathComponent:
-                        @"com.moxuan.parallelx.appearance.log"] atomically:YES
-                        encoding:NSUTF8StringEncoding error:nil];
-                    PXAppearanceTrace = nil;
-                }
-            });
-    }
-}
-
-static void PXLayerAnimation(CALayer *layer, SEL selector, CAAnimation *animation, NSString *key)
-{
-    if (NSThread.isMainThread && PXAppearanceTrace && CFAbsoluteTimeGetCurrent() < PXAppearanceTraceUntil &&
-        [animation isKindOfClass:CAPropertyAnimation.class]) {
-        NSString *path = ((CAPropertyAnimation *)animation).keyPath;
-        if ([path containsString:@"transform"] || [path containsString:@"bounds"] ||
-            [path containsString:@"position"]) {
-            PXTrace([NSString stringWithFormat:@"addAnimation key=%@ type=%@ path=%@ owner=%@",
-                key, NSStringFromClass(animation.class), path, NSStringFromClass([layer.delegate class])]);
-        }
-    }
-    PXOriginalLayerAnimation(layer, selector, animation, key);
-}
+static CFAbsoluteTime PXAppearanceChangeUntil;
 
 static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
 {
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL visible = NSSelectorFromString(@"hasVisibleHost");
     if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible))
-        PXStartAppearanceTrace(@"setModeValue");
+        PXAppearanceChangeUntil = CFAbsoluteTimeGetCurrent() + 1.0;
     PXOriginalSetStyleMode(mode, selector, value);
 }
 static BOOL PXDeviceLocked;
@@ -144,19 +64,6 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
         }
     }
     return PXOriginalExecuteTransition(workspace, selector, request);
-}
-
-static void PXStyleTransition(id action, SEL selector, id scene, id context, void (^applyChanges)(void))
-{
-    PXStartAppearanceTrace(@"styleDiffAction");
-    Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL visible = NSSelectorFromString(@"hasVisibleHost");
-    if ([entry respondsToSelector:visible] &&
-        ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible)) {
-        if (applyChanges) applyChanges();
-        return;
-    }
-    PXOriginalStyleTransition(action, selector, scene, context, applyChanges);
 }
 
 static NSString *PXBundleID(id object)
@@ -391,12 +298,28 @@ static void PXKeyboardLayout(id view, SEL selector)
     [PXSceneBridge relocateAnyKeyboardView:view];
 }
 
+static id PXHostedAppearanceContext(id context, BOOL hosted)
+{
+    if (!hosted || !context || CFAbsoluteTimeGetCurrent() > PXAppearanceChangeUntil) return context;
+    Class settingsClass = NSClassFromString(@"BSAnimationSettings");
+    SEL zeroDuration = NSSelectorFromString(@"settingsWithDuration:");
+    SEL setAnimation = NSSelectorFromString(@"setAnimationSettings:");
+    if (![settingsClass respondsToSelector:zeroDuration] || ![context respondsToSelector:setAnimation])
+        return context;
+    id copy = [context mutableCopy];
+    id settings = ((id (*)(id, SEL, double))objc_msgSend)(settingsClass, zeroDuration, 0);
+    if (!copy || !settings) return context;
+    ((void (*)(id, SEL, id))objc_msgSend)(copy, setAnimation, settings);
+    return copy;
+}
+
 static void PXSceneUpdate(id scene, SEL selector, id settings, id context, id completion)
 {
     id protected = nil;
     @try { protected = [PXSceneBridge protectedSettings:settings forAnyScene:scene]; }
     @catch (__unused NSException *exception) { }
-    PXOriginalSceneUpdate(scene, selector, protected ?: settings, context, completion);
+    PXOriginalSceneUpdate(scene, selector, protected ?: settings,
+                          PXHostedAppearanceContext(context, protected != nil), completion);
 }
 
 static void PXSceneUpdateWithoutCompletion(id scene, SEL selector, id settings, id context)
@@ -404,7 +327,8 @@ static void PXSceneUpdateWithoutCompletion(id scene, SEL selector, id settings, 
     id protected = nil;
     @try { protected = [PXSceneBridge protectedSettings:settings forAnyScene:scene]; }
     @catch (__unused NSException *exception) { }
-    PXOriginalSceneUpdateWithoutCompletion(scene, selector, protected ?: settings, context);
+    PXOriginalSceneUpdateWithoutCompletion(scene, selector, protected ?: settings,
+                                           PXHostedAppearanceContext(context, protected != nil));
 }
 
 static void PXKeyboardDidMove(id view, SEL selector)
@@ -428,22 +352,10 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (scene && class_getInstanceMethod(scene, updateShort))
             MSHookMessageEx(scene, updateShort, (IMP)PXSceneUpdateWithoutCompletion,
                             (IMP *)&PXOriginalSceneUpdateWithoutCompletion);
-        Class styleAction = NSClassFromString(@"_UIWindowSceneUserInterfaceStyleSettingsDiffAction");
-        SEL styleTransition = NSSelectorFromString(@"_animateUserInterfaceStyleChangeInScene:transitionContext:applyChangesBlock:");
-        Method styleMethod = class_getInstanceMethod(styleAction, styleTransition);
-        if (styleMethod && method_getNumberOfArguments(styleMethod) == 5)
-            MSHookMessageEx(styleAction, styleTransition, (IMP)PXStyleTransition,
-                            (IMP *)&PXOriginalStyleTransition);
         Class styleMode = NSClassFromString(@"UISUserInterfaceStyleMode");
         if (class_getInstanceMethod(styleMode, @selector(setModeValue:)))
             MSHookMessageEx(styleMode, @selector(setModeValue:), (IMP)PXSetStyleMode,
                             (IMP *)&PXOriginalSetStyleMode);
-        MSHookMessageEx(CALayer.class, @selector(addAnimation:forKey:),
-                        (IMP)PXLayerAnimation, (IMP *)&PXOriginalLayerAnimation);
-        [[NSNotificationCenter defaultCenter] addObserverForName:@"PXAppearanceProbe" object:nil
-            queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *notification) {
-                PXStartAppearanceTrace(@"hostTraitChanged");
-            }];
         Class ui = NSClassFromString(@"SBUIController");
         SEL activate = NSSelectorFromString(@"activateApplication:fromIcon:location:activationSettings:actions:");
         if (ui && class_getInstanceMethod(ui, activate))

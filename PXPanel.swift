@@ -1501,7 +1501,6 @@ public final class PXPanelEntry: NSObject {
             self?.layoutHostControls()
         }
         root.onAppearance = { [weak self] in
-            NotificationCenter.default.post(name: Notification.Name("PXAppearanceProbe"), object: nil)
             self?.layoutHostControls()
         }
         // Keep the native full-screen surface visible until its hosted surface
