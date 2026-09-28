@@ -456,7 +456,19 @@ protected = bridge.split('- (id)protectedSettings:(id)settings forScene:', 1)[1]
 assert 'self.sourceOrientation = orientation' not in protected
 assert 'setOrientation, self.sourceOrientation' in protected
 assert 'supportedInterfaceOrientations' in client_update
-assert 'if (!mask || (mask & (1UL << self.sourceOrientation))) return;' in client_update
+assert 'if (!appRequestedChange && (!mask || (mask & (1UL << self.sourceOrientation)))) return;' in client_update
+assert 'requested != oldPreferred' in client_update
+assert 'PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"))' in bridge
+assert 'CGSize sourceSize = PXSourceSize(mutable)' in bridge
+assert 'row.autoresizingMask = [.flexibleWidth]' in panel
+for screen_landscape in (False, True):
+    for app_mask, expected_landscape in ((2, False), (2 | 8 | 16, False), (8 | 16, True)):
+        orientation = next(value for value in (1, 2, 3, 4) if app_mask & (1 << value))
+        assert (orientation in (3, 4)) == expected_landscape
+        source = (844, 390) if expected_landscape else (390, 844)
+        screen = (844, 390) if screen_landscape else (390, 844)
+        scale = min(screen[0] / source[0], screen[1] / source[1])
+        assert abs((source[0] * scale) / scale - source[0]) < .001
 for current, mask, requested, expected in ((1, 30, 3, 1), (1, 24, 3, 3), (3, 2, 1, 1), (1, 0, 3, 1)):
     result = current if not mask or mask & (1 << current) else requested
     assert result == expected

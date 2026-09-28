@@ -116,6 +116,37 @@ static UIInterfaceOrientation PXSceneOrientation(id settings)
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(settings, selector) : UIInterfaceOrientationUnknown;
 }
 
+static UIInterfaceOrientation PXPreferredHostedOrientation(NSString *bundleID, id client)
+{
+    UIInterfaceOrientationMask mask = 0;
+    SEL supported = NSSelectorFromString(@"supportedInterfaceOrientations");
+    if ([client respondsToSelector:supported])
+        mask = ((NSUInteger (*)(id, SEL))objc_msgSend)(client, supported);
+    if (!mask && bundleID.length) {
+        id proxyClass = NSClassFromString(@"LSApplicationProxy");
+        SEL lookup = NSSelectorFromString(@"applicationProxyForIdentifier:");
+        id proxy = [proxyClass respondsToSelector:lookup]
+            ? ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, lookup, bundleID) : nil;
+        NSURL *url = PXCall(proxy, @"bundleURL");
+        NSDictionary *info = [url isKindOfClass:NSURL.class] ? [NSBundle bundleWithURL:url].infoDictionary : nil;
+        NSString *key = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
+            ? @"UISupportedInterfaceOrientations~ipad" : @"UISupportedInterfaceOrientations~iphone";
+        NSArray *names = [info[key] isKindOfClass:NSArray.class] ? info[key] : info[@"UISupportedInterfaceOrientations"];
+        if (![names isKindOfClass:NSArray.class]) names = @[];
+        for (NSString *name in names) {
+            if ([name isEqualToString:@"UIInterfaceOrientationPortrait"]) mask |= UIInterfaceOrientationMaskPortrait;
+            else if ([name isEqualToString:@"UIInterfaceOrientationPortraitUpsideDown"]) mask |= UIInterfaceOrientationMaskPortraitUpsideDown;
+            else if ([name isEqualToString:@"UIInterfaceOrientationLandscapeLeft"]) mask |= UIInterfaceOrientationMaskLandscapeLeft;
+            else if ([name isEqualToString:@"UIInterfaceOrientationLandscapeRight"]) mask |= UIInterfaceOrientationMaskLandscapeRight;
+        }
+    }
+    if (mask & UIInterfaceOrientationMaskPortrait) return UIInterfaceOrientationPortrait;
+    if (mask & UIInterfaceOrientationMaskPortraitUpsideDown) return UIInterfaceOrientationPortraitUpsideDown;
+    if (mask & UIInterfaceOrientationMaskLandscapeRight) return UIInterfaceOrientationLandscapeRight;
+    if (mask & UIInterfaceOrientationMaskLandscapeLeft) return UIInterfaceOrientationLandscapeLeft;
+    return UIInterfaceOrientationPortrait;
+}
+
 static CGSize PXSourceSize(id settings)
 {
     // The server frame can retain a stale floating size. The display is the
@@ -710,7 +741,11 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!mutable || !PXSetBool(mutable, @"setBackgrounded:", NO)) return NO;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
-    CGSize sourceSize = PXSourceSize(settings);
+    UIInterfaceOrientation orientation = PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"));
+    SEL setOrientation = NSSelectorFromString(@"setInterfaceOrientation:");
+    if ([mutable respondsToSelector:setOrientation])
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setOrientation, orientation);
+    CGSize sourceSize = PXSourceSize(mutable);
     if (!PXSetSceneFrame(mutable, sourceSize)) return NO;
     if (!PXUpdateScene(scene, mutable)) return NO;
     if (self.scene != scene) {
@@ -723,7 +758,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     }
     self.scene = scene;
     self.sourceSize = sourceSize;
-    self.sourceOrientation = PXSceneOrientation(settings);
+    self.sourceOrientation = orientation;
     if (self.sourceOrientation == UIInterfaceOrientationUnknown)
         self.sourceOrientation = sourceSize.width > sourceSize.height ?
             UIInterfaceOrientationLandscapeRight : UIInterfaceOrientationPortrait;
@@ -798,7 +833,15 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ((NSUInteger (*)(id, SEL))objc_msgSend)(client, supported) : 0;
     // Keep the hosted orientation while the app supports it. A landscape-only
     // video screen can still request a new orientation independently of the device.
-    if (!mask || (mask & (1UL << self.sourceOrientation))) return;
+    SEL preferred = NSSelectorFromString(@"preferredInterfaceOrientation");
+    UIInterfaceOrientation requested = [client respondsToSelector:preferred]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(client, preferred) : UIInterfaceOrientationUnknown;
+    UIInterfaceOrientation oldPreferred = [oldSettings respondsToSelector:preferred]
+        ? ((NSInteger (*)(id, SEL))objc_msgSend)(oldSettings, preferred) : UIInterfaceOrientationUnknown;
+    BOOL appRequestedChange = requested != oldPreferred &&
+        requested >= UIInterfaceOrientationPortrait && requested <= UIInterfaceOrientationLandscapeRight &&
+        (mask & (1UL << requested));
+    if (!appRequestedChange && (!mask || (mask & (1UL << self.sourceOrientation)))) return;
     UIInterfaceOrientation orientation = PXSceneOrientation(client);
     SEL effective = NSSelectorFromString(@"sb_effectiveInterfaceOrientation");
     if ([client respondsToSelector:effective]) {
@@ -806,9 +849,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         if (value >= UIInterfaceOrientationPortrait && value <= UIInterfaceOrientationLandscapeRight)
             orientation = value;
     }
-    SEL preferred = NSSelectorFromString(@"preferredInterfaceOrientation");
-    if (orientation == UIInterfaceOrientationUnknown && [client respondsToSelector:preferred])
-        orientation = ((NSInteger (*)(id, SEL))objc_msgSend)(client, preferred);
+    if (appRequestedChange) orientation = requested;
+    else if (orientation == UIInterfaceOrientationUnknown) orientation = requested;
     if (orientation < UIInterfaceOrientationPortrait || orientation > UIInterfaceOrientationLandscapeRight ||
         orientation == self.sourceOrientation) return;
     if (!(mask & (1UL << orientation))) return;

@@ -597,7 +597,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
         return (id, name)
     }
     private var matches: [(id: String, name: String)] = []
-    private var keyboardTop: CGFloat?
+    private var keyboardFrame: CGRect?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -631,7 +631,8 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         backdrop.frame = view.bounds
-        let bottom = keyboardTop ?? view.bounds.height - view.safeAreaInsets.bottom
+        let bottom = keyboardFrame.map { max(0, view.convert($0, from: nil).minY) } ??
+            view.bounds.height - view.safeAreaInsets.bottom
         let height = min(330, max(190, bottom * 0.45))
         card.frame = CGRect(x: 12, y: bottom - height - 8,
                             width: view.bounds.width - 24, height: height)
@@ -654,7 +655,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
 
     @objc private func keyboardChanged(_ note: Notification) {
         guard let rect = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        keyboardTop = max(0, view.convert(rect, from: nil).minY)
+        keyboardFrame = rect
         PXMotion.ease(0.22) { self.view.setNeedsLayout(); self.view.layoutIfNeeded() }
     }
 
@@ -689,6 +690,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
         cell.backgroundColor = .clear
         cell.contentView.subviews.forEach { $0.removeFromSuperview() }
         let row = UIStackView(frame: CGRect(x: 6, y: 3, width: tableView.bounds.width - 12, height: 54))
+        row.autoresizingMask = [.flexibleWidth]
         row.axis = .horizontal
         row.distribution = .fillEqually
         row.spacing = 8
