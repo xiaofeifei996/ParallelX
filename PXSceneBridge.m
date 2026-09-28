@@ -186,7 +186,8 @@ static int PXApplicationPID(NSString *bundleID)
 
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation
 {
-    if (orientation >= UIInterfaceOrientationPortrait && orientation <= UIInterfaceOrientationLandscapeRight)
+    if (orientation == UIInterfaceOrientationPortrait || orientation == UIInterfaceOrientationPortraitUpsideDown ||
+        orientation == UIInterfaceOrientationLandscapeLeft || orientation == UIInterfaceOrientationLandscapeRight)
         PXSystemOrientation = orientation;
 }
 
