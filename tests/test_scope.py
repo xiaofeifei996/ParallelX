@@ -6,6 +6,7 @@ control = (root / "control").read_text(encoding="utf-8")
 makefile = (root / "Makefile").read_text(encoding="utf-8")
 panel = (root / "PXPanel.swift").read_text(encoding="utf-8")
 bridge = (root / "PXSceneBridge.m").read_text(encoding="utf-8")
+bridge_header = (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 tweak = (root / "Tweak.m").read_text(encoding="utf-8")
 app_picker = (root / "prefs/PXAppPickerController.swift").read_text(encoding="utf-8")
 action_picker = (root / "prefs/PXActionPickerController.swift").read_text(encoding="utf-8")
@@ -15,6 +16,11 @@ assert 'uniquingKeysWith:' in app_picker and 'uniquingKeysWith:' in action_picke
 assert app_picker.count('[weak alert]') >= 2 and '[weak self, weak alert]' in app_picker
 assert 'context respondsToSelector:@selector(mutableCopy)' in tweak
 assert '@catch (__unused NSException *exception) { return context; }' in tweak
+assert 'PXRuntimeHostedOrientation(client)' in bridge.split('static UIInterfaceOrientation PXPreferredHostedOrientation', 1)[1].split('// PullOver-X', 1)[0]
+assert '- (BOOL)hasHostedSurface;' in bridge_header
+assert 'if activeBridge.hasHostedSurface(), !window.isHidden {' in panel
+assert 'frontDisplayChanged:' in tweak and 'frontDisplayChanged(_ bundleID: String?)' in panel
+assert 'window.windowLevel = .statusBar + 2' in panel.split('private func beginPanel()', 1)[1].split('@objc private func dragHandle', 1)[0]
 
 assert "Package: com.moxuan.parallelx" in control
 assert "firmware (<< 16.0)" in control

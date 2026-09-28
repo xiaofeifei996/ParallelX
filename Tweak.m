@@ -266,9 +266,9 @@ static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application
     PXOriginalFrontDisplayDidChange(springBoard, selector, application);
     NSString *bundleID = PXBundleID(application);
     Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL activated = NSSelectorFromString(@"applicationActivated:");
-    if (bundleID.length && [entry respondsToSelector:activated])
-        ((void (*)(id, SEL, id))objc_msgSend)(entry, activated, bundleID);
+    SEL changed = NSSelectorFromString(@"frontDisplayChanged:");
+    if ([entry respondsToSelector:changed])
+        ((void (*)(id, SEL, id))objc_msgSend)(entry, changed, bundleID);
 }
 
 static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation,

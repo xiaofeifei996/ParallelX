@@ -832,6 +832,14 @@ public final class PXPanelEntry: NSObject {
         else { DispatchQueue.main.async(execute: clear) }
     }
 
+    @objc public static func frontDisplayChanged(_ bundleID: String?) {
+        if shared.fullscreenToWindowInProgress && bundleID != shared.hostedBundleID {
+            shared.fullscreenToWindowInProgress = false
+            shared.layoutHostControls()
+        }
+        if let bundleID = bundleID { applicationActivated(bundleID) }
+    }
+
     @objc public static func externalOpenApplication(_ bundleID: String) {
         guard !shared.deviceLocked, shared.activeScene() != nil else { return }
         shared.externalPendingBundleID = bundleID
@@ -897,7 +905,12 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func sceneActivated(_ notification: Notification) {
         installHandle()
-        if (notification.object as? UIWindowScene) === hostWindow?.windowScene { refreshHost() }
+        if (notification.object as? UIWindowScene) === hostWindow?.windowScene {
+            if fullscreenToWindowInProgress, PXSceneBridge.shared().frontmostBundleID() != hostedBundleID {
+                fullscreenToWindowInProgress = false
+            }
+            refreshHost()
+        }
         if !dockedHosts.isEmpty { layoutDocks() }
     }
 
@@ -905,6 +918,11 @@ public final class PXPanelEntry: NSObject {
         guard !deviceLocked, needsHostRefresh, let window = hostWindow,
               let bundleID = hostedBundleID, let canvas = hostCanvas,
               let controls = handleWindow?.rootViewController?.view else { return }
+        if activeBridge.hasHostedSurface(), !window.isHidden {
+            needsHostRefresh = false
+            return
+        }
+        if fullscreenToWindowInProgress { return }
         needsHostRefresh = false
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
@@ -1153,7 +1171,7 @@ public final class PXPanelEntry: NSObject {
         panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()
         let window = PXOverlayWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
-        window.windowLevel = .statusBar + 1
+        window.windowLevel = .statusBar + 2
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
         controller.apps = selectedApps()
@@ -1544,7 +1562,6 @@ public final class PXPanelEntry: NSObject {
             if wasFullscreen {
                 PXMotion.spring(0.4, animations: { card.transform = .identity }) { _ in
                     guard self.hostWindow === window else { return }
-                    self.fullscreenToWindowInProgress = false
                     self.layoutHostControls()
                 }
             }

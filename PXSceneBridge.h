@@ -19,6 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)updateAppearanceForStyle:(UIUserInterfaceStyle)style NS_SWIFT_NAME(updateAppearance(for:));
 - (void)setHostedInteractionEnabled:(BOOL)enabled;
 - (CGSize)hostedSourceSize;
+- (BOOL)hasHostedSurface;
 - (BOOL)isKeyboardRelocated;
 - (BOOL)isHostedKeyboardVisible;
 - (BOOL)usesExternalKeyboard;

@@ -119,6 +119,8 @@ static UIInterfaceOrientation PXSceneOrientation(id settings)
         ? ((NSInteger (*)(id, SEL))objc_msgSend)(settings, selector) : UIInterfaceOrientationUnknown;
 }
 
+static UIInterfaceOrientation PXRuntimeHostedOrientation(id client);
+
 static void PXSetHostedOrientation(id settings, UIInterfaceOrientation orientation)
 {
     if (!settings || orientation < UIInterfaceOrientationPortrait ||
@@ -180,6 +182,10 @@ static UIInterfaceOrientation PXPreferredHostedOrientation(NSString *bundleID, i
             else if ([name isEqualToString:@"UIInterfaceOrientationLandscapeLeft"]) mask |= UIInterfaceOrientationMaskLandscapeLeft;
             else if ([name isEqualToString:@"UIInterfaceOrientationLandscapeRight"]) mask |= UIInterfaceOrientationMaskLandscapeRight;
         }
+    }
+    if (!(mask & (UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskPortraitUpsideDown))) {
+        UIInterfaceOrientation live = PXRuntimeHostedOrientation(client);
+        if (UIInterfaceOrientationIsLandscape(live)) return live;
     }
     if (mask & UIInterfaceOrientationMaskPortrait) return UIInterfaceOrientationPortrait;
     if (mask & UIInterfaceOrientationMaskPortraitUpsideDown) return UIInterfaceOrientationPortraitUpsideDown;
@@ -756,6 +762,11 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 - (CGSize)hostedSourceSize
 {
     return self.sourceSize;
+}
+
+- (BOOL)hasHostedSurface
+{
+    return self.hostView != nil;
 }
 
 - (BOOL)usesExternalKeyboard
