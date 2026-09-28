@@ -2,6 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 @interface PXSceneBridge : NSObject
++ (BOOL)isPreparingHomeHandoff;
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation;
 + (UIInterfaceOrientation)systemOrientation;
 + (instancetype)sharedBridge;

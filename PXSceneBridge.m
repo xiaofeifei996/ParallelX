@@ -8,6 +8,8 @@
 #import <signal.h>
 #import <unistd.h>
 
+static BOOL PXPreparingHomeHandoff;
+
 @interface UIWindow (PXRotation)
 - (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
                          duration:(double)duration skipCallbacks:(BOOL)skipCallbacks;
@@ -292,6 +294,10 @@ static int PXApplicationPID(NSString *bundleID)
 @end
 
 @implementation PXSceneBridge
++ (BOOL)isPreparingHomeHandoff
+{
+    return NSThread.isMainThread && PXPreparingHomeHandoff;
+}
 
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation
 {
@@ -689,13 +695,21 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (signature && signature.numberOfArguments == 3 &&
         signature.methodReturnType[0] == 'v' &&
         [signature getArgumentTypeAtIndex:2][0] == '@') {
-        ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, ^{ finish(YES); });
+        BOOL previous = PXPreparingHomeHandoff;
+        PXPreparingHomeHandoff = YES;
+        @try {
+            ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, ^{ finish(YES); });
+        } @finally { PXPreparingHomeHandoff = previous; }
         return;
     }
     id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
     SEL press = NSSelectorFromString(@"performSinglePressUpActions");
     if ([actions respondsToSelector:press]) {
-        ((void (*)(id, SEL))objc_msgSend)(actions, press);
+        BOOL previous = PXPreparingHomeHandoff;
+        PXPreparingHomeHandoff = YES;
+        @try {
+            ((void (*)(id, SEL))objc_msgSend)(actions, press);
+        } @finally { PXPreparingHomeHandoff = previous; }
         finish(YES);
     } else finish(NO);
 }

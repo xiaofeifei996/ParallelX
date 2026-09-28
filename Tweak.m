@@ -16,6 +16,7 @@ static void (*PXOriginalOrientationChanged)(id, SEL, NSInteger, double, BOOL, BO
 static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
+static BOOL (*PXOriginalExecuteTransition)(id, SEL, id, NSUInteger, id);
 static BOOL PXDeviceLocked;
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
@@ -31,6 +32,19 @@ static NSDictionary *PXOptionsDictionary(id options)
 {
     id values = [options isKindOfClass:NSDictionary.class] ? options : PXValue(options, @"dictionary");
     return [values isKindOfClass:NSDictionary.class] ? values : nil;
+}
+
+static BOOL PXExecuteTransition(id workspace, SEL selector, id request, NSUInteger options, id validator)
+{
+    // Only the return-home request issued while a live ParallelX surface is
+    // already covering the app. Keep normal Home/app-switcher animations intact.
+    if ([PXSceneBridge isPreparingHomeHandoff]) {
+        id context = PXValue(request, @"applicationContext");
+        SEL disable = NSSelectorFromString(@"setAnimationDisabled:");
+        if ([context respondsToSelector:disable])
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(context, disable, YES);
+    }
+    return PXOriginalExecuteTransition(workspace, selector, request, options, validator);
 }
 
 static NSString *PXBundleID(id object)
@@ -303,6 +317,15 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(scene, updateShort, (IMP)PXSceneUpdateWithoutCompletion,
                             (IMP *)&PXOriginalSceneUpdateWithoutCompletion);
         Class ui = NSClassFromString(@"SBUIController");
+        Class workspace = NSClassFromString(@"SBMainWorkspace");
+        SEL execute = NSSelectorFromString(@"_executeTransitionRequest:options:validator:");
+        Method execution = class_getInstanceMethod(workspace, execute);
+        char result[8] = {0};
+        if (execution) method_getReturnType(execution, result, sizeof(result));
+        if (execution && method_getNumberOfArguments(execution) == 5 &&
+            (result[0] == 'B' || result[0] == 'c'))
+            MSHookMessageEx(workspace, execute, (IMP)PXExecuteTransition,
+                            (IMP *)&PXOriginalExecuteTransition);
         SEL activate = NSSelectorFromString(@"activateApplication:fromIcon:location:activationSettings:actions:");
         if (ui && class_getInstanceMethod(ui, activate))
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
