@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXCornerRadiusController)
-public final class PXCornerRadiusController: UIViewController {
+public final class PXCornerRadiusController: PSViewController {
     private let slider = UISlider()
     private let number = UIButton(type: .system)
     private let caption = UILabel()
@@ -14,15 +14,27 @@ public final class PXCornerRadiusController: UIViewController {
     private let rightInsetLabel = UILabel()
     private let initialWidth = UISlider()
     private let initialWidthLabel = UILabel()
+    private let scroll = UIScrollView()
+    private var cards: [UIView] = []
+    private var headings: [UILabel] = []
+    private var lines: [UIView] = []
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = "位置、圆角与阴影"
         view.backgroundColor = .systemGroupedBackground
+        scroll.frame = view.bounds
+        scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(scroll)
+        for title in ["初始位置与尺寸", "窗口圆角", "窗口阴影"] {
+            headings.append(PXSettingsStyle.heading(title, in: scroll))
+            cards.append(PXSettingsStyle.card(in: scroll))
+        }
+        lines = (0..<2).map { _ in PXSettingsStyle.separator(in: scroll) }
         caption.text = "圆角大小"
         caption.font = .preferredFont(forTextStyle: .body)
-        view.addSubview(caption)
+        scroll.addSubview(caption)
         slider.minimumValue = 0
         slider.maximumValue = 60
         slider.value = Float(defaults?.object(forKey: "cornerRadius") == nil ? 20 :
@@ -30,16 +42,16 @@ public final class PXCornerRadiusController: UIViewController {
         slider.addTarget(self, action: #selector(valueChanged), for: .valueChanged)
         slider.addTarget(self, action: #selector(valueFinished),
                          for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        view.addSubview(slider)
+        scroll.addSubview(slider)
         number.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
         number.addGestureRecognizer(UILongPressGestureRecognizer(target: self,
                                                                   action: #selector(editNumber(_:))))
         number.accessibilityHint = "长按输入圆角数值"
-        view.addSubview(number)
+        scroll.addSubview(number)
         hint.text = "长按右侧数字可以输入 0–60 pt"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
-        view.addSubview(hint)
+        scroll.addSubview(hint)
         for (control, label, key, fallback, maximum) in [
             (shadowStrength, shadowStrengthLabel, "shadowStrength", 22, 50),
             (shadowBlur, shadowBlurLabel, "shadowBlur", 15, 24),
@@ -47,14 +59,14 @@ public final class PXCornerRadiusController: UIViewController {
             (initialWidth, initialWidthLabel, "initialWidthPercent", 78, 95)
         ] {
             label.font = .preferredFont(forTextStyle: .body)
-            view.addSubview(label)
+            scroll.addSubview(label)
             control.minimumValue = key == "initialWidthPercent" ? 35 : 0
             control.maximumValue = Float(maximum)
             control.value = Float(defaults?.object(forKey: key) as? Int ?? fallback)
             control.addTarget(self, action: #selector(shadowChanged), for: .valueChanged)
             control.addTarget(self, action: #selector(shadowFinished),
                               for: [.touchUpInside, .touchUpOutside, .touchCancel])
-            view.addSubview(control)
+            scroll.addSubview(control)
         }
         valueChanged()
         shadowChanged()
@@ -62,20 +74,35 @@ public final class PXCornerRadiusController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let y = view.safeAreaInsets.top + 28
-        let width = view.bounds.width
-        caption.frame = CGRect(x: 20, y: y, width: width - 40, height: 28)
-        slider.frame = CGRect(x: 20, y: y + 42, width: width - 112, height: 34)
-        number.frame = CGRect(x: width - 90, y: y + 38, width: 70, height: 42)
-        hint.frame = CGRect(x: 20, y: y + 88, width: width - 40, height: 24)
-        shadowStrengthLabel.frame = CGRect(x: 20, y: y + 142, width: width - 40, height: 28)
-        shadowStrength.frame = CGRect(x: 20, y: y + 176, width: width - 40, height: 38)
-        shadowBlurLabel.frame = CGRect(x: 20, y: y + 236, width: width - 40, height: 28)
-        shadowBlur.frame = CGRect(x: 20, y: y + 270, width: width - 40, height: 38)
-        rightInsetLabel.frame = CGRect(x: 20, y: y + 330, width: width - 40, height: 28)
-        rightInset.frame = CGRect(x: 20, y: y + 364, width: width - 40, height: 38)
-        initialWidthLabel.frame = CGRect(x: 20, y: y + 424, width: width - 40, height: 28)
-        initialWidth.frame = CGRect(x: 20, y: y + 458, width: width - 40, height: 38)
+        let width = scroll.bounds.width
+        let groups: [[(UILabel, UISlider)]] = [
+            [(rightInsetLabel, rightInset), (initialWidthLabel, initialWidth)],
+            [(caption, slider)],
+            [(shadowStrengthLabel, shadowStrength), (shadowBlurLabel, shadowBlur)]
+        ]
+        var y: CGFloat = 20
+        for (section, rows) in groups.enumerated() {
+            headings[section].frame = CGRect(x: 32, y: y, width: width - 64, height: 22)
+            y += 30
+            let cardY = y
+            cards[section].frame = CGRect(x: 16, y: cardY, width: width - 32,
+                                           height: CGFloat(rows.count) * 82)
+            for (row, pair) in rows.enumerated() {
+                let rowY = cardY + CGFloat(row) * 82
+                pair.0.frame = CGRect(x: 32, y: rowY + 10, width: width - 64, height: 28)
+                pair.1.frame = CGRect(x: 32, y: rowY + 40,
+                                      width: section == 1 ? width - 120 : width - 64, height: 34)
+                if section == 1 {
+                    number.frame = CGRect(x: width - 88, y: rowY + 36, width: 56, height: 42)
+                } else if row == 0 {
+                    lines[section == 0 ? 0 : 1].frame = CGRect(x: 32, y: rowY + 81,
+                                                               width: width - 64, height: 0.5)
+                }
+            }
+            y += CGFloat(rows.count) * 82 + 28
+        }
+        hint.frame = CGRect(x: 32, y: y - 18, width: width - 64, height: 32)
+        scroll.contentSize = CGSize(width: width, height: hint.frame.maxY + 16)
     }
 
     @objc private func valueChanged() {

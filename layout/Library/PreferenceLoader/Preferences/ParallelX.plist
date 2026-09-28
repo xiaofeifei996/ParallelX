@@ -3,6 +3,8 @@
         bundle = "ParallelXPrefs";
         cell = PSLinkCell;
         detail = "PXRootListController";
+        hasIcon = 1;
+        icon = "icon.png";
         isController = 1;
         label = "ParallelX";
     };

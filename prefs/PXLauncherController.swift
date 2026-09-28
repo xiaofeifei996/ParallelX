@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXLauncherController)
-public final class PXLauncherController: UIViewController {
+public final class PXLauncherController: PSViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["launcherIconSize", "launcherRing1", "launcherRing2",
                         "launcherRing3", "launcherRing4", "launcherRingGap", "launcherDragDistance",
@@ -15,8 +15,12 @@ public final class PXLauncherController: UIViewController {
                                             (300, 2000), (12, 52), (44, 160)]
     private let labels = (0..<11).map { _ in UILabel() }
     private let sliders = (0..<11).map { _ in UISlider() }
+    private let buttons = (0..<11).map { _ in UIButton(type: .system) }
     private let scroll = UIScrollView()
     private let hint = UILabel()
+    private var cards: [UIView] = []
+    private var headings: [UILabel] = []
+    private var lines: [[UIView]] = []
     private var values = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86]
 
     public override func viewDidLoad() {
@@ -26,6 +30,11 @@ public final class PXLauncherController: UIViewController {
         scroll.frame = view.bounds
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(scroll)
+        for (title, count) in [("图标与环形排列", 6), ("呼出与选择", 3), ("手柄尺寸", 2)] {
+            headings.append(PXSettingsStyle.heading(title, in: scroll))
+            cards.append(PXSettingsStyle.card(in: scroll))
+            lines.append((0..<(count - 1)).map { _ in PXSettingsStyle.separator(in: scroll) })
+        }
         for index in keys.indices {
             let label = labels[index]
             label.font = .preferredFont(forTextStyle: .body)
@@ -46,6 +55,12 @@ public final class PXLauncherController: UIViewController {
             slider.addTarget(self, action: #selector(valueFinished(_:)),
                              for: [.touchUpInside, .touchUpOutside, .touchCancel])
             scroll.addSubview(slider)
+            let button = buttons[index]
+            button.tag = index
+            button.setImage(UIImage(systemName: "keyboard"), for: .normal)
+            button.accessibilityLabel = "输入\(titles[index])"
+            button.addTarget(self, action: #selector(editValue(_:)), for: .touchUpInside)
+            scroll.addSubview(button)
             updateLabel(index)
         }
         hint.text = "长按环容量文字可输入数量。滑到图标后松手打开分屏；保持选中至设定时长再松手打开全屏。换图标会重新计时。空白处松手收回。"
@@ -57,15 +72,29 @@ public final class PXLauncherController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let top: CGFloat = 20
-        for index in keys.indices {
-            let y = top + CGFloat(index) * 82
-            labels[index].frame = CGRect(x: 20, y: y, width: scroll.bounds.width - 40, height: 28)
-            sliders[index].frame = CGRect(x: 20, y: y + 34,
-                                           width: scroll.bounds.width - 40, height: 38)
+        let width = scroll.bounds.width
+        var y: CGFloat = 20
+        var index = 0
+        for (section, count) in [6, 3, 2].enumerated() {
+            headings[section].frame = CGRect(x: 32, y: y, width: width - 64, height: 22)
+            y += 30
+            let cardY = y
+            cards[section].frame = CGRect(x: 16, y: cardY, width: width - 32,
+                                           height: CGFloat(count) * 78)
+            for row in 0..<count {
+                let rowY = cardY + CGFloat(row) * 78
+                labels[index].frame = CGRect(x: 32, y: rowY + 9, width: width - 64, height: 28)
+                sliders[index].frame = CGRect(x: 32, y: rowY + 38, width: width - 112, height: 34)
+                buttons[index].frame = CGRect(x: width - 70, y: rowY + 36, width: 38, height: 38)
+                if row < count - 1 {
+                    lines[section][row].frame = CGRect(x: 32, y: rowY + 77,
+                                                        width: width - 64, height: 0.5)
+                }
+                index += 1
+            }
+            y += CGFloat(count) * 78 + 28
         }
-        hint.frame = CGRect(x: 20, y: top + CGFloat(keys.count) * 82,
-                            width: scroll.bounds.width - 40, height: 100)
+        hint.frame = CGRect(x: 32, y: y, width: width - 64, height: 80)
         scroll.contentSize = CGSize(width: scroll.bounds.width, height: hint.frame.maxY + 20)
     }
 
@@ -91,15 +120,22 @@ public final class PXLauncherController: UIViewController {
 
     @objc private func editRingCount(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began, let index = gesture.view?.tag else { return }
-        let alert = UIAlertController(title: titles[index], message: "输入每环应用数量", preferredStyle: .alert)
+        presentValueEditor(index)
+    }
+
+    @objc private func editValue(_ button: UIButton) { presentValueEditor(button.tag) }
+
+    private func presentValueEditor(_ index: Int) {
+        let alert = UIAlertController(title: titles[index], message: "范围 \(Int(limits[index].0))–\(Int(limits[index].1))", preferredStyle: .alert)
         alert.addTextField { field in
-            field.keyboardType = .numberPad
+            field.keyboardType = .numbersAndPunctuation
             field.text = "\(self.values[index])"
         }
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "确定", style: .default) { [weak self, weak alert] _ in
             guard let self = self, let text = alert?.textFields?.first?.text,
-                  let value = Int(text), value > 0 else { return }
+                  let value = Int(text), value >= Int(self.limits[index].0),
+                  value <= Int(self.limits[index].1) else { return }
             self.values[index] = value
             self.sliders[index].value = Float(value)
             self.updateLabel(index)

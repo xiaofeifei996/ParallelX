@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXAppPickerController)
-public final class PXAppPickerController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
+public final class PXAppPickerController: PSViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
     private let domain = "com.moxuan.parallelx"
     private let table = UITableView(frame: .zero, style: .insetGrouped)
     private let search = UISearchController(searchResultsController: nil)

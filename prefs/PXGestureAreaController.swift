@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXGestureAreaController)
-public final class PXGestureAreaController: UIViewController {
+public final class PXGestureAreaController: PSViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["gestureWidth", "gestureHeight", "gestureOffset"]
     private let titles = ["区域宽度", "区域高度", "垂直偏移"]
@@ -12,11 +12,32 @@ public final class PXGestureAreaController: UIViewController {
     private let debugLabel = UILabel()
     private let debugSwitch = UISwitch()
     private let hint = UILabel()
+    private let gestureCard = UIView()
+    private let debugCard = UIView()
+    private let gestureHeading = UILabel()
+    private let debugHeading = UILabel()
+    private let lines = [UIView(), UIView()]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = "底部手势区域"
         view.backgroundColor = .systemGroupedBackground
+        for (label, title) in [(gestureHeading, "触发区域"), (debugHeading, "调试")] {
+            label.text = title
+            label.font = .preferredFont(forTextStyle: .footnote)
+            label.textColor = .secondaryLabel
+            view.addSubview(label)
+        }
+        for card in [gestureCard, debugCard] {
+            card.backgroundColor = .secondarySystemGroupedBackground
+            card.layer.cornerRadius = 16
+            card.layer.cornerCurve = .continuous
+            view.addSubview(card)
+        }
+        for line in lines {
+            line.backgroundColor = .separator
+            view.addSubview(line)
+        }
         for index in keys.indices {
             let label = labels[index]
             label.font = .preferredFont(forTextStyle: .body)
@@ -49,16 +70,24 @@ public final class PXGestureAreaController: UIViewController {
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        let top = view.safeAreaInsets.top + 24
+        let top = view.safeAreaInsets.top + 16
+        gestureHeading.frame = CGRect(x: 32, y: top, width: width - 64, height: 22)
+        gestureCard.frame = CGRect(x: 16, y: top + 30, width: width - 32, height: 234)
         for index in keys.indices {
-            let y = top + CGFloat(index) * 92
-            labels[index].frame = CGRect(x: 20, y: y, width: width - 40, height: 28)
-            sliders[index].frame = CGRect(x: 20, y: y + 35, width: width - 40, height: 38)
+            let y = top + 30 + CGFloat(index) * 78
+            labels[index].frame = CGRect(x: 32, y: y + 8, width: width - 64, height: 28)
+            sliders[index].frame = CGRect(x: 32, y: y + 38, width: width - 64, height: 34)
+            if index < 2 {
+                lines[index].frame = CGRect(x: 32, y: y + 77,
+                                            width: width - 64, height: 0.5)
+            }
         }
-        let row = top + 286
-        debugLabel.frame = CGRect(x: 20, y: row, width: width - 110, height: 36)
-        debugSwitch.frame.origin = CGPoint(x: width - 20 - debugSwitch.bounds.width, y: row)
-        hint.frame = CGRect(x: 20, y: row + 60, width: width - 40, height: 90)
+        let row = top + 292
+        debugHeading.frame = CGRect(x: 32, y: row, width: width - 64, height: 22)
+        debugCard.frame = CGRect(x: 16, y: row + 30, width: width - 32, height: 62)
+        debugLabel.frame = CGRect(x: 32, y: row + 43, width: width - 130, height: 36)
+        debugSwitch.frame.origin = CGPoint(x: width - 32 - debugSwitch.bounds.width, y: row + 42)
+        hint.frame = CGRect(x: 32, y: row + 106, width: width - 64, height: 90)
     }
 
     private func updateLabel(_ index: Int) {

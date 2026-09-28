@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXDockController)
-public final class PXDockController: UIViewController {
+public final class PXDockController: PSViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let widthLabel = UILabel()
     private let widthSlider = UISlider()
@@ -9,11 +9,26 @@ public final class PXDockController: UIViewController {
     private let countSlider = UISlider()
     private let sideLabel = UILabel()
     private let sideControl = UISegmentedControl(items: ["左侧", "右侧"])
+    private let card = UIView()
+    private let heading = UILabel()
+    private let lines = [UIView(), UIView()]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = "角落小窗"
         view.backgroundColor = .systemGroupedBackground
+        heading.text = "位置与容量"
+        heading.font = .preferredFont(forTextStyle: .footnote)
+        heading.textColor = .secondaryLabel
+        view.addSubview(heading)
+        card.backgroundColor = .secondarySystemGroupedBackground
+        card.layer.cornerRadius = 16
+        card.layer.cornerCurve = .continuous
+        view.addSubview(card)
+        for line in lines {
+            line.backgroundColor = .separator
+            view.addSubview(line)
+        }
         for label in [widthLabel, countLabel, sideLabel] {
             label.font = .preferredFont(forTextStyle: .body)
             view.addSubview(label)
@@ -39,14 +54,22 @@ public final class PXDockController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let y = view.safeAreaInsets.top + 24
-        let width = view.bounds.width - 40
-        widthLabel.frame = CGRect(x: 20, y: y, width: width, height: 28)
-        widthSlider.frame = CGRect(x: 20, y: y + 38, width: width, height: 38)
-        countLabel.frame = CGRect(x: 20, y: y + 112, width: width, height: 28)
-        countSlider.frame = CGRect(x: 20, y: y + 150, width: width, height: 38)
-        sideLabel.frame = CGRect(x: 20, y: y + 220, width: width, height: 28)
-        sideControl.frame = CGRect(x: 20, y: y + 256, width: width, height: 38)
+        let y = view.safeAreaInsets.top + 16
+        let width = view.bounds.width - 64
+        heading.frame = CGRect(x: 32, y: y, width: width, height: 22)
+        card.frame = CGRect(x: 16, y: y + 30, width: view.bounds.width - 32, height: 264)
+        for row in 0..<3 {
+            let rowY = y + 30 + CGFloat(row) * 88
+            let label = [widthLabel, countLabel, sideLabel][row]
+            label.frame = CGRect(x: 32, y: rowY + 10, width: width, height: 28)
+            if row < 2 {
+                [widthSlider, countSlider][row].frame = CGRect(x: 32, y: rowY + 42,
+                                                                 width: width, height: 34)
+                lines[row].frame = CGRect(x: 32, y: rowY + 87, width: width, height: 0.5)
+            } else {
+                sideControl.frame = CGRect(x: 32, y: rowY + 40, width: width, height: 36)
+            }
+        }
     }
 
     @objc private func changed() {

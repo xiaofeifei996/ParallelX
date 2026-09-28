@@ -710,7 +710,11 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
             }
             button.imageView?.contentMode = .scaleAspectFit
             button.titleLabel?.font = .systemFont(ofSize: 14)
-            button.contentHorizontalAlignment = .left
+            button.setTitleColor(.label, for: .normal)
+            button.contentHorizontalAlignment = .center
+            button.semanticContentAttribute = .forceLeftToRight
+            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+            button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 4, bottom: 0, right: -4)
             button.backgroundColor = .tertiarySystemBackground
             button.layer.cornerRadius = 12
             button.addTarget(self, action: #selector(openResult(_:)), for: .touchUpInside)

@@ -26,50 +26,12 @@
 {
     PSSpecifier *specifier = [self specifierAtIndex:[self indexForIndexPath:indexPath]];
     NSString *identifier = [specifier propertyForKey:@"id"];
-    if ([identifier isEqualToString:@"picker"]) [self openPicker];
-    else if ([identifier isEqualToString:@"launcher"]) [self openLauncher];
-    else if ([identifier isEqualToString:@"radius"]) [self openRadius];
-    else if ([identifier isEqualToString:@"dock"]) [self openDock];
-    else if ([identifier isEqualToString:@"gestures"]) [self openGestureArea];
-    else if ([identifier isEqualToString:@"urlBlacklist"]) [self openURLBlacklist];
-    else { [super tableView:tableView didSelectRowAtIndexPath:indexPath]; return; }
+    if (![identifier isEqualToString:@"urlBlacklist"]) {
+        [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+        return;
+    }
+    [self openURLBlacklist];
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-}
-
-- (void)openPicker
-{
-    Class pickerClass = NSClassFromString(@"PXAppPickerController");
-    if (!pickerClass || ![pickerClass isSubclassOfClass:UIViewController.class]) return;
-    UIViewController *picker = [pickerClass new];
-    [self.navigationController pushViewController:picker animated:YES];
-}
-
-- (void)openRadius
-{
-    Class controllerClass = NSClassFromString(@"PXCornerRadiusController");
-    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
-    [self.navigationController pushViewController:[controllerClass new] animated:YES];
-}
-
-- (void)openDock
-{
-    Class controllerClass = NSClassFromString(@"PXDockController");
-    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
-    [self.navigationController pushViewController:[controllerClass new] animated:YES];
-}
-
-- (void)openGestureArea
-{
-    Class controllerClass = NSClassFromString(@"PXGestureAreaController");
-    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
-    [self.navigationController pushViewController:[controllerClass new] animated:YES];
-}
-
-- (void)openLauncher
-{
-    Class controllerClass = NSClassFromString(@"PXLauncherController");
-    if (!controllerClass || ![controllerClass isSubclassOfClass:UIViewController.class]) return;
-    [self.navigationController pushViewController:[controllerClass new] animated:YES];
 }
 
 - (void)openURLBlacklist
