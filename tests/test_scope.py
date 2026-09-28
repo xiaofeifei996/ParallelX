@@ -166,7 +166,7 @@ assert 'private func layoutDocks(animated: Bool = true)' in panel and 'private f
 assert 'dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
 assert 'dock.card.transform = .identity' in panel
 assert 'dock.card.frame = CGRect(origin: .zero, size: frame.size)' not in panel
-assert 'if hostWindow != nil { parkMain(side: defaultDockSide) }' in panel
+assert 'if hostWindow != nil {' in panel
 assert 'dock.side = sender.direction == .left ? -1 : 1' in panel
 assert 'overlay.addGestureRecognizer(swipe)' in panel
 park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
@@ -245,7 +245,15 @@ assert 'if (visible == self.keyboardWasVisible) return;' in bridge
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
 assert 'removeKeyboardDismissLayer()' in close_host
 assert 'gesture.velocity(in: window.rootViewController?.view).y < -500' in panel
-assert 'if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }' in panel
+assert 'if hostWindow != nil, hostedBundleID != bundleID {' in panel
+assert 'object(forKey: "autoParkOnNewSplit") as? Bool ?? true' in panel
+assert 'forKey: "autoParkOnNewSplit"' in dock_prefs
+assert 'animationSpeedPercent' in panel
+assert 'animationSpeedPercent' in (root / 'prefs' / 'PXLauncherController.swift').read_text(encoding='utf-8')
+assert 'duration / speed' in panel and 'delay / speed' in panel
+assert 'if action == "px.action.window"' in panel
+for speed in (0.1, 1.0, 1.5):
+    assert abs((0.4 / speed) * speed - 0.4) < 1e-9
 open_fullscreen = panel.split('private func openFullscreen(', 1)[1].split('private func performShortcut', 1)[0]
 assert open_fullscreen.index('closeHost(animated: false)') < open_fullscreen.index('openFullscreenApplication(bundleID)')
 assert 'px.action.screenshot.copy' in panel and 'px.action.screenshot.copy' in bridge

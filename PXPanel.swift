@@ -2,18 +2,24 @@ import UIKit
 
 private let preferenceDomain = "com.moxuan.parallelx"
 private enum PXMotion {
+    private static let defaults = UserDefaults(suiteName: preferenceDomain)
+    private static var speed: TimeInterval {
+        let saved = defaults?.object(forKey: "animationSpeedPercent") as? Int ?? 100
+        return Double(min(150, max(10, saved))) / 100
+    }
+
     static func ease(_ duration: TimeInterval, delay: TimeInterval = 0,
                      options: UIView.AnimationOptions = .curveEaseOut,
                      animations: @escaping () -> Void, completion: ((Bool) -> Void)? = nil) {
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : duration,
-                       delay: UIAccessibility.isReduceMotionEnabled ? 0 : delay,
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : duration / speed,
+                       delay: UIAccessibility.isReduceMotionEnabled ? 0 : delay / speed,
                        options: [options, .allowUserInteraction, .beginFromCurrentState],
                        animations: animations, completion: completion)
     }
 
     static func spring(_ duration: TimeInterval, animations: @escaping () -> Void,
                        completion: ((Bool) -> Void)? = nil) {
-        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : duration,
+        UIView.animate(withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : duration / speed,
                        delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 2,
                        options: [.allowUserInteraction, .beginFromCurrentState],
                        animations: animations, completion: completion)
@@ -1240,7 +1246,10 @@ public final class PXPanelEntry: NSObject {
                     else { openHost(appID) }
                 } else {
                     let action = bundleID == "px.action.screenshot" && fullscreen ? "px.action.screenshot.copy" : bundleID
-                    hidePanel { [weak self] in self?.performShortcut(action) }
+                    if action == "px.action.window" {
+                        hidePanel()
+                        performShortcut(action)
+                    } else { hidePanel { [weak self] in self?.performShortcut(action) } }
                 }
             } else { hidePanel() }
         case .cancelled, .failed:
@@ -1377,7 +1386,12 @@ public final class PXPanelEntry: NSObject {
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
-        if hostWindow != nil, hostedBundleID != bundleID { parkMain(side: defaultDockSide) }
+        if hostWindow != nil, hostedBundleID != bundleID {
+            let defaults = UserDefaults(suiteName: preferenceDomain)
+            if defaults?.object(forKey: "autoParkOnNewSplit") as? Bool ?? true {
+                parkMain(side: defaultDockSide)
+            } else { closeHost(animated: false) }
+        }
         else { closeHost(animated: false) }
         fullscreenToWindowInProgress = wasFullscreen
         hostedBundleID = bundleID
@@ -1826,7 +1840,11 @@ public final class PXPanelEntry: NSObject {
 
     private func restoreDock(_ dock: PXDockedHost) {
         dockedHosts.removeAll { $0 === dock }
-        if hostWindow != nil { parkMain(side: defaultDockSide) }
+        if hostWindow != nil {
+            if UserDefaults(suiteName: preferenceDomain)?.object(forKey: "autoParkOnNewSplit") as? Bool ?? true {
+                parkMain(side: defaultDockSide)
+            } else { closeHost(animated: false) }
+        }
         dock.overlay.removeFromSuperview()
         dock.window.windowLevel = .statusBar + 0.3
         dock.window.isUserInteractionEnabled = true

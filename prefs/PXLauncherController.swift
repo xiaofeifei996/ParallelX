@@ -5,23 +5,24 @@ public final class PXLauncherController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["launcherIconSize", "launcherRing1", "launcherRing2",
                         "launcherRing3", "launcherRing4", "launcherRingGap", "launcherDragDistance",
-                        "launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight"]
+                        "launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight",
+                        "animationSpeedPercent"]
     private let titles = ["图标大小", "第一环应用数", "第二环应用数", "第三环应用数",
                           "第四环应用数", "环间距", "手柄滑动距离", "面板距右边缘", "长按全屏时长",
-                          "手柄宽度", "手柄高度"]
-    private let initial = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86]
+                          "手柄宽度", "手柄高度", "全局动画速度"]
+    private let initial = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86, 100]
     private let limits: [(Float, Float)] = [(36, 72), (1, 30), (1, 30),
                                             (1, 30), (1, 30), (0, 60), (10, 240), (0, 120),
-                                            (300, 2000), (12, 52), (44, 160)]
-    private let labels = (0..<11).map { _ in UILabel() }
-    private let sliders = (0..<11).map { _ in UISlider() }
-    private let buttons = (0..<11).map { _ in UIButton(type: .system) }
+                                            (300, 2000), (12, 52), (44, 160), (10, 150)]
+    private let labels = (0..<12).map { _ in UILabel() }
+    private let sliders = (0..<12).map { _ in UISlider() }
+    private let buttons = (0..<12).map { _ in UIButton(type: .system) }
     private let scroll = UIScrollView()
     private let hint = UILabel()
     private var cards: [UIView] = []
     private var headings: [UILabel] = []
     private var lines: [[UIView]] = []
-    private var values = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86]
+    private var values = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86, 100]
 
     public override func viewDidLoad() {
         super.viewDidLoad()
@@ -30,7 +31,7 @@ public final class PXLauncherController: UIViewController {
         scroll.frame = view.bounds
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(scroll)
-        for (title, count) in [("图标与环形排列", 6), ("呼出与选择", 3), ("手柄尺寸", 2)] {
+        for (title, count) in [("图标与环形排列", 6), ("呼出与选择", 3), ("手柄尺寸", 2), ("动画", 1)] {
             headings.append(PXSettingsStyle.heading(title, in: scroll))
             cards.append(PXSettingsStyle.card(in: scroll))
             lines.append((0..<(count - 1)).map { _ in PXSettingsStyle.separator(in: scroll) })
@@ -75,7 +76,7 @@ public final class PXLauncherController: UIViewController {
         let width = scroll.bounds.width
         var y: CGFloat = 20
         var index = 0
-        for (section, count) in [6, 3, 2].enumerated() {
+        for (section, count) in [6, 3, 2, 1].enumerated() {
             headings[section].frame = CGRect(x: 32, y: y, width: width - 64, height: 22)
             y += 30
             let cardY = y
@@ -99,7 +100,9 @@ public final class PXLauncherController: UIViewController {
     }
 
     private func updateLabel(_ index: Int) {
-        if index == 8 {
+        if index == 11 {
+            labels[index].text = "\(titles[index])：\(String(format: "%.2f", Double(values[index]) / 100))×"
+        } else if index == 8 {
             labels[index].text = "\(titles[index])：\(String(format: "%.2f", Double(values[index]) / 1000)) 秒"
         } else {
             labels[index].text = "\(titles[index])：\(values[index])\((1...4).contains(index) ? " 个" : " pt")"
@@ -126,7 +129,9 @@ public final class PXLauncherController: UIViewController {
     @objc private func editValue(_ button: UIButton) { presentValueEditor(button.tag) }
 
     private func presentValueEditor(_ index: Int) {
-        let alert = UIAlertController(title: titles[index], message: "范围 \(Int(limits[index].0))–\(Int(limits[index].1))", preferredStyle: .alert)
+        let range = index == 11 ? "范围 0.10–1.50×（输入 10–150%）" :
+            "范围 \(Int(limits[index].0))–\(Int(limits[index].1))"
+        let alert = UIAlertController(title: titles[index], message: range, preferredStyle: .alert)
         alert.addTextField { field in
             field.keyboardType = .numbersAndPunctuation
             field.text = "\(self.values[index])"

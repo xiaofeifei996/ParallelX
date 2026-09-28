@@ -9,9 +9,11 @@ public final class PXDockController: UIViewController {
     private let countSlider = UISlider()
     private let sideLabel = UILabel()
     private let sideControl = UISegmentedControl(items: ["左侧", "右侧"])
+    private let autoParkLabel = UILabel()
+    private let autoParkSwitch = UISwitch()
     private let card = UIView()
     private let heading = UILabel()
-    private let lines = [UIView(), UIView()]
+    private let lines = [UIView(), UIView(), UIView()]
     private var inputButtons: [UIButton] = []
     private let scroll = UIScrollView()
 
@@ -34,7 +36,7 @@ public final class PXDockController: UIViewController {
             line.backgroundColor = .separator
             scroll.addSubview(line)
         }
-        for label in [widthLabel, countLabel, sideLabel] {
+        for label in [widthLabel, countLabel, sideLabel, autoParkLabel] {
             label.font = .preferredFont(forTextStyle: .body)
             scroll.addSubview(label)
         }
@@ -42,6 +44,10 @@ public final class PXDockController: UIViewController {
         sideControl.selectedSegmentIndex = defaults?.integer(forKey: "dockSide") == -1 ? 0 : 1
         sideControl.addTarget(self, action: #selector(sideChanged), for: .valueChanged)
         scroll.addSubview(sideControl)
+        autoParkLabel.text = "新开分屏时当前窗口变小窗"
+        autoParkSwitch.isOn = defaults?.object(forKey: "autoParkOnNewSplit") as? Bool ?? true
+        autoParkSwitch.addTarget(self, action: #selector(autoParkChanged), for: .valueChanged)
+        scroll.addSubview(autoParkSwitch)
         widthSlider.minimumValue = 35
         widthSlider.maximumValue = 160
         widthSlider.value = Float(defaults?.object(forKey: "dockWidth") as? Int ?? 110)
@@ -65,18 +71,23 @@ public final class PXDockController: UIViewController {
         let y: CGFloat = 20
         let width = view.bounds.width - 64
         heading.frame = CGRect(x: 32, y: y, width: width, height: 22)
-        card.frame = CGRect(x: 16, y: y + 30, width: view.bounds.width - 32, height: 264)
-        for row in 0..<3 {
+        card.frame = CGRect(x: 16, y: y + 30, width: view.bounds.width - 32, height: 352)
+        for row in 0..<4 {
             let rowY = y + 30 + CGFloat(row) * 88
-            let label = [widthLabel, countLabel, sideLabel][row]
-            label.frame = CGRect(x: 32, y: rowY + 10, width: width, height: 28)
+            let label = [widthLabel, countLabel, sideLabel, autoParkLabel][row]
+            label.frame = CGRect(x: 32, y: rowY + 10,
+                                 width: row == 3 ? width - 70 : width, height: 28)
             if row < 2 {
                 [widthSlider, countSlider][row].frame = CGRect(x: 32, y: rowY + 42,
                                                                  width: width - 48, height: 34)
                 inputButtons[row].frame = CGRect(x: view.bounds.width - 70, y: rowY + 40, width: 38, height: 38)
                 lines[row].frame = CGRect(x: 32, y: rowY + 87, width: width, height: 0.5)
-            } else {
+            } else if row == 2 {
                 sideControl.frame = CGRect(x: 32, y: rowY + 40, width: width, height: 36)
+                lines[row].frame = CGRect(x: 32, y: rowY + 87, width: width, height: 0.5)
+            } else {
+                autoParkSwitch.frame = CGRect(x: view.bounds.width - 82, y: rowY + 20,
+                                              width: 51, height: 31)
             }
         }
         scroll.contentSize = CGSize(width: view.bounds.width, height: card.frame.maxY + 24)
@@ -97,5 +108,9 @@ public final class PXDockController: UIViewController {
 
     @objc private func sideChanged() {
         defaults?.set(sideControl.selectedSegmentIndex == 0 ? -1 : 1, forKey: "dockSide")
+    }
+
+    @objc private func autoParkChanged() {
+        defaults?.set(autoParkSwitch.isOn, forKey: "autoParkOnNewSplit")
     }
 }
