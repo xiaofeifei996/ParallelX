@@ -523,7 +523,11 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 
 - (BOOL)isKeyboardRelocated
 {
-    return self.keyboardSlot.superview != nil && self.keyboardHostView.superview == self.keyboardSlot;
+    if (!self.keyboardSlot.superview || self.keyboardHostView.superview != self.keyboardSlot ||
+        !self.keyboardHostView.window) return NO;
+    for (UIView *view = self.keyboardHostView; view; view = view.superview)
+        if (view.hidden || view.alpha <= 0.01) return NO;
+    return YES;
 }
 
 + (void)setCaptureHidden:(BOOL)hidden forView:(UIView *)view

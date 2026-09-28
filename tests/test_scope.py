@@ -307,6 +307,7 @@ assert 'UIResponder.keyboardDidHideNotification' in panel
 assert 'activeBridge.isKeyboardRelocated()' in panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
 assert 'keyboardDismissSuppressed' in panel and 'fadeKeyboardDismissLayer()' in panel
 assert 'PXKeyboardFrameChanged' in bridge
+assert 'self.keyboardHostView.window' in bridge and 'view.hidden || view.alpha <= 0.01' in bridge
 assert 'PXDismissOpenedNotificationBanner(options);' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert (root / 'Tweak.m').read_text(encoding='utf-8').count('PXDismissOpenedNotificationBanner(options);') == 2
 
