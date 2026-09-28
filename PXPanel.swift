@@ -1500,7 +1500,10 @@ public final class PXPanelEntry: NSObject {
             self?.screenGeometryChanged()
             self?.layoutHostControls()
         }
-        root.onAppearance = { [weak self] in self?.layoutHostControls() }
+        root.onAppearance = { [weak self] in
+            NotificationCenter.default.post(name: Notification.Name("PXAppearanceProbe"), object: nil)
+            self?.layoutHostControls()
+        }
         // Keep the native full-screen surface visible until its hosted surface
         // is mounted; showing an empty backing here produces a bright frame.
         window.isHidden = wasFullscreen
