@@ -49,7 +49,7 @@ assert 'if hostedBundleID == bundleID, hostWindow != nil { fullscreenTapped(); r
 assert 'window.windowLevel = .statusBar + 0.2' in panel
 assert 'shadowStrength' in panel and 'shadowBlur' in panel
 assert 'card.layer.shadowPath = UIBezierPath' in panel
-assert 'let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)' in panel
+assert 'let card = UIView(frame: cardFrame)' in panel
 assert 'launcherHoldMilliseconds' in panel
 assert 'handleWidth' in panel and 'handleHeight' in panel
 assert 'showPanel()' not in panel
@@ -72,7 +72,6 @@ assert 'card.frame = cardFrame' in fullscreen
 assert fullscreen.index('openFullscreenApplication(bundleID)') < fullscreen.index('self.closeHost(animated: false)')
 assert 'readyTicks >= 2 || ticks >= 15' in fullscreen
 assert 'fullscreenToWindowInProgress = wasFullscreen' in panel
-assert 'card.frame = target' in panel
 assert 'shared.closeHost(animated: false, fullscreenHandoff: true)' in panel
 assert '!shared.fullscreenLaunchInProgress' in panel
 assert 'deadline: .now() + 0.75' not in fullscreen
@@ -119,19 +118,17 @@ assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in 
 assert '"↙"' not in panel and '"↘"' not in panel
 assert 'presentHost(bundleID, wasFullscreen: wasFullscreen)' in panel
 assert 'activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
-assert panel.index('let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)') < panel.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
+assert panel.index('let card = UIView(frame: cardFrame)') < panel.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 handoff = panel.split('private func presentHost(', 1)[1].split('private func matchHostAspect()', 1)[0]
 assert 'card.backgroundColor = .clear' in handoff
 assert 'clip.backgroundColor = .secondarySystemBackground' in handoff
-assert 'card.layer.shadowOpacity = wasFullscreen ? 0' in handoff
-assert handoff.index('cornerRadius: radius / scale).cgPath') < handoff.index('PXMotion.spring(0.40, animations:')
-assert 'card.layer.shadowOpacity = shadowOpacity' in handoff
 assert 'clip.insertSubview(preview, aboveSubview: canvas)' in handoff
 assert 'card.viewWithTag(0x50584c)' in handoff
 assert 'preview.layer.cornerRadius' not in handoff
 assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < handoff.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 assert 'window.isHidden = wasFullscreen' in handoff
-assert handoff.index('sceneReady = true') < handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
+assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
+assert handoff.index('CGAffineTransform(scaleX: 1.1, y: 1.1)') < handoff.index('self.activeBridge.prepareWindow(')
 assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
 assert 'UIActivityIndicatorView' not in handoff and 'spinner' not in handoff
 open_host = bridge.split('- (void)openApplication:', 1)[1].split('- (void)closeForFullscreen', 1)[0]
@@ -163,9 +160,9 @@ assert "_returnToHomeScreenWithCompletion:" in bridge
 prepare = bridge.split("- (void)prepareWindowForBundleID:", 1)[1].split("- (void)layoutHost", 1)[0]
 assert "id controller = UIApplication.sharedApplication;" in prepare
 assert "SBHomeHardwareButtonActions" in prepare and "performSinglePressUpActions" in prepare
-assert prepare.index('_returnToHomeScreenWithCompletion:') < prepare.index('performSinglePressUpActions')
+assert prepare.index('performSinglePressUpActions') < prepare.index('_returnToHomeScreenWithCompletion:')
 assert 'finish(NO);' in prepare
-assert 'objc_msgSend)(controller, selector, ^{ finish(YES); })' in prepare
+assert 'objc_msgSend)(controller, selector, nil)' in prepare
 assert "host.autoresizingMask" not in bridge
 assert '_UISceneLayerHostContainerView' in bridge
 assert 'hostViewForRequester:enableAndOrderFront:' in bridge

@@ -16,7 +16,7 @@ static void (*PXOriginalOrientationChanged)(id, SEL, NSInteger, double, BOOL, BO
 static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
-static BOOL (*PXOriginalExecuteTransition)(id, SEL, id, NSUInteger, id);
+static BOOL (*PXOriginalExecuteTransition)(id, SEL, id);
 static BOOL PXDeviceLocked;
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
@@ -34,17 +34,25 @@ static NSDictionary *PXOptionsDictionary(id options)
     return [values isKindOfClass:NSDictionary.class] ? values : nil;
 }
 
-static BOOL PXExecuteTransition(id workspace, SEL selector, id request, NSUInteger options, id validator)
+static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
 {
-    // Only the return-home request issued while a live ParallelX surface is
-    // already covering the app. Keep normal Home/app-switcher animations intact.
-    if ([PXSceneBridge isPreparingHomeHandoff]) {
-        id context = PXValue(request, @"applicationContext");
-        SEL disable = NSSelectorFromString(@"setAnimationDisabled:");
-        if ([context respondsToSelector:disable])
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(context, disable, YES);
+    id context = PXValue(request, @"applicationContext");
+    id from = PXValue(request, @"fromApplicationSceneEntities");
+    id to = PXValue(request, @"toApplicationSceneEntities");
+    SEL disable = NSSelectorFromString(@"setAnimationDisabled:");
+    // Match only this app's departure to Home, after the request is prepared.
+    if ([context respondsToSelector:disable] && [to respondsToSelector:@selector(count)] &&
+        [to count] == 0 && [from conformsToProtocol:@protocol(NSFastEnumeration)]) {
+        for (id entity in from) {
+            id bundleID = PXValue(PXValue(entity, @"application"), @"bundleIdentifier");
+            if ([bundleID isKindOfClass:NSString.class] &&
+                [PXSceneBridge consumeHomeHandoffForBundleID:bundleID]) {
+                ((void (*)(id, SEL, BOOL))objc_msgSend)(context, disable, YES);
+                break;
+            }
+        }
     }
-    return PXOriginalExecuteTransition(workspace, selector, request, options, validator);
+    return PXOriginalExecuteTransition(workspace, selector, request);
 }
 
 static NSString *PXBundleID(id object)
@@ -339,11 +347,11 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(springBoard, frontDisplay, (IMP)PXFrontDisplayDidChange,
                             (IMP *)&PXOriginalFrontDisplayDidChange);
         Class workspace = NSClassFromString(@"SBMainWorkspace");
-        SEL execute = NSSelectorFromString(@"_executeTransitionRequest:options:validator:");
+        SEL execute = NSSelectorFromString(@"_executeApplicationTransitionRequest:");
         Method execution = class_getInstanceMethod(workspace, execute);
         char result[8] = {0};
         if (execution) method_getReturnType(execution, result, sizeof(result));
-        if (execution && method_getNumberOfArguments(execution) == 5 &&
+        if (execution && method_getNumberOfArguments(execution) == 3 &&
             (result[0] == 'B' || result[0] == 'c'))
             MSHookMessageEx(workspace, execute, (IMP)PXExecuteTransition,
                             (IMP *)&PXOriginalExecuteTransition);

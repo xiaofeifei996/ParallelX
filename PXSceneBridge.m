@@ -8,7 +8,8 @@
 #import <signal.h>
 #import <unistd.h>
 
-static BOOL PXPreparingHomeHandoff;
+static NSString *PXHomeHandoffBundleID;
+static CFAbsoluteTime PXHomeHandoffDeadline;
 
 @interface UIWindow (PXRotation)
 - (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
@@ -294,9 +295,13 @@ static int PXApplicationPID(NSString *bundleID)
 @end
 
 @implementation PXSceneBridge
-+ (BOOL)isPreparingHomeHandoff
++ (BOOL)consumeHomeHandoffForBundleID:(NSString *)bundleID
 {
-    return NSThread.isMainThread && PXPreparingHomeHandoff;
+    if (!NSThread.isMainThread) return NO;
+    if (CFAbsoluteTimeGetCurrent() > PXHomeHandoffDeadline) PXHomeHandoffBundleID = nil;
+    if (![PXHomeHandoffBundleID isEqualToString:bundleID]) return NO;
+    PXHomeHandoffBundleID = nil;
+    return YES;
 }
 
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation
@@ -689,29 +694,29 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         finish(YES);
         return;
     }
+    // alpha79 dispatches Home alongside the card animation. Match the queued
+    // transition once by bundle ID; a stack-scoped flag misses queued requests.
+    PXHomeHandoffBundleID = [bundleID copy];
+    PXHomeHandoffDeadline = CFAbsoluteTimeGetCurrent() + 1.0;
+    id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
+    SEL press = NSSelectorFromString(@"performSinglePressUpActions");
+    if ([actions respondsToSelector:press]) {
+        ((void (*)(id, SEL))objc_msgSend)(actions, press);
+        finish(YES);
+        return;
+    }
     id controller = UIApplication.sharedApplication;
     SEL selector = NSSelectorFromString(@"_returnToHomeScreenWithCompletion:");
     NSMethodSignature *signature = [controller methodSignatureForSelector:selector];
     if (signature && signature.numberOfArguments == 3 &&
         signature.methodReturnType[0] == 'v' &&
         [signature getArgumentTypeAtIndex:2][0] == '@') {
-        BOOL previous = PXPreparingHomeHandoff;
-        PXPreparingHomeHandoff = YES;
-        @try {
-            ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, ^{ finish(YES); });
-        } @finally { PXPreparingHomeHandoff = previous; }
+        ((void (*)(id, SEL, id))objc_msgSend)(controller, selector, nil);
+        finish(YES);
         return;
     }
-    id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
-    SEL press = NSSelectorFromString(@"performSinglePressUpActions");
-    if ([actions respondsToSelector:press]) {
-        BOOL previous = PXPreparingHomeHandoff;
-        PXPreparingHomeHandoff = YES;
-        @try {
-            ((void (*)(id, SEL))objc_msgSend)(actions, press);
-        } @finally { PXPreparingHomeHandoff = previous; }
-        finish(YES);
-    } else finish(NO);
+    PXHomeHandoffBundleID = nil;
+    finish(NO);
 }
 
 - (void)layoutHost
@@ -1269,6 +1274,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ((void (*)(id, SEL, id))objc_msgSend)(scene, removeObserver, self);
     NSString *bundleID = self.bundleID;
     BOOL fullscreenHandoff = self.fullscreenHandoff;
+    if ([PXHomeHandoffBundleID isEqualToString:bundleID]) PXHomeHandoffBundleID = nil;
     self.fullscreenHandoff = NO;
     self.scene = nil;
     self.bundleID = nil;

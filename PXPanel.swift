@@ -1406,22 +1406,22 @@ public final class PXPanelEntry: NSObject {
         window.windowLevel = .statusBar + 0.2
         window.backgroundColor = .clear
         let root = PXHostViewController()
-        root.view.backgroundColor = wasFullscreen ? .systemBackground : .clear
+        root.view.backgroundColor = .clear
         window.rootViewController = root
         window.applySystemOrientation()
-        let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)
+        let card = UIView(frame: cardFrame)
         // The outer view owns only the shadow. A second rounded backing leaks
         // a light antialiased seam beside dark hosted surfaces.
         card.backgroundColor = .clear
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        card.layer.cornerRadius = wasFullscreen ? 0 : configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
+        card.layer.cornerRadius = configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
         card.layer.cornerCurve = .continuous
         card.layer.shadowColor = UIColor.black.cgColor
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
         let dark = card.traitCollection.userInterfaceStyle == .dark
         card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
-        card.layer.shadowOpacity = wasFullscreen ? 0 : dark ? min(0.35, strength * 0.8) : strength
+        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
         card.layer.shadowRadius = dark ? blur + 4 : blur
         card.layer.shadowOffset = CGSize(width: 0, height: 3)
         root.view.addSubview(card)
@@ -1501,52 +1501,6 @@ public final class PXPanelEntry: NSObject {
             card.transform = CGAffineTransform(scaleX: 0.84, y: 0.84)
             PXMotion.spring(0.4) { card.transform = .identity }
         }
-        var homeReady = false
-        var sceneReady = false
-        var finished = false
-        let finishWhenReady = { [weak self, weak window] in
-            guard let self = self, let window = window, self.hostWindow === window,
-                  homeReady, sceneReady, !finished else { return }
-            finished = true
-            if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
-            if wasFullscreen {
-                // Transform the live surface uniformly; relayout only after the
-                // scale animation so the hosted pixels and touch space stay aligned.
-                let source = self.activeBridge.hostedSourceSize()
-                let bounds = window.rootViewController?.view.bounds ?? screen
-                let target = self.initialCardFrame(in: bounds, size: self.initialCardSize(in: bounds, source: source))
-                let scale = min(target.width / card.bounds.width, target.height / card.bounds.height)
-                let radius = self.configuredCornerRadius(in: bounds, source: source)
-                let shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
-                // Do not expose the full-screen rectangular shadow for a frame
-                // before shrinking. Its path must use the same target radius.
-                card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
-                    cornerRadius: radius / scale).cgPath
-                window.rootViewController?.view.backgroundColor = .clear
-                PXMotion.spring(0.40, animations: {
-                    card.transform = CGAffineTransform(scaleX: scale, y: scale)
-                    card.center = CGPoint(x: target.midX, y: target.midY)
-                    card.layer.cornerRadius = radius / scale
-                    clip.layer.cornerRadius = radius / scale
-                    card.layer.shadowOpacity = shadowOpacity
-                }, completion: { _ in
-                    guard self.hostWindow === window else { return }
-                    UIView.performWithoutAnimation {
-                        card.transform = .identity
-                        card.frame = target
-                        card.layer.cornerRadius = radius
-                        clip.layer.cornerRadius = radius
-                        self.activeBridge.layoutHost()
-                    }
-                    self.fullscreenToWindowInProgress = false
-                    window.isUserInteractionEnabled = true
-                    self.layoutHostControls()
-                })
-            } else {
-                window.isUserInteractionEnabled = true
-                self.layoutHostControls()
-            }
-        }
         if coldStart, let image = activeBridge.launchImage(forApplication: bundleID, size: card.bounds.size) {
             let preview = UIImageView(image: image)
             preview.tag = 0x50584c
@@ -1569,9 +1523,20 @@ public final class PXPanelEntry: NSObject {
                     preview.removeFromSuperview()
                 }
             }
-            if !wasFullscreen { self.matchHostAspect() }
-            sceneReady = true
+            self.matchHostAspect()
+            // alpha79's entry: animate the final-size card immediately while
+            // returning Home, rather than waiting for a second system animation.
+            if wasFullscreen {
+                card.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+            }
             window?.isHidden = false
+            if wasFullscreen {
+                PXMotion.spring(0.4, animations: { card.transform = .identity }) { _ in
+                    guard self.hostWindow === window else { return }
+                    self.fullscreenToWindowInProgress = false
+                    self.layoutHostControls()
+                }
+            }
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else {
@@ -1579,8 +1544,9 @@ public final class PXPanelEntry: NSObject {
                     self.externalOpenFailed(bundleID)
                     return
                 }
-                homeReady = true
-                finishWhenReady()
+                if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
+                window?.isUserInteractionEnabled = true
+                self.layoutHostControls()
             }
         }
     }
@@ -1695,12 +1661,9 @@ public final class PXPanelEntry: NSObject {
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
         let dark = card.traitCollection.userInterfaceStyle == .dark
         card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
-        if !fullscreenToWindowInProgress {
-            card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
-        }
+        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
         card.layer.shadowRadius = dark ? blur + 4 : blur
-        if !fullscreenToWindowInProgress &&
-            (card.layer.shadowPath?.boundingBox != card.bounds || card.subviews.first?.layer.cornerRadius != card.layer.cornerRadius) {
+        if card.layer.shadowPath?.boundingBox != card.bounds || card.subviews.first?.layer.cornerRadius != card.layer.cornerRadius {
             card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
                                                   cornerRadius: card.layer.cornerRadius).cgPath
         }
