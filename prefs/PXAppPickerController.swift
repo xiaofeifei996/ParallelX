@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXAppPickerController)
-public final class PXAppPickerController: PSViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
+public final class PXAppPickerController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
     private let domain = "com.moxuan.parallelx"
     private let table = UITableView(frame: .zero, style: .insetGrouped)
     private let search = UISearchController(searchResultsController: nil)
@@ -296,7 +296,7 @@ public final class PXAppPickerController: PSViewController, UITableViewDataSourc
                 if let index = self.customActions.firstIndex(where: { $0["id"] as? String == id }) { self.customActions[index] = entry }
                 else { self.customActions.append(entry); self.selected.append(id) }
                 self.saveSelection(); self.table.reloadData()
-                self.navigationController?.popToViewController(self, animated: true)
+                self.navigationController?.popToViewController(self.parent ?? self, animated: true)
             }
             if multiple {
                 let alert = UIAlertController(title: "集合名称", message: nil, preferredStyle: .alert)

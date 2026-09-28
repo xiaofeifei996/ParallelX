@@ -428,14 +428,15 @@ private final class PXPanelViewController: UIViewController {
         trail.backgroundColor = .clear
         trail.layer.cornerRadius = 40
         trail.layer.cornerCurve = .continuous
-        trail.layer.borderWidth = 3
-        trail.layer.borderColor = UIColor.label.withAlphaComponent(0.22).cgColor
+        trail.layer.borderWidth = 6
+        trail.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.85).cgColor
+        trail.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.14)
         trail.transform = CGAffineTransform(translationX: selectionPreview.center.x - view.bounds.midX,
                                             y: selectionPreview.center.y - view.bounds.midY)
             .scaledBy(x: 110 / trail.bounds.width, y: 110 / trail.bounds.height)
         view.addSubview(trail)
         fullscreenReadyView = trail
-        PXMotion.ease(0.32, animations: {
+        PXMotion.ease(0.44, animations: {
             trail.transform = .identity
             trail.alpha = 0
         }, completion: { [weak self, weak trail] _ in
@@ -692,7 +693,7 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
         cell.selectionStyle = .none
         cell.backgroundColor = .clear
         cell.contentView.subviews.forEach { $0.removeFromSuperview() }
-        let row = UIStackView(frame: CGRect(x: 0, y: 3, width: tableView.bounds.width, height: 54))
+        let row = UIStackView(frame: CGRect(x: 6, y: 3, width: tableView.bounds.width - 12, height: 54))
         row.axis = .horizontal
         row.distribution = .fillEqually
         row.spacing = 8
@@ -711,10 +712,11 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
             button.imageView?.contentMode = .scaleAspectFit
             button.titleLabel?.font = .systemFont(ofSize: 14)
             button.setTitleColor(.label, for: .normal)
-            button.contentHorizontalAlignment = .center
+            button.contentHorizontalAlignment = .left
             button.semanticContentAttribute = .forceLeftToRight
-            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
-            button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 4, bottom: 0, right: -4)
+            button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+            button.imageEdgeInsets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 7)
+            button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 7, bottom: 0, right: 0)
             button.backgroundColor = .tertiarySystemBackground
             button.layer.cornerRadius = 12
             button.addTarget(self, action: #selector(openResult(_:)), for: .touchUpInside)
@@ -1451,6 +1453,7 @@ public final class PXPanelEntry: NSObject {
 
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
+        activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))

@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXLauncherController)
-public final class PXLauncherController: PSViewController {
+public final class PXLauncherController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["launcherIconSize", "launcherRing1", "launcherRing2",
                         "launcherRing3", "launcherRing4", "launcherRingGap", "launcherDragDistance",

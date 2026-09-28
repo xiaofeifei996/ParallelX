@@ -347,3 +347,15 @@ for count in (1, 6, 20):
     middle = count // 2
     assert min(count, max(0, middle + int(step / step))) == min(count, middle + 1)
     assert min(count, max(0, middle + int(-step / step))) == max(0, middle - 1)
+
+# Preferences must instantiate a native host, not a Swift subclass of the private controller.
+prefs_host = (root / 'prefs' / 'PXRootListController.m').read_text(encoding='utf-8')
+assert '@interface PXPageHostController : PSViewController' in prefs_host
+assert 'initForContentSize:(CGSize)contentSize' in prefs_host
+assert '[super initWithNibName:nil bundle:nil]' in prefs_host
+assert root_plist.count('detail = PXPageHostController') == 6
+for name in ('AppPicker', 'Launcher', 'CornerRadius', 'Dock', 'GestureArea'):
+    assert ': UIViewController' in (root / 'prefs' / f'PX{name}Controller.swift').read_text(encoding='utf-8')
+assert 'canvas.traitCollection.userInterfaceStyle' in bridge
+assert 'activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)' in panel
+assert 'button.contentHorizontalAlignment = .left' in panel

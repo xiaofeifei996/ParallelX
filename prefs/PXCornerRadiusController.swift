@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXCornerRadiusController)
-public final class PXCornerRadiusController: PSViewController {
+public final class PXCornerRadiusController: UIViewController {
     private let slider = UISlider()
     private let number = UIButton(type: .system)
     private let caption = UILabel()

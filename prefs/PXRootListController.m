@@ -1,5 +1,47 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
+#import <Preferences/PSViewController.h>
+
+@interface PXPageHostController : PSViewController
+@end
+
+@implementation PXPageHostController
+
+- (instancetype)initForContentSize:(CGSize)contentSize
+{
+    return [super initWithNibName:nil bundle:nil];
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    NSString *identifier = [self.specifier propertyForKey:@"id"];
+    NSDictionary<NSString *, NSString *> *pages = @{
+        @"picker": @"PXAppPickerController",
+        @"launcher": @"PXLauncherController",
+        @"radius": @"PXCornerRadiusController",
+        @"dock": @"PXDockController",
+        @"gestures": @"PXGestureAreaController",
+        @"urlBlacklist": @"PXExternalBlacklistController"
+    };
+    NSString *className = pages[identifier ?: @""];
+    Class pageClass = className ? NSClassFromString(className) : Nil;
+    if (![pageClass isSubclassOfClass:UIViewController.class]) return;
+    UIViewController *page = [pageClass new];
+    [self addChildViewController:page];
+    page.view.frame = self.view.bounds;
+    page.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:page.view];
+    [page didMoveToParentViewController:self];
+    self.title = page.title ?: self.specifier.name;
+    self.navigationItem.rightBarButtonItem = page.navigationItem.rightBarButtonItem;
+    self.navigationItem.searchController = page.navigationItem.searchController;
+    self.navigationItem.hidesSearchBarWhenScrolling = page.navigationItem.hidesSearchBarWhenScrolling;
+}
+
+- (BOOL)canBeShownFromSuspendedState { return YES; }
+
+@end
 
 @interface PXRootListController : PSListController
 @end
@@ -20,25 +62,6 @@
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
-{
-    PSSpecifier *specifier = [self specifierAtIndex:[self indexForIndexPath:indexPath]];
-    NSString *identifier = [specifier propertyForKey:@"id"];
-    if (![identifier isEqualToString:@"urlBlacklist"]) {
-        [super tableView:tableView didSelectRowAtIndexPath:indexPath];
-        return;
-    }
-    [self openURLBlacklist];
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-}
-
-- (void)openURLBlacklist
-{
-    Class controllerClass = NSClassFromString(@"PXExternalBlacklistController");
-    if (![controllerClass isSubclassOfClass:UIViewController.class]) return;
-    [self.navigationController pushViewController:[controllerClass new] animated:YES];
 }
 
 @end

@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXDockController)
-public final class PXDockController: PSViewController {
+public final class PXDockController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let widthLabel = UILabel()
     private let widthSlider = UISlider()

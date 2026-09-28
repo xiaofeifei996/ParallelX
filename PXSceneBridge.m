@@ -116,6 +116,7 @@ static int PXApplicationPID(NSString *bundleID)
 @property(nonatomic, strong) UIView *hostView;
 @property(nonatomic, assign) BOOL suppressSelection;
 @property(nonatomic, strong) id presentationContext;
+@property(nonatomic, assign) UIUserInterfaceStyle appearanceStyle;
 @property(nonatomic, strong) id processAssertion;
 @property(nonatomic, weak) UIView *canvas;
 @property(nonatomic, weak) UIView *keyboardOverlay;
@@ -130,6 +131,19 @@ static int PXApplicationPID(NSString *bundleID)
 @end
 
 @implementation PXSceneBridge
+
+- (void)updateAppearanceForStyle:(UIUserInterfaceStyle)style
+{
+    if (!self.presentationContext || style == UIUserInterfaceStyleUnspecified ||
+        self.appearanceStyle == style) return;
+    SEL selector = NSSelectorFromString(@"setAppearanceStyle:");
+    if (![self.presentationContext respondsToSelector:selector]) return;
+    ((void (*)(id, SEL, NSInteger))objc_msgSend)(self.presentationContext, selector, style);
+    self.appearanceStyle = style;
+    SEL bind = NSSelectorFromString(@"_setPresentationContext:");
+    if ([self.hostView respondsToSelector:bind])
+        ((void (*)(id, SEL, id))objc_msgSend)(self.hostView, bind, self.presentationContext);
+}
 
 + (void)keepTransparentGestureViewHittable:(UIView *)view
 {
@@ -849,12 +863,9 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                         if ([view isKindOfClass:UIView.class]) {
                             UIView *host = view;
                             host.userInteractionEnabled = !strongSelf.suppressSelection;
-                            SEL style = NSSelectorFromString(@"setAppearanceStyle:");
-                            if ([context respondsToSelector:style])
-                                ((void (*)(id, SEL, NSInteger))objc_msgSend)(context, style,
-                                    UIScreen.mainScreen.traitCollection.userInterfaceStyle);
-                            ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
                             strongSelf.presentationContext = context;
+                            [strongSelf updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle];
+                            ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
                             strongSelf.hostView = host;
                             [strongSelf.canvas addSubview:host];
                             [strongSelf layoutHost];
@@ -925,6 +936,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         ((void (*)(id, SEL))objc_msgSend)(host, invalidate);
     [host removeFromSuperview];
     self.presentationContext = nil;
+    self.appearanceStyle = UIUserInterfaceStyleUnspecified;
     id assertion = self.processAssertion;
     self.processAssertion = nil;
     @try {

@@ -1,7 +1,7 @@
 import UIKit
 
 @objc(PXGestureAreaController)
-public final class PXGestureAreaController: PSViewController {
+public final class PXGestureAreaController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
     private let keys = ["gestureWidth", "gestureHeight", "gestureOffset"]
     private let titles = ["区域宽度", "区域高度", "垂直偏移"]
