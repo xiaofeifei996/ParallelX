@@ -1442,10 +1442,6 @@ public final class PXPanelEntry: NSObject {
         indicator.isUserInteractionEnabled = false
         clip.addSubview(indicator)
         hostCanvas = canvas
-        let spinner = UIActivityIndicatorView(style: .medium)
-        spinner.center = CGPoint(x: card.bounds.midX, y: card.bounds.midY)
-        spinner.startAnimating()
-        card.addSubview(spinner)
         let coldStart = !activeBridge.hasScene(forApplication: bundleID)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
         for side in [-1, 1] {
@@ -1494,7 +1490,9 @@ public final class PXPanelEntry: NSObject {
             self?.screenGeometryChanged()
             self?.layoutHostControls()
         }
-        window.isHidden = false
+        // Keep the native full-screen surface visible until its hosted surface
+        // is mounted; showing an empty backing here produces a bright frame.
+        window.isHidden = wasFullscreen
         hostWindow = window
         hostCard = card
         layoutHostControls()
@@ -1549,21 +1547,18 @@ public final class PXPanelEntry: NSObject {
                 self.layoutHostControls()
             }
         }
-        activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
-            guard let self = self, self.hostWindow === window else { return }
-            guard ready else {
-                self.closeHost(animated: false)
-                self.externalOpenFailed(bundleID)
-                return
-            }
-            homeReady = true
-            finishWhenReady()
+        if coldStart, let image = activeBridge.launchImage(forApplication: bundleID, size: card.bounds.size) {
+            let preview = UIImageView(image: image)
+            preview.tag = 0x50584c
+            preview.frame = clip.bounds
+            preview.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            preview.contentMode = .scaleToFill
+            preview.isUserInteractionEnabled = false
+            clip.insertSubview(preview, aboveSubview: canvas)
         }
-        guard hostWindow === window else { return }
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
-            spinner.stopAnimating()
             guard success else {
                 self.closeHost(animated: false)
                 self.externalOpenFailed(bundleID)
@@ -1576,17 +1571,17 @@ public final class PXPanelEntry: NSObject {
             }
             if !wasFullscreen { self.matchHostAspect() }
             sceneReady = true
-            finishWhenReady()
-        }
-        if coldStart, let image = activeBridge.launchImage(forApplication: bundleID, size: card.bounds.size),
-           hostWindow === window {
-            let preview = UIImageView(image: image)
-            preview.tag = 0x50584c
-            preview.frame = clip.bounds
-            preview.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            preview.contentMode = .scaleToFill
-            preview.isUserInteractionEnabled = false
-            clip.insertSubview(preview, aboveSubview: canvas)
+            window?.isHidden = false
+            self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
+                guard let self = self, self.hostWindow === window else { return }
+                guard ready else {
+                    self.closeHost(animated: false)
+                    self.externalOpenFailed(bundleID)
+                    return
+                }
+                homeReady = true
+                finishWhenReady()
+            }
         }
     }
 

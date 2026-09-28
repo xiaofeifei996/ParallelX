@@ -1220,7 +1220,9 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (attempts < 10 ? 50 : 125) * NSEC_PER_MSEC),
                        dispatch_get_main_queue(), retry);
     };
-    dispatch_async(dispatch_get_main_queue(), retry);
+    // Already on the main thread. Mount warm scenes in this transaction,
+    // rather than exposing an empty window for a run-loop before the handoff.
+    retry();
 }
 
 - (void)closeForFullscreen

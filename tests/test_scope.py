@@ -129,7 +129,13 @@ assert 'card.layer.shadowOpacity = shadowOpacity' in handoff
 assert 'clip.insertSubview(preview, aboveSubview: canvas)' in handoff
 assert 'card.viewWithTag(0x50584c)' in handoff
 assert 'preview.layer.cornerRadius' not in handoff
-assert handoff.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
+assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < handoff.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
+assert 'window.isHidden = wasFullscreen' in handoff
+assert handoff.index('sceneReady = true') < handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
+assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
+assert 'UIActivityIndicatorView' not in handoff and 'spinner' not in handoff
+open_host = bridge.split('- (void)openApplication:', 1)[1].split('- (void)closeForFullscreen', 1)[0]
+assert 'retry();' in open_host and 'dispatch_async(dispatch_get_main_queue(), retry)' not in open_host
 assert 'card.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
 assert 'UIScene.willDeactivateNotification' in panel
 assert 'needsHostRefresh' in panel
