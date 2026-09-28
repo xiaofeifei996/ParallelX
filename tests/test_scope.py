@@ -118,8 +118,11 @@ assert 'let window = PXHandleWindow(windowScene: scene)' in panel
 assert 'panelFrontmostBundleID = PXSceneBridge.shared().frontmostBundleID()' in panel
 assert '"↙"' not in panel and '"↘"' not in panel
 assert 'presentHost(bundleID, wasFullscreen: wasFullscreen)' in panel
-assert 'self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
-assert panel.index('let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)') < panel.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
+assert 'activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
+assert panel.index('let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)') < panel.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
+handoff = panel.split('private func presentHost(', 1)[1].split('private func matchHostAspect()', 1)[0]
+assert handoff.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
+assert 'card.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
 assert 'UIScene.willDeactivateNotification' in panel
 assert 'needsHostRefresh' in panel
 assert 'BOOL shouldReturnHome = wasFullscreen && [currentID isEqualToString:bundleID]' in bridge
@@ -469,7 +472,8 @@ assert 'UIInterfaceOrientation previous = PXRuntimeHostedOrientation(oldSettings
 assert 'previous == UIInterfaceOrientationUnknown || previous == orientation' in client_update
 assert 'PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"))' in bridge
 assert 'CGSize sourceSize = PXSourceSize(mutable)' in bridge
-assert 'row.autoresizingMask = [.flexibleWidth]' in panel
+assert 'row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 6)' in panel
+assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6)' in panel
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .statusBar + 0.5' in panel
 for source, previous, current, mask, expected in (

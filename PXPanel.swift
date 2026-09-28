@@ -689,8 +689,8 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
         cell.selectionStyle = .none
         cell.backgroundColor = .clear
         cell.contentView.subviews.forEach { $0.removeFromSuperview() }
-        let row = UIStackView(frame: CGRect(x: 6, y: 3, width: tableView.bounds.width - 12, height: 54))
-        row.autoresizingMask = [.flexibleWidth]
+        let row = UIStackView()
+        row.translatesAutoresizingMaskIntoConstraints = false
         row.axis = .horizontal
         row.distribution = .fillEqually
         row.spacing = 8
@@ -721,6 +721,12 @@ private final class PXSearchViewController: UIViewController, UITableViewDataSou
         }
         if matches.count == indexPath.row * 2 + 1 { row.addArrangedSubview(UIView()) }
         cell.contentView.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 6),
+            row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6),
+            row.topAnchor.constraint(equalTo: cell.contentView.topAnchor, constant: 3),
+            row.bottomAnchor.constraint(equalTo: cell.contentView.bottomAnchor, constant: -3)
+        ])
         return cell
     }
 }
@@ -1480,6 +1486,57 @@ public final class PXPanelEntry: NSObject {
             card.transform = CGAffineTransform(scaleX: 0.84, y: 0.84)
             PXMotion.spring(0.4) { card.transform = .identity }
         }
+        var homeReady = false
+        var sceneReady = false
+        var finished = false
+        let finishWhenReady = { [weak self, weak window] in
+            guard let self = self, let window = window, self.hostWindow === window,
+                  homeReady, sceneReady, !finished else { return }
+            finished = true
+            if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
+            if wasFullscreen {
+                // Transform the live surface uniformly; relayout only after the
+                // scale animation so the hosted pixels and touch space stay aligned.
+                let source = self.activeBridge.hostedSourceSize()
+                let bounds = window.rootViewController?.view.bounds ?? screen
+                let target = self.initialCardFrame(in: bounds, size: self.initialCardSize(in: bounds, source: source))
+                let scale = min(target.width / card.bounds.width, target.height / card.bounds.height)
+                let radius = self.configuredCornerRadius(in: bounds, source: source)
+                window.rootViewController?.view.backgroundColor = .clear
+                PXMotion.spring(0.40, animations: {
+                    card.transform = CGAffineTransform(scaleX: scale, y: scale)
+                    card.center = CGPoint(x: target.midX, y: target.midY)
+                    card.layer.cornerRadius = radius / scale
+                    clip.layer.cornerRadius = radius / scale
+                }, completion: { _ in
+                    guard self.hostWindow === window else { return }
+                    UIView.performWithoutAnimation {
+                        card.transform = .identity
+                        card.frame = target
+                        card.layer.cornerRadius = radius
+                        clip.layer.cornerRadius = radius
+                        self.activeBridge.layoutHost()
+                    }
+                    self.fullscreenToWindowInProgress = false
+                    window.isUserInteractionEnabled = true
+                    self.layoutHostControls()
+                })
+            } else {
+                window.isUserInteractionEnabled = true
+                self.layoutHostControls()
+            }
+        }
+        activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
+            guard let self = self, self.hostWindow === window else { return }
+            guard ready else {
+                self.closeHost(animated: false)
+                self.externalOpenFailed(bundleID)
+                return
+            }
+            homeReady = true
+            finishWhenReady()
+        }
+        guard hostWindow === window else { return }
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
@@ -1495,42 +1552,8 @@ public final class PXPanelEntry: NSObject {
                 }
             }
             if !wasFullscreen { self.matchHostAspect() }
-            self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
-                guard let self = self, self.hostWindow === window else { return }
-                guard ready else {
-                    self.closeHost(animated: false)
-                    self.externalOpenFailed(bundleID)
-                    return
-                }
-                if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
-                if wasFullscreen {
-                    // Mirror the fullscreen handoff: the live hosted surface covers
-                    // SpringBoard's native transition, then shrinks into its card.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self, weak window] in
-                        guard let self = self, let window = window, self.hostWindow === window else { return }
-                        let source = self.activeBridge.hostedSourceSize()
-                        let bounds = window.rootViewController?.view.bounds ?? screen
-                        let target = self.initialCardFrame(in: bounds, size: self.initialCardSize(in: bounds, source: source))
-                        let radius = self.configuredCornerRadius(in: bounds, source: source)
-                        window.rootViewController?.view.backgroundColor = .clear
-                        PXMotion.spring(0.40, animations: {
-                            card.frame = target
-                            card.layer.cornerRadius = radius
-                            clip.layer.cornerRadius = radius
-                            card.layoutIfNeeded()
-                            self.activeBridge.layoutHost()
-                        }, completion: { _ in
-                            guard self.hostWindow === window else { return }
-                            self.fullscreenToWindowInProgress = false
-                            window.isUserInteractionEnabled = true
-                            self.layoutHostControls()
-                        })
-                    }
-                } else {
-                    window?.isUserInteractionEnabled = true
-                    self.layoutHostControls()
-                }
-            }
+            sceneReady = true
+            finishWhenReady()
         }
         if coldStart, let image = activeBridge.launchImage(forApplication: bundleID, size: card.bounds.size),
            hostWindow === window {
@@ -2022,9 +2045,10 @@ public final class PXPanelEntry: NSObject {
             window.rootViewController = nil
         }
         if animated, let card = closingCard {
-            PXMotion.spring(0.28, animations: {
+            PXMotion.ease(0.28, options: .curveEaseInOut, animations: {
                 card.alpha = 0
-                card.transform = CGAffineTransform(scaleX: 0.88, y: 0.88)
+                card.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+                card.layer.shadowOpacity = 0
             }, completion: { _ in finish() })
         } else { finish() }
     }
