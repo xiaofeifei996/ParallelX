@@ -1378,8 +1378,7 @@ public final class PXPanelEntry: NSObject {
         let card = UIView(frame: cardFrame)
         card.backgroundColor = .secondarySystemBackground
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let savedRadius = defaults?.object(forKey: "cornerRadius") as? NSNumber
-        card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
+        card.layer.cornerRadius = configuredCornerRadius(in: screen)
         card.layer.cornerCurve = .continuous
         card.layer.shadowColor = UIColor.black.cgColor
         let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
@@ -1519,8 +1518,7 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
         card.transform = .identity
         card.frame = initialCardFrame(in: screen, size: size)
-        let savedRadius = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "cornerRadius") as? NSNumber
-        card.layer.cornerRadius = CGFloat(min(60, max(0, savedRadius?.doubleValue ?? 20)))
+        card.layer.cornerRadius = configuredCornerRadius(in: screen)
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
@@ -1537,6 +1535,10 @@ public final class PXPanelEntry: NSObject {
     private func initialCardSize(in screen: CGRect, source: CGSize) -> CGSize {
         guard source.width > 0, source.height > 0 else { return .zero }
         let landscape = screen.width > screen.height
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let saved = defaults?.object(forKey: landscape ? "initialWidthPercent" : "portraitInitialWidthPercent") as? NSNumber
+        let legacy = defaults?.object(forKey: "initialWidthPercent") as? NSNumber
+        let initialWidthFraction = CGFloat(min(95, max(35, saved?.doubleValue ?? legacy?.doubleValue ?? 78))) / 100
         let scale = landscape
             ? min(screen.height * initialWidthFraction / max(source.width, source.height),
                   (screen.width - landscapeDockWidth(in: screen) - 48) / source.width)
@@ -1589,9 +1591,11 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
     }
 
-    private var initialWidthFraction: CGFloat {
-        let saved = UserDefaults(suiteName: preferenceDomain)?.object(forKey: "initialWidthPercent") as? NSNumber
-        return CGFloat(min(95, max(35, saved?.doubleValue ?? 78))) / 100
+    private func configuredCornerRadius(in screen: CGRect) -> CGFloat {
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let saved = defaults?.object(forKey: screen.width > screen.height ? "cornerRadius" : "portraitCornerRadius") as? NSNumber
+        let legacy = defaults?.object(forKey: "cornerRadius") as? NSNumber
+        return CGFloat(min(60, max(0, saved?.doubleValue ?? legacy?.doubleValue ?? 20)))
     }
 
     private var defaultDockSide: Int {
@@ -1769,6 +1773,7 @@ public final class PXPanelEntry: NSObject {
         (hostCorners + hostTopCorners + [hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
         let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let frame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: dock.bridge.hostedSourceSize()))
+        dock.card.layer.cornerRadius = configuredCornerRadius(in: screen)
         PXMotion.spring(0.32, animations: {
             dock.card.transform = .identity
             dock.card.frame = frame

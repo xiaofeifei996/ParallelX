@@ -14,11 +14,15 @@ public final class PXCornerRadiusController: UIViewController {
     private let rightInsetLabel = UILabel()
     private let initialWidth = UISlider()
     private let initialWidthLabel = UILabel()
+    private let portraitWidth = UISlider()
+    private let portraitWidthLabel = UILabel()
+    private let portraitRadius = UISlider()
+    private let portraitRadiusLabel = UILabel()
     private let scroll = UIScrollView()
     private var cards: [UIView] = []
     private var headings: [UILabel] = []
     private var lines: [UIView] = []
-    private var inputButtons: [UIButton] = []
+    private var inputButtons: [UISlider: UIButton] = [:]
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
 
     public override func viewDidLoad() {
@@ -32,7 +36,7 @@ public final class PXCornerRadiusController: UIViewController {
             headings.append(PXSettingsStyle.heading(title, in: scroll))
             cards.append(PXSettingsStyle.card(in: scroll))
         }
-        lines = (0..<2).map { _ in PXSettingsStyle.separator(in: scroll) }
+        lines = (0..<4).map { _ in PXSettingsStyle.separator(in: scroll) }
         caption.text = "圆角大小"
         caption.font = .preferredFont(forTextStyle: .body)
         scroll.addSubview(caption)
@@ -59,20 +63,22 @@ public final class PXCornerRadiusController: UIViewController {
             (shadowStrength, shadowStrengthLabel, "shadowStrength", 22, 50),
             (shadowBlur, shadowBlurLabel, "shadowBlur", 15, 24),
             (rightInset, rightInsetLabel, "initialRightInset", 12, 120),
-            (initialWidth, initialWidthLabel, "initialWidthPercent", 78, 95)
+            (initialWidth, initialWidthLabel, "initialWidthPercent", 78, 95),
+            (portraitWidth, portraitWidthLabel, "portraitInitialWidthPercent", (defaults?.object(forKey: "initialWidthPercent") as? NSNumber)?.intValue ?? 78, 95),
+            (portraitRadius, portraitRadiusLabel, "portraitCornerRadius", (defaults?.object(forKey: "cornerRadius") as? NSNumber)?.intValue ?? 20, 60)
         ] {
             label.font = .preferredFont(forTextStyle: .body)
             scroll.addSubview(label)
-            control.minimumValue = key == "initialWidthPercent" ? 35 : 0
+            control.minimumValue = key.contains("WidthPercent") ? 35 : 0
             control.maximumValue = Float(maximum)
             control.value = Float(defaults?.object(forKey: key) as? Int ?? fallback)
             control.addTarget(self, action: #selector(shadowChanged), for: .valueChanged)
             control.addTarget(self, action: #selector(shadowFinished),
                               for: [.touchUpInside, .touchUpOutside, .touchCancel])
             scroll.addSubview(control)
-            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : key == "initialRightInset" ? "初始右边距（pt）" : "初始窗口宽度（%）", in: self)
+            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : key == "initialRightInset" ? "初始右边距（pt）" : key == "portraitCornerRadius" ? "竖屏圆角（pt）" : key == "portraitInitialWidthPercent" ? "竖屏初始尺寸（%）" : "横屏初始尺寸（%）", in: self)
             scroll.addSubview(button)
-            inputButtons.append(button)
+            inputButtons[control] = button
         }
         valueChanged()
         shadowChanged()
@@ -82,11 +88,12 @@ public final class PXCornerRadiusController: UIViewController {
         super.viewDidLayoutSubviews()
         let width = scroll.bounds.width
         let groups: [[(UILabel, UISlider)]] = [
-            [(rightInsetLabel, rightInset), (initialWidthLabel, initialWidth)],
-            [(caption, slider)],
+            [(rightInsetLabel, rightInset), (portraitWidthLabel, portraitWidth), (initialWidthLabel, initialWidth)],
+            [(portraitRadiusLabel, portraitRadius), (caption, slider)],
             [(shadowStrengthLabel, shadowStrength), (shadowBlurLabel, shadowBlur)]
         ]
         var y: CGFloat = 20
+        var lineIndex = 0
         for (section, rows) in groups.enumerated() {
             headings[section].frame = CGRect(x: 32, y: y, width: width - 64, height: 22)
             y += 30
@@ -98,14 +105,15 @@ public final class PXCornerRadiusController: UIViewController {
                 pair.0.frame = CGRect(x: 32, y: rowY + 10, width: width - 64, height: 28)
                 pair.1.frame = CGRect(x: 32, y: rowY + 40,
                                       width: width - 112, height: 34)
-                if section == 1 {
+                if pair.1 === slider {
                     number.frame = CGRect(x: width - 70, y: rowY + 36, width: 38, height: 38)
                 } else {
-                    inputButtons[section == 0 ? row + 2 : row].frame = CGRect(x: width - 70, y: rowY + 36, width: 38, height: 38)
+                    inputButtons[pair.1]?.frame = CGRect(x: width - 70, y: rowY + 36, width: 38, height: 38)
                 }
-                if section != 1 && row == 0 {
-                    lines[section == 0 ? 0 : 1].frame = CGRect(x: 32, y: rowY + 81,
+                if row < rows.count - 1 {
+                    lines[lineIndex].frame = CGRect(x: 32, y: rowY + 81,
                                                                width: width - 64, height: 0.5)
+                    lineIndex += 1
                 }
             }
             y += CGFloat(rows.count) * 82 + 28
@@ -115,7 +123,7 @@ public final class PXCornerRadiusController: UIViewController {
     }
 
     @objc private func valueChanged() {
-        caption.text = "圆角大小：\(Int(slider.value.rounded())) pt"
+        caption.text = "横屏圆角：\(Int(slider.value.rounded())) pt"
     }
 
     @objc private func valueFinished() {
@@ -128,7 +136,9 @@ public final class PXCornerRadiusController: UIViewController {
         shadowStrengthLabel.text = "阴影强度：\(Int(shadowStrength.value.rounded()))%"
         shadowBlurLabel.text = "阴影模糊：\(Int(shadowBlur.value.rounded())) pt"
         rightInsetLabel.text = "初始窗口距离右边缘：\(Int(rightInset.value.rounded())) pt"
-        initialWidthLabel.text = "初始窗口宽度：屏幕的 \(Int(initialWidth.value.rounded()))%"
+        initialWidthLabel.text = "横屏初始尺寸：屏幕高度的 \(Int(initialWidth.value.rounded()))%"
+        portraitWidthLabel.text = "竖屏初始尺寸：屏幕宽度的 \(Int(portraitWidth.value.rounded()))%"
+        portraitRadiusLabel.text = "竖屏圆角：\(Int(portraitRadius.value.rounded())) pt"
     }
 
     @objc private func shadowFinished() {
@@ -136,11 +146,15 @@ public final class PXCornerRadiusController: UIViewController {
         shadowBlur.value = shadowBlur.value.rounded()
         rightInset.value = rightInset.value.rounded()
         initialWidth.value = initialWidth.value.rounded()
+        portraitWidth.value = portraitWidth.value.rounded()
+        portraitRadius.value = portraitRadius.value.rounded()
         shadowChanged()
         defaults?.set(Int(shadowStrength.value), forKey: "shadowStrength")
         defaults?.set(Int(shadowBlur.value), forKey: "shadowBlur")
         defaults?.set(Int(rightInset.value), forKey: "initialRightInset")
         defaults?.set(Int(initialWidth.value), forKey: "initialWidthPercent")
+        defaults?.set(Int(portraitWidth.value), forKey: "portraitInitialWidthPercent")
+        defaults?.set(Int(portraitRadius.value), forKey: "portraitCornerRadius")
     }
 
     @objc private func editNumber(_ gesture: UILongPressGestureRecognizer) {

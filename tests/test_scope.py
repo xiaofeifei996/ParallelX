@@ -450,6 +450,19 @@ for target in (1, 2, 3, 4):
     assert handle_x == (820 if target in (3, 4) else 366)
 assert 'layoutDocks(animated: false)' in panel
 assert 'card.transform = CGAffineTransform(scaleX: zoom, y: zoom)' in panel
+
+# Device rotation must not replace a still-supported hosted orientation.
+protected = bridge.split('- (id)protectedSettings:(id)settings forScene:', 1)[1].split('- (void)scene:', 1)[0]
+assert 'self.sourceOrientation = orientation' not in protected
+assert 'setOrientation, self.sourceOrientation' in protected
+assert 'supportedInterfaceOrientations' in client_update
+assert 'if (!mask || (mask & (1UL << self.sourceOrientation))) return;' in client_update
+for current, mask, requested, expected in ((1, 30, 3, 1), (1, 24, 3, 3), (3, 2, 1, 1), (1, 0, 3, 1)):
+    result = current if not mask or mask & (1 << current) else requested
+    assert result == expected
+for key in ('portraitInitialWidthPercent', 'portraitCornerRadius'):
+    assert key in panel and key in radius
+assert 'configuredCornerRadius(in: screen)' in panel
 dismiss = panel.split('private func refreshKeyboardDismissLayer()', 1)[1].split('private func fadeKeyboardDismissLayer()', 1)[0]
 assert 'guard enabled, activeBridge.usesExternalKeyboard()' in dismiss
 assert '$0.session.persistentIdentifier == "com.apple.springboard"' in panel
