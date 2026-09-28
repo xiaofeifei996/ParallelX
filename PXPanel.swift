@@ -88,6 +88,7 @@ private final class PXHandleWindow: PXOverlayWindow {
 
 private final class PXHostViewController: UIViewController {
     var onLayout: (() -> Void)?
+    var onAppearance: (() -> Void)?
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .all }
 
     override func viewDidLayoutSubviews() {
@@ -97,7 +98,7 @@ private final class PXHostViewController: UIViewController {
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle { onLayout?() }
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle { onAppearance?() }
     }
 }
 
@@ -929,15 +930,20 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func screenGeometryChanged() {
         guard !applyingScreenGeometry, handleWindow != nil else { return }
+        guard let scene = handleWindow?.windowScene else { return }
+        let orientation = PXSceneBridge.systemOrientation()
+        let physical = scene.screen.fixedCoordinateSpace.bounds.size
+        let expectedSize = orientation.isLandscape
+            ? CGSize(width: max(physical.width, physical.height), height: min(physical.width, physical.height))
+            : CGSize(width: min(physical.width, physical.height), height: max(physical.width, physical.height))
+        if expectedSize == layoutScreenBounds.size && orientation == layoutOrientation { return }
         applyingScreenGeometry = true
         defer { applyingScreenGeometry = false }
         UIView.performWithoutAnimation {
             ([handleWindow, hostWindow, panelWindow, searchWindow, keyboardDismissWindow].compactMap { $0 } +
                 dockedHosts.map { $0.window }).forEach { ($0 as? PXOverlayWindow)?.applySystemOrientation() }
         }
-        guard let scene = handleWindow?.windowScene else { return }
         let screen = handleWindow?.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
-        let orientation = PXSceneBridge.systemOrientation()
         guard screen != layoutScreenBounds || orientation != layoutOrientation else { return }
         layoutScreenBounds = screen
         layoutOrientation = orientation
@@ -1490,6 +1496,7 @@ public final class PXPanelEntry: NSObject {
             self?.screenGeometryChanged()
             self?.layoutHostControls()
         }
+        root.onAppearance = { [weak self] in self?.layoutHostControls() }
         // Keep the native full-screen surface visible until its hosted surface
         // is mounted; showing an empty backing here produces a bright frame.
         window.isHidden = wasFullscreen

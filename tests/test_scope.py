@@ -111,6 +111,9 @@ assert 'let toolbarWidth' not in panel
 assert 'layoutHostControls()' in panel.split('@objc private func moveHost')[1].split('private func closeHost')[0]
 assert 'private func layoutHostControls()' in panel
 assert 'self?.screenGeometryChanged()' in panel and 'self?.layoutHostControls()' in panel
+assert 'if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle { onAppearance?() }' in panel
+assert 'root.onAppearance = { [weak self] in self?.layoutHostControls() }' in panel
+assert 'if expectedSize == layoutScreenBounds.size && orientation == layoutOrientation { return }' in panel
 assert 'let root = PXHostViewController()' in panel.split('private func presentHost')[1]
 assert 'layoutHostControls()' in panel.split('private func matchHostAspect()')[1].split('private func layoutHostControls()')[0]
 assert 'let window = PXHandleWindow(windowScene: scene)' in panel
