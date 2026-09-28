@@ -1410,7 +1410,9 @@ public final class PXPanelEntry: NSObject {
         window.rootViewController = root
         window.applySystemOrientation()
         let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)
-        card.backgroundColor = .secondarySystemBackground
+        // The outer view owns only the shadow. A second rounded backing leaks
+        // a light antialiased seam beside dark hosted surfaces.
+        card.backgroundColor = .clear
         let defaults = UserDefaults(suiteName: preferenceDomain)
         card.layer.cornerRadius = wasFullscreen ? 0 : configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
         card.layer.cornerCurve = .continuous
@@ -1419,11 +1421,12 @@ public final class PXPanelEntry: NSObject {
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
         let dark = card.traitCollection.userInterfaceStyle == .dark
         card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
-        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
+        card.layer.shadowOpacity = wasFullscreen ? 0 : dark ? min(0.35, strength * 0.8) : strength
         card.layer.shadowRadius = dark ? blur + 4 : blur
         card.layer.shadowOffset = CGSize(width: 0, height: 3)
         root.view.addSubview(card)
         let clip = UIView(frame: card.bounds)
+        clip.backgroundColor = .secondarySystemBackground
         clip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         clip.layer.cornerRadius = card.layer.cornerRadius
         clip.layer.cornerCurve = .continuous
@@ -1516,12 +1519,18 @@ public final class PXPanelEntry: NSObject {
                 let target = self.initialCardFrame(in: bounds, size: self.initialCardSize(in: bounds, source: source))
                 let scale = min(target.width / card.bounds.width, target.height / card.bounds.height)
                 let radius = self.configuredCornerRadius(in: bounds, source: source)
+                let shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
+                // Do not expose the full-screen rectangular shadow for a frame
+                // before shrinking. Its path must use the same target radius.
+                card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
+                    cornerRadius: radius / scale).cgPath
                 window.rootViewController?.view.backgroundColor = .clear
                 PXMotion.spring(0.40, animations: {
                     card.transform = CGAffineTransform(scaleX: scale, y: scale)
                     card.center = CGPoint(x: target.midX, y: target.midY)
                     card.layer.cornerRadius = radius / scale
                     clip.layer.cornerRadius = radius / scale
+                    card.layer.shadowOpacity = shadowOpacity
                 }, completion: { _ in
                     guard self.hostWindow === window else { return }
                     UIView.performWithoutAnimation {
@@ -1560,7 +1569,7 @@ public final class PXPanelEntry: NSObject {
                 self.externalOpenFailed(bundleID)
                 return
             }
-            if let preview = card.subviews.first(where: { $0.tag == 0x50584c }) {
+            if let preview = card.viewWithTag(0x50584c) {
                 PXMotion.ease(0.15, animations: { preview.alpha = 0 }) { _ in
                     preview.removeFromSuperview()
                 }
@@ -1573,13 +1582,11 @@ public final class PXPanelEntry: NSObject {
            hostWindow === window {
             let preview = UIImageView(image: image)
             preview.tag = 0x50584c
-            preview.frame = card.bounds
+            preview.frame = clip.bounds
             preview.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             preview.contentMode = .scaleToFill
-            preview.layer.cornerRadius = card.layer.cornerRadius
-            preview.clipsToBounds = true
             preview.isUserInteractionEnabled = false
-            card.addSubview(preview)
+            clip.insertSubview(preview, aboveSubview: canvas)
         }
     }
 
@@ -1693,9 +1700,12 @@ public final class PXPanelEntry: NSObject {
         let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
         let dark = card.traitCollection.userInterfaceStyle == .dark
         card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
-        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
+        if !fullscreenToWindowInProgress {
+            card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
+        }
         card.layer.shadowRadius = dark ? blur + 4 : blur
-        if card.layer.shadowPath?.boundingBox != card.bounds || card.subviews.first?.layer.cornerRadius != card.layer.cornerRadius {
+        if !fullscreenToWindowInProgress &&
+            (card.layer.shadowPath?.boundingBox != card.bounds || card.subviews.first?.layer.cornerRadius != card.layer.cornerRadius) {
             card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
                                                   cornerRadius: card.layer.cornerRadius).cgPath
         }

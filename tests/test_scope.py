@@ -121,6 +121,14 @@ assert 'presentHost(bundleID, wasFullscreen: wasFullscreen)' in panel
 assert 'activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)' in panel
 assert panel.index('let card = UIView(frame: wasFullscreen ? root.view.bounds : cardFrame)') < panel.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 handoff = panel.split('private func presentHost(', 1)[1].split('private func matchHostAspect()', 1)[0]
+assert 'card.backgroundColor = .clear' in handoff
+assert 'clip.backgroundColor = .secondarySystemBackground' in handoff
+assert 'card.layer.shadowOpacity = wasFullscreen ? 0' in handoff
+assert handoff.index('cornerRadius: radius / scale).cgPath') < handoff.index('PXMotion.spring(0.40, animations:')
+assert 'card.layer.shadowOpacity = shadowOpacity' in handoff
+assert 'clip.insertSubview(preview, aboveSubview: canvas)' in handoff
+assert 'card.viewWithTag(0x50584c)' in handoff
+assert 'preview.layer.cornerRadius' not in handoff
 assert handoff.index('activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
 assert 'card.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
 assert 'UIScene.willDeactivateNotification' in panel
