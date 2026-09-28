@@ -323,7 +323,7 @@ static int PXApplicationPID(NSString *bundleID)
     if (!UIInterfaceOrientationIsLandscape([self systemOrientation])) return;
     [NSFileManager.defaultManager createDirectoryAtPath:PXLandscapeProbePath.stringByDeletingLastPathComponent
         withIntermediateDirectories:YES attributes:nil error:nil];
-    [@"ParallelX alpha97 landscape handoff probe\n" writeToFile:PXLandscapeProbePath
+    [@"ParallelX alpha98 landscape handoff probe\n" writeToFile:PXLandscapeProbePath
         atomically:YES encoding:NSUTF8StringEncoding error:nil];
     PXLandscapeProbeDeadline = CFAbsoluteTimeGetCurrent() + 8;
     PXLandscapeProbeEvents = 0;
@@ -886,6 +886,12 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
     UIInterfaceOrientation orientation = PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"));
+    // Converting the visible fullscreen scene is not a fresh launch. Preserve
+    // its active content direction, including a video player's fullscreen mode.
+    UIInterfaceOrientation current = PXSceneOrientation(settings);
+    if ([[self frontmostBundleID] isEqualToString:self.bundleID] &&
+        current >= UIInterfaceOrientationPortrait && current <= UIInterfaceOrientationLandscapeRight)
+        orientation = current;
     PXLandscapeProbe([NSString stringWithFormat:@"foreground bundle=%@ scene=%p screen=%ld before=%ld preferred=%ld frame=%@",
         self.bundleID, scene, (long)[PXSceneBridge systemOrientation], (long)PXSceneOrientation(settings),
         (long)orientation, NSStringFromCGRect(PXRect(settings, @"frame"))]);

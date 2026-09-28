@@ -22,6 +22,15 @@ assert 'UIView.performWithoutAnimation { matchHostAspect() }' in screen_geometry
 assert 'activeBridge.refreshHostedOrientationMap()' in screen_geometry
 assert 'self.originalOrientationMapResolver = PXCall(settings, @"interfaceOrientationMapResolver")' in bridge
 assert 'objc_msgSend)(mutable, resolver, self.originalOrientationMapResolver)' in bridge
+foreground = bridge.split('- (BOOL)foregroundScene:', 1)[1].split('- (void)keepHostedProcessAlive', 1)[0]
+assert '[[self frontmostBundleID] isEqualToString:self.bundleID]' in foreground
+assert foreground.index('orientation = current;') < foreground.index('PXSetHostedOrientation(mutable, orientation)')
+for is_frontmost, current, preferred, expected in (
+    (True, 3, 1, 3), (True, 4, 1, 4), (True, 1, 1, 1),
+    (False, 3, 1, 1), (False, 3, 3, 3), (True, 0, 1, 1),
+):
+    orientation = current if is_frontmost and 1 <= current <= 4 else preferred
+    assert orientation == expected
 # Device log: Home narrows 926 to 428 while the card remains at x=660.6.
 # Recompute against the new screen even while fullscreen handoff is active.
 source_width, source_height = 428, 926
