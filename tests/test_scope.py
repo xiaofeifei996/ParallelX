@@ -667,13 +667,13 @@ for landscape in (False, True):
     if landscape:
         assert zoom == 1.6
 
-# Portrait retains alpha116's formula; landscape avoidance never takes over Home gestures.
+# Both orientations retain alpha116's card-relative region without Home gesture overrides.
 assert 'PXBottomGestureFrame' not in panel
 assert 'PXBottomGestureView' not in panel
 assert 'PXOriginalFluidReceiveTouch' not in tweak
 assert 'traceGesture' not in panel and 'traceGesture' not in tweak and 'traceGesture' not in bridge
-assert 'root.bounds.width > root.bounds.height' in panel
-assert 'PXLandscapeBottomGestureFrame(card: frame, screen: root.bounds' in panel
+assert 'PXLandscapeBottomGestureFrame' not in panel
+assert 'hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,' in panel
 
 # The compact app identity follows hosted content orientation, never consumes touches or appears on docks.
 assert '滑动字母查找' not in panel and '移入图标松手打开' not in panel
