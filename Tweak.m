@@ -47,11 +47,56 @@ static NSDictionary *PXOptionsDictionary(id options)
     return [values isKindOfClass:NSDictionary.class] ? values : nil;
 }
 
+static void PXURLRouteLog(NSString *message)
+{
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    static int samples;
+    if (__sync_fetch_and_add(&samples, 1) >= 80) return;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.moxuan.parallelx.url-route-log", DISPATCH_QUEUE_SERIAL); });
+    NSString *line = [NSString stringWithFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), message];
+    dispatch_async(queue, ^{
+        @try {
+            NSString *path = @"/var/mobile/Library/Logs/com.moxuan.parallelx.url-route.log";
+            NSFileManager *files = NSFileManager.defaultManager;
+            [files createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                withIntermediateDirectories:YES attributes:nil error:nil];
+            if (![files fileExistsAtPath:path] || [[files attributesOfItemAtPath:path error:nil] fileSize] > 65536)
+                [files createFileAtPath:path contents:nil attributes:nil];
+            NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:path];
+            [file seekToEndOfFile];
+            [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+            [file closeFile];
+        } @catch (__unused NSException *exception) { }
+    });
+}
+
+static BOOL PXURLRouteLogActive(void)
+{
+    return PXRecentExternalBundleID.length && CFAbsoluteTimeGetCurrent() - PXRecentExternalTime < 5;
+}
+
+static NSString *PXURLRouteEntities(id entities)
+{
+    if (![entities conformsToProtocol:@protocol(NSFastEnumeration)]) return @"?";
+    NSMutableArray *ids = [NSMutableArray array];
+    for (id entity in entities) {
+        if (ids.count == 8) break;
+        [ids addObject:PXValue(PXValue(entity, @"application"), @"bundleIdentifier") ?: @"?"];
+    }
+    return [ids componentsJoinedByString:@","];
+}
+
 static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
 {
     id context = PXValue(request, @"applicationContext");
     id from = PXValue(request, @"fromApplicationSceneEntities");
     id to = PXValue(request, @"toApplicationSceneEntities");
+    if (PXURLRouteLogActive())
+        PXURLRouteLog([NSString stringWithFormat:@"transition begin target=%@ from=%@ to=%@ origin=%@ front=%@",
+            PXRecentExternalBundleID, PXURLRouteEntities(from), PXURLRouteEntities(to),
+            PXValue(PXValue(request, @"originatingProcess"), @"bundleIdentifier") ?: @"?",
+            [[PXSceneBridge sharedBridge] frontmostBundleID] ?: @"?"]);
     SEL disable = NSSelectorFromString(@"setAnimationDisabled:");
     // Match only this app's departure to Home, after the request is prepared.
     if ([context respondsToSelector:disable] && [to respondsToSelector:@selector(count)] &&
@@ -75,7 +120,11 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    return PXOriginalExecuteTransition(workspace, selector, request);
+    BOOL handled = PXOriginalExecuteTransition(workspace, selector, request);
+    if (PXURLRouteLogActive())
+        PXURLRouteLog([NSString stringWithFormat:@"transition end handled=%d front=%@", handled,
+            [[PXSceneBridge sharedBridge] frontmostBundleID] ?: @"?"]);
+    return handled;
 }
 
 static id PXFluidAnimationInit(id controller, SEL selector, id request, id settings, id block)
@@ -233,6 +282,8 @@ static void PXRememberRoute(NSString *bundleID)
 {
     PXRecentExternalBundleID = [bundleID copy];
     PXRecentExternalTime = CFAbsoluteTimeGetCurrent();
+    PXURLRouteLog([NSString stringWithFormat:@"route target=%@ front=%@", bundleID,
+        [[PXSceneBridge sharedBridge] frontmostBundleID] ?: @"?"]);
 }
 
 static void PXHandleOpenRequest(id workspace, SEL selector, id service, id request, id completion)
@@ -244,6 +295,10 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
         !PXRouteRecentlyHandled(bundleID) &&
         [options respondsToSelector:NSSelectorFromString(@"setDictionary:")] &&
         PXOptionsWithSuspendedLaunch(options) != nil;
+    if (route || PXURLRouteLogActive())
+        PXURLRouteLog([NSString stringWithFormat:@"open-request route=%d target=%@ options=%@ mutable=%d",
+            route, bundleID ?: @"?", NSStringFromClass([options class]),
+            [options respondsToSelector:NSSelectorFromString(@"setDictionary:")]]);
     if (route) {
         PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
@@ -252,6 +307,8 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
     if (route) {
         void (^original)(NSError *) = completion;
         routed = [^(NSError *error) {
+            PXURLRouteLog([NSString stringWithFormat:@"open-request callback target=%@ error=%@", bundleID,
+                error ? error.domain : @"none"]);
             if (original) original(error);
             if (!error) PXExternalOpen(bundleID);
         } copy];
@@ -266,6 +323,13 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
     BOOL candidate = PXExternalTarget(options, application, origin, &bundleID);
     id prepared = candidate ? PXOptionsWithSuspendedLaunch(options) : nil;
     BOOL route = prepared != nil && !PXRouteRecentlyHandled(bundleID);
+    if (candidate || PXURLRouteLogActive()) {
+        NSString *suspendedKey = PXSuspendedKey();
+        id suspended = suspendedKey ? PXOptionsDictionary(prepared ?: options)[suspendedKey] : nil;
+        PXURLRouteLog([NSString stringWithFormat:@"trusted-open candidate=%d route=%d target=%@ options=%@ prepared=%@ suspended=%@",
+            candidate, route, bundleID ?: @"?", NSStringFromClass([options class]),
+            NSStringFromClass([prepared class]), suspended ?: @"?"]);
+    }
     if (route) {
         PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
@@ -274,6 +338,8 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
     if (route) {
         void (^original)(NSError *) = result;
         routed = [^(NSError *error) {
+            PXURLRouteLog([NSString stringWithFormat:@"trusted-open callback target=%@ error=%@", bundleID,
+                error ? error.domain : @"none"]);
             if (original) original(error);
             if (!error) PXExternalOpen(bundleID);
         } copy];
@@ -285,10 +351,13 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
 static void PXActivateApplication(id controller, SEL selector, id application, id icon,
                                   id location, id settings, id actions)
 {
-    PXOriginalActivateApplication(controller, selector, application, icon, location, settings, actions);
     SEL bundleSelector = NSSelectorFromString(@"bundleIdentifier");
     id bundleID = [application respondsToSelector:bundleSelector]
         ? ((id (*)(id, SEL))objc_msgSend)(application, bundleSelector) : nil;
+    if (PXURLRouteLogActive())
+        PXURLRouteLog([NSString stringWithFormat:@"activate target=%@ front=%@", bundleID ?: @"?",
+            [[PXSceneBridge sharedBridge] frontmostBundleID] ?: @"?"]);
+    PXOriginalActivateApplication(controller, selector, application, icon, location, settings, actions);
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL activated = NSSelectorFromString(@"applicationActivated:");
     if ([bundleID isKindOfClass:NSString.class] && [entry respondsToSelector:activated])
@@ -297,8 +366,10 @@ static void PXActivateApplication(id controller, SEL selector, id application, i
 
 static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application)
 {
-    PXOriginalFrontDisplayDidChange(springBoard, selector, application);
     NSString *bundleID = PXBundleID(application);
+    if (PXURLRouteLogActive())
+        PXURLRouteLog([NSString stringWithFormat:@"front-change target=%@", bundleID ?: @"home"]);
+    PXOriginalFrontDisplayDidChange(springBoard, selector, application);
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL changed = NSSelectorFromString(@"frontDisplayChanged:");
     if ([entry respondsToSelector:changed])

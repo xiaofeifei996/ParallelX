@@ -420,6 +420,8 @@ trusted = external.split('static void PXHandleTrustedOpen', 1)[1].split('static 
 assert trusted.index('PXOptionsWithSuspendedLaunch(options)') < trusted.index('!PXRouteRecentlyHandled(bundleID)')
 assert 'shared.panelFrontmostBundleID = nil' in panel
 assert 'restoreExternalSource' not in panel
+assert 'com.moxuan.parallelx.url-route.log' in external
+assert 'PXURLRouteLogActive()' in external
 assert 'func completeOpening()' in panel
 assert 'withRenderingMode(.alwaysOriginal)' in panel
 
