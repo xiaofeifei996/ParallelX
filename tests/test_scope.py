@@ -232,8 +232,7 @@ assert 'slot.opaque = NO' in bridge
 assert 'screen.height * 0.55' in bridge and 'screen.height * 0.4' not in bridge
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
-assert 'BOOL hostedTarget = self.scene && [self.bundleID isEqualToString:bundleID]' in bridge
-assert 'if (hostedTarget) self.fullscreenHandoff = YES' in bridge
+assert 'if (self.scene && [self.bundleID isEqualToString:bundleID])' in bridge
 assert 'activateApplication:fromIcon:location:activationSettings:actions:' in bridge
 assert 'PXProbeFullscreenRuntime' not in bridge
 assert 'performShortcut:(NSString *)identifier' in bridge
@@ -415,10 +414,12 @@ assert '_handleTrustedOpenRequestForApplication:options:activationSettings:origi
 assert 'FBSOpenApplicationOptionKeyActivateSuspended' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert 'externalOpenApplication:' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert 'externalPendingBundleID' in panel
-assert 'PXExternalSource(options, source, bundleID)' in (root / 'Tweak.m').read_text(encoding='utf-8')
-assert 'PXExternalSource(options, origin, bundleID)' in (root / 'Tweak.m').read_text(encoding='utf-8')
+external = (root / 'Tweak.m').read_text(encoding='utf-8')
+assert '[options respondsToSelector:NSSelectorFromString(@"setDictionary:")]' in external
+trusted = external.split('static void PXHandleTrustedOpen', 1)[1].split('static void PXActivateApplication', 1)[0]
+assert trusted.index('PXOptionsWithSuspendedLaunch(options)') < trusted.index('!PXRouteRecentlyHandled(bundleID)')
 assert 'shared.panelFrontmostBundleID = nil' in panel
-assert 'self.restoreExternalSource()' in panel
+assert 'restoreExternalSource' not in panel
 assert 'func completeOpening()' in panel
 assert 'withRenderingMode(.alwaysOriginal)' in panel
 

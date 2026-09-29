@@ -493,9 +493,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
 {
     if (bundleID.length == 0) return NO;
     BOOL previousHandoff = self.fullscreenHandoff;
-    BOOL hostedTarget = self.scene && [self.bundleID isEqualToString:bundleID];
-    if (hostedTarget) self.fullscreenHandoff = YES;
-    if (hostedTarget) {
+    self.fullscreenHandoff = YES;
+    if (self.scene && [self.bundleID isEqualToString:bundleID]) {
         id controller = PXCall(NSClassFromString(@"SBApplicationController"), @"sharedInstance");
         SEL lookup = NSSelectorFromString(@"applicationWithBundleIdentifier:");
         id app = [controller respondsToSelector:lookup]

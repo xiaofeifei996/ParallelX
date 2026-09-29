@@ -760,7 +760,6 @@ public final class PXPanelEntry: NSObject {
     private var fullscreenToWindowInProgress = false
     private var fullscreenLaunchInProgress = false
     private var externalPendingBundleID: String?
-    private var externalSourceBundleID: String?
     private var panelFrontmostBundleID: String?
     private var resizeStartFrame: CGRect?
     private var resizeStartRadius: CGFloat = 0
@@ -844,19 +843,14 @@ public final class PXPanelEntry: NSObject {
         if let bundleID = bundleID { applicationActivated(bundleID) }
     }
 
-    @objc public static func externalOpenApplication(_ route: [String: String]) {
-        guard let bundleID = route["target"] else { return }
+    @objc public static func externalOpenApplication(_ bundleID: String) {
         guard !shared.deviceLocked, shared.activeScene() != nil else { return }
         shared.externalPendingBundleID = bundleID
-        shared.externalSourceBundleID = route["source"]?.isEmpty == false ? route["source"] : nil
         shared.panelFrontmostBundleID = nil
         shared.openHost(bundleID)
-        if shared.hostedBundleID == bundleID, shared.hostWindow != nil,
-           shared.externalPendingBundleID == nil { shared.restoreExternalSource() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             guard shared.externalPendingBundleID == bundleID else { return }
             shared.externalPendingBundleID = nil
-            shared.externalSourceBundleID = nil
             guard shared.hostedBundleID == bundleID, shared.hostWindow != nil else { return }
             shared.closeHost(animated: false)
             _ = PXSceneBridge.shared().openFullscreenApplication(bundleID)
@@ -866,15 +860,7 @@ public final class PXPanelEntry: NSObject {
     private func externalOpenFailed(_ bundleID: String) {
         guard externalPendingBundleID == bundleID else { return }
         externalPendingBundleID = nil
-        externalSourceBundleID = nil
         _ = PXSceneBridge.shared().openFullscreenApplication(bundleID)
-    }
-
-    private func restoreExternalSource() {
-        defer { externalSourceBundleID = nil }
-        guard let source = externalSourceBundleID,
-              PXSceneBridge.shared().frontmostBundleID() != source else { return }
-        _ = PXSceneBridge.shared().openFullscreenApplication(source)
     }
 
     @objc private func lockStateChanged(_ notification: Notification) {
@@ -1608,7 +1594,6 @@ public final class PXPanelEntry: NSObject {
                     return
                 }
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
-                self.restoreExternalSource()
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
             }

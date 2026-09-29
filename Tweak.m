@@ -145,16 +145,6 @@ static BOOL PXIsNotificationOpen(NSDictionary *values)
         [origin isEqualToString:@"BulletinDestinationCoverSheet"];
 }
 
-static NSString *PXExternalSource(id options, id source, NSString *targetID)
-{
-    NSDictionary *values = PXOptionsDictionary(options);
-    if (PXIsNotificationOpen(values)) return nil;
-    NSString *bundleID = [[PXSceneBridge sharedBridge] frontmostBundleID] ?:
-        PXSourceBundleID(source, values);
-    return [bundleID isEqualToString:targetID] ||
-        [bundleID isEqualToString:@"com.apple.springboard"] ? nil : bundleID;
-}
-
 static BOOL PXExternalTarget(id options, id target, id source, NSString **bundleOut)
 {
     NSDictionary *values = PXOptionsDictionary(options);
@@ -201,14 +191,13 @@ static id PXOptionsWithSuspendedLaunch(id options)
     return options;
 }
 
-static void PXExternalOpen(NSString *bundleID, NSString *sourceID)
+static void PXExternalOpen(NSString *bundleID)
 {
     dispatch_async(dispatch_get_main_queue(), ^{
         Class entry = NSClassFromString(@"PXPanelEntry");
         SEL open = NSSelectorFromString(@"externalOpenApplication:");
         if ([entry respondsToSelector:open])
-            ((void (*)(id, SEL, id))objc_msgSend)(entry, open,
-                @{ @"target": bundleID, @"source": sourceID ?: @"" });
+            ((void (*)(id, SEL, id))objc_msgSend)(entry, open, bundleID);
     });
 }
 
@@ -252,8 +241,9 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
     NSString *bundleID = nil;
     id source = PXValue(request, @"clientProcess");
     BOOL route = PXExternalTarget(options, PXRequestBundleID(request), source, &bundleID) &&
-        !PXRouteRecentlyHandled(bundleID) && PXOptionsWithSuspendedLaunch(options) != nil;
-    NSString *sourceID = route ? PXExternalSource(options, source, bundleID) : nil;
+        !PXRouteRecentlyHandled(bundleID) &&
+        [options respondsToSelector:NSSelectorFromString(@"setDictionary:")] &&
+        PXOptionsWithSuspendedLaunch(options) != nil;
     if (route) {
         PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
@@ -263,7 +253,7 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
         void (^original)(NSError *) = completion;
         routed = [^(NSError *error) {
             if (original) original(error);
-            if (!error) PXExternalOpen(bundleID, sourceID);
+            if (!error) PXExternalOpen(bundleID);
         } copy];
     }
     PXOriginalHandleOpenRequest(workspace, selector, service, request, routed);
@@ -273,11 +263,9 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
                                 id settings, id origin, id result)
 {
     NSString *bundleID = nil;
-    BOOL candidate = PXExternalTarget(options, application, origin, &bundleID) &&
-        !PXRouteRecentlyHandled(bundleID);
+    BOOL candidate = PXExternalTarget(options, application, origin, &bundleID);
     id prepared = candidate ? PXOptionsWithSuspendedLaunch(options) : nil;
-    BOOL route = prepared != nil;
-    NSString *sourceID = route ? PXExternalSource(options, origin, bundleID) : nil;
+    BOOL route = prepared != nil && !PXRouteRecentlyHandled(bundleID);
     if (route) {
         PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
@@ -287,7 +275,7 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
         void (^original)(NSError *) = result;
         routed = [^(NSError *error) {
             if (original) original(error);
-            if (!error) PXExternalOpen(bundleID, sourceID);
+            if (!error) PXExternalOpen(bundleID);
         } copy];
     }
     PXOriginalHandleTrustedOpen(workspace, selector, application, prepared ?: options,
