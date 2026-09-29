@@ -640,6 +640,7 @@ private final class PXAppSelectorView: UIView {
     private var tiles: [UIView] = []
     private var currentApps: [App] = []
     private var currentLetter = ""
+    private var railSelection = PXAppRailSelection()
     private var selected: Int?
     private let entryPoint: CGPoint
     private var lastPoint = CGPoint.zero
@@ -739,7 +740,7 @@ private final class PXAppSelectorView: UIView {
             laidOutSize = bounds.size
             renderApps()
         }
-        updateLight(at: lastPoint.y)
+        updateLight(at: railSelection.locked ? (letterLabels.first { $0.text == currentLetter }?.center.y ?? lastPoint.y) : lastPoint.y)
     }
 
     private func renderApps() {
@@ -781,8 +782,7 @@ private final class PXAppSelectorView: UIView {
     func update(at point: CGPoint) {
         lastPoint = point
         guard !letters.isEmpty else { return }
-        if abs(point.x - railX(at: point.y)) <= 26, rail.minY <= point.y, point.y <= rail.maxY {
-            let index = min(letters.count - 1, max(0, Int((point.y - rail.minY) / rail.height * CGFloat(letters.count))))
+        if let index = railSelection.update(point: point, rail: rail, railX: railX(at: point.y), count: letters.count) {
             let letter = letters[index]
             if letter != currentLetter {
                 currentLetter = letter
@@ -798,6 +798,9 @@ private final class PXAppSelectorView: UIView {
             heading.text = letter
             updateLight(at: point.y)
             return
+        }
+        if railSelection.locked, let label = letterLabels.first(where: { $0.text == currentLetter }) {
+            updateLight(at: label.center.y)
         }
         guard scroll.frame.contains(point), hypot(point.x - entryPoint.x, point.y - entryPoint.y) >= 12 else {
             setSelection(nil)

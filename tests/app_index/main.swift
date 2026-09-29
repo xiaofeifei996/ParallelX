@@ -19,3 +19,22 @@ for count in [1, 3, 9, 10, 18, 60, 150] {
     precondition(cell * CGFloat((count + 2) / 3) <= 500.001)
 }
 print("Full grid geometry checks passed")
+
+let selectionRail = CGRect(x: 74, y: 0, width: 52, height: 260)
+var selection = PXAppRailSelection()
+func sample(_ x: CGFloat, _ y: CGFloat) -> Int? {
+    selection.update(point: CGPoint(x: x, y: y), rail: selectionRail, railX: 100, count: 13)
+}
+precondition(sample(100, 30) == 1)
+precondition(sample(100, 42) == 1) // Boundary jitter stays on the current letter.
+precondition(sample(100, 46) == 2)
+precondition(sample(100, 30) == 1)
+precondition(sample(96, 31) == 1)
+precondition(sample(92, 32) == 1)
+precondition(sample(87, 33) == nil && selection.locked) // Gradual leftward departure.
+precondition(sample(80, 10) == nil && selection.index == 1) // Vertical drift cannot change it.
+precondition(sample(88, 30) == nil && selection.locked) // Separate re-entry threshold.
+precondition(sample(94, 30) == 1 && !selection.locked)
+precondition(sample(100, 10) == 0)
+precondition(sample(100, 110) == 5) // Fast vertical indexing still works.
+print("Letter departure lock and hysteresis checks passed")
