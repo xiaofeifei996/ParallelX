@@ -473,6 +473,7 @@ private final class PXPanelViewController: UIViewController {
         selectionPreview.alpha = 0
         pageControl.alpha = 0
         let selector = PXAppSelectorView(frame: view.bounds, point: point)
+        shade.alpha = 0
         appSelector = selector
         view.addSubview(selector)
         selector.alpha = 0
@@ -626,7 +627,7 @@ private final class PXPanelViewController: UIViewController {
 
 private final class PXAppSelectorView: UIView {
     private typealias App = (id: String, name: String)
-    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
     private let scroll = UIScrollView()
     private let heading = UILabel()
     private let hint = UILabel()
@@ -643,6 +644,8 @@ private final class PXAppSelectorView: UIView {
     private let entryPoint: CGPoint
     private var lastPoint = CGPoint.zero
     private var rail = CGRect.zero
+    private var railBaseX: CGFloat = 0
+    private var railBow: CGFloat = 0
     private var laidOutSize = CGSize.zero
     var selectedApp: String? { selected.map { currentApps[$0].id } }
 
@@ -651,11 +654,14 @@ private final class PXAppSelectorView: UIView {
         super.init(frame: frame)
         isUserInteractionEnabled = false // The original handle drag owns this entire interaction.
         lastPoint = point
+        backgroundColor = .clear
+        isOpaque = false
+        blur.alpha = 0.8
         addSubview(blur)
         scroll.isUserInteractionEnabled = false
         scroll.clipsToBounds = true
         addSubview(scroll)
-        heading.font = .systemFont(ofSize: 28, weight: .semibold)
+        heading.font = .systemFont(ofSize: 54, weight: .light)
         heading.textColor = .label
         heading.textAlignment = .center
         addSubview(heading)
@@ -698,7 +704,8 @@ private final class PXAppSelectorView: UIView {
                 self.setNeedsLayout()
                 self.layoutIfNeeded()
                 let point = self.lastPoint
-                self.update(at: CGPoint(x: self.rail.midX, y: min(self.rail.maxY, max(self.rail.minY, point.y))))
+                let indexY = min(self.rail.maxY, max(self.rail.minY, point.y))
+                self.update(at: CGPoint(x: self.railX(at: indexY), y: indexY))
                 self.update(at: point)
             }
         }
@@ -711,17 +718,28 @@ private final class PXAppSelectorView: UIView {
         blur.frame = bounds
         let top = safeAreaInsets.top + 16
         let bottom = bounds.height - safeAreaInsets.bottom - 20
-        rail = CGRect(x: bounds.width - safeAreaInsets.right - 36, y: top,
-                      width: 28, height: max(1, bottom - top))
-        let width = min(300, max(120, rail.minX - safeAreaInsets.left - 40))
-        scroll.frame = CGRect(x: rail.minX - width - 16, y: top + 52,
-                              width: width, height: max(1, bottom - top - 92))
-        heading.frame = CGRect(x: scroll.frame.minX, y: top, width: width, height: 44)
-        hint.frame = CGRect(x: scroll.frame.minX, y: bottom - 36, width: width, height: 36)
+        let available = max(1, bottom - top)
+        railBaseX = bounds.width - safeAreaInsets.right - 22
+        railBow = min(52, bounds.width * 0.12)
+        let railHeight = min(430, available * 0.60)
+        rail = CGRect(x: railBaseX - railBow - 22,
+                      y: top + (available - railHeight) * 0.54,
+                      width: railBow + 44, height: railHeight)
+        let width = min(240, bounds.width * 0.40)
+        let cellWidth = width / 3
+        let iconSize = min(48, max(28, cellWidth / 1.3 - 4))
+        let gridTop = top + available * 0.48 - 12 - iconSize / 2
+        scroll.frame = CGRect(x: railBaseX - railBow - 14 - width, y: gridTop,
+                              width: width, height: max(1, min(bottom - gridTop - 42, (iconSize + 48) * 3)))
+        heading.frame = CGRect(x: safeAreaInsets.left + bounds.width * 0.08,
+                               y: top + available * 0.64 - 40, width: bounds.width * 0.18, height: 80)
+        hint.frame = CGRect(x: 20, y: bottom - 32, width: bounds.width - 40, height: 32)
         for (index, label) in letterLabels.enumerated() {
             let step = rail.height / CGFloat(max(1, letters.count))
-            label.bounds = CGRect(x: 0, y: 0, width: 28, height: step)
-            label.center = CGPoint(x: rail.midX, y: rail.minY + (CGFloat(index) + 0.5) * step)
+            let y = rail.minY + (CGFloat(index) + 0.5) * step
+            label.transform = .identity
+            label.bounds = CGRect(x: 0, y: 0, width: 28, height: max(14, step))
+            label.center = CGPoint(x: railX(at: y), y: y)
         }
         if laidOutSize != bounds.size {
             laidOutSize = bounds.size
@@ -734,20 +752,20 @@ private final class PXAppSelectorView: UIView {
         tiles.forEach { $0.removeFromSuperview() }
         selected = nil
         let cellWidth = scroll.bounds.width / 3
-        let iconSize = min(56, max(30, cellWidth - 18))
-        let rowHeight = iconSize + 40
+        let iconSize = min(48, max(28, cellWidth / 1.3 - 4))
+        let rowHeight = iconSize + 48
         tiles = currentApps.enumerated().map { index, app in
             let tile = UIView(frame: CGRect(x: CGFloat(index % 3) * cellWidth,
                                            y: CGFloat(index / 3) * rowHeight,
                                            width: cellWidth, height: rowHeight))
             tile.layer.cornerRadius = 14
             let icon = UIImageView(image: PXApplicationIconLarge(app.id) ?? UIImage(systemName: "app"))
-            icon.frame = CGRect(x: (cellWidth - iconSize) / 2, y: 6, width: iconSize, height: iconSize)
+            icon.frame = CGRect(x: (cellWidth - iconSize) / 2, y: 12, width: iconSize, height: iconSize)
             icon.contentMode = .scaleAspectFit
             icon.layer.cornerRadius = iconSize * 0.225
             icon.clipsToBounds = true
             tile.addSubview(icon)
-            let title = UILabel(frame: CGRect(x: 3, y: iconSize + 12, width: cellWidth - 6, height: 20))
+            let title = UILabel(frame: CGRect(x: 3, y: iconSize + 24, width: cellWidth - 6, height: 20))
             title.text = app.name
             title.textColor = .label
             title.textAlignment = .center
@@ -766,7 +784,7 @@ private final class PXAppSelectorView: UIView {
         let previous = lastPoint
         lastPoint = point
         guard !letters.isEmpty else { return }
-        if point.x >= rail.minX - 14, point.x <= bounds.maxX, rail.minY <= point.y, point.y <= rail.maxY {
+        if abs(point.x - railX(at: point.y)) <= 26, rail.minY <= point.y, point.y <= rail.maxY {
             let index = min(letters.count - 1, max(0, Int((point.y - rail.minY) / rail.height * CGFloat(letters.count))))
             let letter = letters[index]
             if letter != currentLetter {
@@ -803,34 +821,38 @@ private final class PXAppSelectorView: UIView {
         selected = next
         feedback.selectionChanged()
         feedback.prepare()
-        heading.text = next.map { currentApps[$0].name } ?? currentLetter
-        heading.adjustsFontSizeToFitWidth = true
-        heading.minimumScaleFactor = 0.45
-        PXMotion.ease(0.12) {
+        heading.text = currentLetter
+        PXMotion.spring(0.20) {
             for (index, tile) in self.tiles.enumerated() {
                 tile.backgroundColor = index == next ? UIColor.systemBlue.withAlphaComponent(0.15) : .clear
-                tile.subviews.first?.transform = index == next ? CGAffineTransform(scaleX: 1.12, y: 1.12) : .identity
+                tile.subviews.first?.transform = index == next ? CGAffineTransform(scaleX: 1.3, y: 1.3) : .identity
             }
         }
     }
 
+    private func railX(at y: CGFloat) -> CGFloat {
+        PXAppRailX(base: railBaseX, bow: railBow, progress: (y - rail.minY) / max(1, rail.height))
+    }
+
     private func updateLight(at y: CGFloat) {
         let y = min(rail.maxY, max(rail.minY, y))
-        let radius = min(80, rail.height / 4)
+        let radius = min(70, rail.height / 4)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        glow.frame = CGRect(x: rail.midX - 35, y: y - radius, width: 40, height: radius * 2)
+        glow.frame = CGRect(x: rail.minX, y: y - radius, width: rail.width, height: radius * 2)
         let path = UIBezierPath()
-        path.move(to: CGPoint(x: 35, y: 0))
-        path.addQuadCurve(to: CGPoint(x: 35, y: radius * 2), controlPoint: CGPoint(x: -20, y: radius))
+        for step in 0...24 {
+            let sampleY = min(rail.maxY, max(rail.minY, y - radius + CGFloat(step) * radius * 2 / 24))
+            let point = CGPoint(x: railX(at: sampleY) - glow.frame.minX, y: sampleY - glow.frame.minY)
+            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
         glowMask.frame = glow.bounds
         glowMask.path = path.cgPath
         glow.isHidden = letters.isEmpty || UIAccessibility.isReduceMotionEnabled
         CATransaction.commit()
         for label in letterLabels {
             let amount = max(0, 1 - abs(label.center.y - y) / max(1, radius))
-            label.transform = CGAffineTransform(translationX: -26 * amount * amount, y: 0)
-                .scaledBy(x: 1 + 0.6 * amount, y: 1 + 0.6 * amount)
+            label.transform = CGAffineTransform(scaleX: 1 + 0.5 * amount, y: 1 + 0.5 * amount)
             label.textColor = amount > 0.6 ? .systemBlue : .secondaryLabel
         }
     }
