@@ -167,7 +167,7 @@ assert 'root.view.addSubview(corner)' in panel
 assert 'root.view.addSubview(moveGrip)' in panel
 assert 'window.frame = scene.coordinateSpace.bounds' in panel
 assert 'window.isUserInteractionEnabled = false' in panel
-assert 'hostMoveGrip?.frame = PXBottomGestureFrame' in panel
+assert 'hostMoveGrip?.frame = CGRect' in panel
 assert 'hostTopGrip?.frame = CGRect' in panel and 'hostTopGrip = dock.topGrip' in panel
 assert 'gestureWidth' in panel and 'gestureHeight' in panel and 'gestureOffset' in panel
 assert 'gestureDebug' in panel and 'moveLine' not in panel
@@ -667,18 +667,8 @@ for landscape in (False, True):
     if landscape:
         assert zoom == 1.6
 
-# Only the verified Home pan yields touches owned by the visible landscape bottom region.
-fluid_probe = tweak.split('static BOOL PXFluidReceiveTouch(', 1)[1].split('static void PXSetStyleMode', 1)[0]
-assert 'BOOL accepted = PXOriginalFluidReceiveTouch(manager, selector, recognizer, touch);' in fluid_probe
-assert 'accepted && homePan && [recognizer isKindOfClass:homePan]' in fluid_probe
-assert 'ownsLandscapeBottomTouch:' in fluid_probe and 'return accepted;' in fluid_probe
-ownership = panel.split('func ownsLandscapeBottomTouch(', 1)[1].split('@objc public static func traceSystemTouch', 1)[0]
-for scope in ('touch.phase == .began', '!window.isHidden', 'window.isUserInteractionEnabled',
-              'root.bounds.width > root.bounds.height', '!grip.isHidden',
-              '!entry.deviceLocked', '!entry.coverSheetVisible', 'entry.panelWindow == nil',
-              'entry.searchWindow == nil', '!entry.fullscreenToWindowInProgress',
-              '!entry.fullscreenLaunchInProgress', '!entry.activeBridge.isHostedKeyboardVisible()'):
-    assert scope in ownership
-assert 'grip.point(inside: touch.location(in: grip), with: nil)' in ownership
-assert 'window.convert(point, from: nil)' not in ownership
-assert 'PXOriginalSystemGestureTouch' not in tweak and 'PXTraceGestureMethods' not in tweak
+# Landscape docking uses alpha116's card-relative region, without taking over Home gestures.
+assert 'PXBottomGestureFrame' not in panel
+assert 'PXBottomGestureView' not in panel
+assert 'PXOriginalFluidReceiveTouch' not in tweak
+assert 'traceGesture' not in panel and 'traceGesture' not in tweak and 'traceGesture' not in bridge

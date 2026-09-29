@@ -21,30 +21,6 @@ static id (*PXOriginalFluidAnimationInit)(id, SEL, id, id, id);
 static char PXHomeHandoffRequestKey;
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
 static CFAbsoluteTime PXAppearanceChangeUntil;
-static BOOL (*PXOriginalFluidReceiveTouch)(id, SEL, id, id);
-
-static BOOL PXFluidReceiveTouch(id manager, SEL selector, id recognizer, id touch)
-{
-    BOOL accepted = PXOriginalFluidReceiveTouch(manager, selector, recognizer, touch);
-    Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL visible = NSSelectorFromString(@"hasVisibleHost");
-    if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible) &&
-        [touch isKindOfClass:UITouch.class] && [recognizer isKindOfClass:UIGestureRecognizer.class]) {
-        UITouch *input = touch;
-        BOOL original = accepted;
-        Class homePan = NSClassFromString(@"SBFluidSwitcherPanGestureRecognizer");
-        SEL ownsTouch = NSSelectorFromString(@"ownsLandscapeBottomTouch:");
-        if (accepted && homePan && [recognizer isKindOfClass:homePan] &&
-            [entry respondsToSelector:ownsTouch] &&
-            ((BOOL (*)(id, SEL, UITouch *))objc_msgSend)(entry, ownsTouch, input))
-            accepted = NO;
-        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"ROUTE manager=%@ recognizer=%@ original=%d accepted=%d phase=%ld raw=%@ view=%@ window=%@", NSStringFromClass([manager class]), NSStringFromClass([recognizer class]), original, accepted, (long)input.phase, NSStringFromCGPoint([input locationInView:nil]), NSStringFromClass(input.view.class), NSStringFromClass(input.window.class)]];
-        SEL trace = NSSelectorFromString(@"traceSystemTouch:accepted:");
-        if ([entry respondsToSelector:trace])
-            ((void (*)(id, SEL, UITouch *, BOOL))objc_msgSend)(entry, trace, input, accepted);
-    }
-    return accepted;
-}
 
 static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
 {
@@ -414,9 +390,6 @@ static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application
     PXOriginalFrontDisplayDidChange(springBoard, selector, application);
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL changed = NSSelectorFromString(@"frontDisplayChanged:");
-    SEL visible = NSSelectorFromString(@"hasVisibleHost");
-    if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible))
-        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"FRONT app=%@ orientation=%ld", bundleID ?: @"Home", (long)[PXSceneBridge systemOrientation]]];
     if ([entry respondsToSelector:changed])
         ((void (*)(id, SEL, id))objc_msgSend)(entry, changed, bundleID);
 }
@@ -426,10 +399,6 @@ static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation
 {
     PXOriginalOrientationChanged(manager, selector, orientation, duration, mirrored, force, message);
     [PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation];
-    Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL visible = NSSelectorFromString(@"hasVisibleHost");
-    if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible))
-        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"ROTATE orientation=%ld", (long)orientation]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
     });
@@ -520,21 +489,6 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
                             (IMP *)&PXOriginalActivateApplication);
         Class springBoard = NSClassFromString(@"SpringBoard");
-        Class fluidGestures = NSClassFromString(@"SBFluidSwitcherGestureManager");
-        SEL fluidReceive = NSSelectorFromString(@"gestureRecognizer:shouldReceiveTouch:");
-        Method fluidTouch = class_getInstanceMethod(fluidGestures, fluidReceive);
-        char fluidResult[16] = {0}, fluidArg1[16] = {0}, fluidArg2[16] = {0};
-        if (fluidTouch) {
-            method_getReturnType(fluidTouch, fluidResult, sizeof(fluidResult));
-            method_getArgumentType(fluidTouch, 2, fluidArg1, sizeof(fluidArg1));
-            method_getArgumentType(fluidTouch, 3, fluidArg2, sizeof(fluidArg2));
-        }
-        if (fluidTouch && method_getNumberOfArguments(fluidTouch) == 4 &&
-            (fluidResult[0] == 'B' || fluidResult[0] == 'c') && fluidArg1[0] == '@' && fluidArg2[0] == '@') {
-            MSHookMessageEx(fluidGestures, fluidReceive, (IMP)PXFluidReceiveTouch,
-                            (IMP *)&PXOriginalFluidReceiveTouch);
-            [PXSceneBridge traceGesture:@"PROBE alpha120 fluid-touch hook=installed scoped-landscape"];
-        } else { [PXSceneBridge traceGesture:@"PROBE alpha120 fluid-touch hook=unavailable"]; }
         SEL orientation = NSSelectorFromString(@"noteInterfaceOrientationChanged:duration:updateMirroredDisplays:force:logMessage:");
         Method rotation = class_getInstanceMethod(springBoard, orientation);
         if (rotation && method_getNumberOfArguments(rotation) == 7)

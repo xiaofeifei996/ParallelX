@@ -2,7 +2,6 @@
 
 NS_ASSUME_NONNULL_BEGIN
 @interface PXSceneBridge : NSObject
-+ (void)traceGesture:(NSString *)message NS_SWIFT_NAME(traceGesture(_:));
 + (BOOL)consumeHomeHandoffForBundleID:(NSString *)bundleID;
 + (BOOL)consumeHomeHandoffForCurrentApplication;
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation;
