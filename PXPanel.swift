@@ -82,9 +82,7 @@ private func panelPreviewIcon(_ id: String) -> UIImage? {
 private final class PXHandleWindow: PXOverlayWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
-        if event?.allTouches?.contains(where: { $0.phase == .began }) == true {
-            PXPanelEntry.traceOverlayTouch(point, window: self, hit: result)
-        }
+        PXPanelEntry.traceOverlayTouch(point, window: self, hit: result)
         return result === self || result === rootViewController?.view ? nil : result
     }
 }
@@ -1059,10 +1057,16 @@ public final class PXPanelEntry: NSObject {
 
     private var lastGestureProbeTime: CFTimeInterval = 0
     private var lastSystemProbeTime: CFTimeInterval = 0
+    private var lastHitProbeTime: CFTimeInterval = 0
 
     static func traceOverlayTouch(_ point: CGPoint, window: UIWindow, hit: UIView?) {
         guard shared.hostWindow === window else { return }
-        PXSceneBridge.traceGesture("HIT point=\(point) hit=\(hit.map { NSStringFromClass(type(of: $0)) } ?? "nil") root=\(window.rootViewController?.view.bounds ?? .zero)")
+        let now = CACurrentMediaTime()
+        guard now - shared.lastHitProbeTime > 0.08 else { return }
+        shared.lastHitProbeTime = now
+        let grip = shared.hostMoveGrip
+        let gripHit = grip.map { $0.point(inside: $0.convert(point, from: window), with: nil) } ?? false
+        PXSceneBridge.traceGesture("HIT point=\(point) hit=\(hit.map { NSStringFromClass(type(of: $0)) } ?? "nil") root=\(window.rootViewController?.view.bounds ?? .zero) gripHit=\(gripHit) grip=\(grip?.frame ?? .zero) enabled=\(window.isUserInteractionEnabled) orientation=\(PXSceneBridge.systemOrientation().rawValue)")
     }
 
     @objc public static func traceSystemTouch(_ point: CGPoint, accepted: Bool) {

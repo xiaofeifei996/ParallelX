@@ -22,6 +22,44 @@ static char PXHomeHandoffRequestKey;
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
 static CFAbsoluteTime PXAppearanceChangeUntil;
 static BOOL (*PXOriginalSystemGestureTouch)(id, SEL, CGPoint);
+static BOOL (*PXOriginalFluidReceiveTouch)(id, SEL, id, id);
+
+static BOOL PXFluidReceiveTouch(id manager, SEL selector, id recognizer, id touch)
+{
+    BOOL accepted = PXOriginalFluidReceiveTouch(manager, selector, recognizer, touch);
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL visible = NSSelectorFromString(@"hasVisibleHost");
+    if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible) &&
+        [touch isKindOfClass:UITouch.class] && [recognizer isKindOfClass:UIGestureRecognizer.class]) {
+        UITouch *input = touch;
+        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"ROUTE manager=%@ recognizer=%@ accepted=%d phase=%ld raw=%@ windowPoint=%@ view=%@ window=%@", NSStringFromClass([manager class]), NSStringFromClass([recognizer class]), accepted, (long)input.phase, NSStringFromCGPoint([input locationInView:nil]), NSStringFromCGPoint([input locationInView:input.window]), NSStringFromClass(input.view.class), NSStringFromClass(input.window.class)]];
+        SEL trace = NSSelectorFromString(@"traceSystemTouch:accepted:");
+        if ([entry respondsToSelector:trace])
+            ((void (*)(id, SEL, CGPoint, BOOL))objc_msgSend)(entry, trace, [input locationInView:nil], accepted);
+    }
+    return accepted;
+}
+
+static void PXTraceGestureMethods(void)
+{
+    for (NSString *name in @[@"SBSystemGestureManager", @"SBFluidSwitcherGestureManager", @"SBGrabberTongue"]) {
+        Class cls = NSClassFromString(name);
+        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"METHODS class=%@ exists=%d", name, cls != Nil]];
+        NSUInteger recorded = 0;
+        for (Class current = cls; current && current != NSObject.class && recorded < 40; current = class_getSuperclass(current)) {
+            unsigned int count = 0;
+            Method *methods = class_copyMethodList(current, &count);
+            for (unsigned int index = 0; index < count && recorded < 40; index++) {
+                NSString *method = NSStringFromSelector(method_getName(methods[index]));
+                NSString *lower = method.lowercaseString;
+                if (![lower containsString:@"gesture"] && ![lower containsString:@"touch"] && ![lower containsString:@"pulling"]) continue;
+                [PXSceneBridge traceGesture:[NSString stringWithFormat:@"METHOD class=%@ owner=%@ selector=%@ types=%s", name, NSStringFromClass(current), method, method_getTypeEncoding(methods[index])]];
+                recorded++;
+            }
+            free(methods);
+        }
+    }
+}
 
 static BOOL PXSystemGestureTouch(id manager, SEL selector, CGPoint location)
 {
@@ -507,6 +545,7 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
                             (IMP *)&PXOriginalActivateApplication);
         Class springBoard = NSClassFromString(@"SpringBoard");
+        PXTraceGestureMethods();
         Class gestures = NSClassFromString(@"SBSystemGestureManager");
         SEL receiveTouch = NSSelectorFromString(@"shouldSystemGestureReceiveTouchWithLocation:");
         Method receive = class_getInstanceMethod(gestures, receiveTouch);
@@ -520,8 +559,25 @@ __attribute__((constructor)) static void PXInitialize(void)
             strcmp(receiveArgument, @encode(CGPoint)) == 0) {
             MSHookMessageEx(gestures, receiveTouch, (IMP)PXSystemGestureTouch,
                             (IMP *)&PXOriginalSystemGestureTouch);
-            [PXSceneBridge traceGesture:@"PROBE alpha118 system-touch hook=installed observe-only"];
-        } else { [PXSceneBridge traceGesture:@"PROBE alpha118 system-touch hook=unavailable"]; }
+            [PXSceneBridge traceGesture:@"PROBE alpha119 system-touch hook=installed observe-only"];
+        } else {
+            [PXSceneBridge traceGesture:[NSString stringWithFormat:@"PROBE alpha119 system-touch hook=unavailable class=%d method=%d result=%s argument=%s", gestures != Nil, receive != NULL, receiveResult, receiveArgument]];
+        }
+        Class fluidGestures = NSClassFromString(@"SBFluidSwitcherGestureManager");
+        SEL fluidReceive = NSSelectorFromString(@"gestureRecognizer:shouldReceiveTouch:");
+        Method fluidTouch = class_getInstanceMethod(fluidGestures, fluidReceive);
+        char fluidResult[16] = {0}, fluidArg1[16] = {0}, fluidArg2[16] = {0};
+        if (fluidTouch) {
+            method_getReturnType(fluidTouch, fluidResult, sizeof(fluidResult));
+            method_getArgumentType(fluidTouch, 2, fluidArg1, sizeof(fluidArg1));
+            method_getArgumentType(fluidTouch, 3, fluidArg2, sizeof(fluidArg2));
+        }
+        if (fluidTouch && method_getNumberOfArguments(fluidTouch) == 4 &&
+            (fluidResult[0] == 'B' || fluidResult[0] == 'c') && fluidArg1[0] == '@' && fluidArg2[0] == '@') {
+            MSHookMessageEx(fluidGestures, fluidReceive, (IMP)PXFluidReceiveTouch,
+                            (IMP *)&PXOriginalFluidReceiveTouch);
+            [PXSceneBridge traceGesture:@"PROBE alpha119 fluid-touch hook=installed observe-only"];
+        } else { [PXSceneBridge traceGesture:@"PROBE alpha119 fluid-touch hook=unavailable"]; }
         SEL orientation = NSSelectorFromString(@"noteInterfaceOrientationChanged:duration:updateMirroredDisplays:force:logMessage:");
         Method rotation = class_getInstanceMethod(springBoard, orientation);
         if (rotation && method_getNumberOfArguments(rotation) == 7)

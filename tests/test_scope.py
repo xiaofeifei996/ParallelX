@@ -672,3 +672,6 @@ gesture_probe = tweak.split('static BOOL PXSystemGestureTouch(', 1)[1].split('st
 assert 'BOOL accepted = PXOriginalSystemGestureTouch(manager, selector, location);' in gesture_probe
 assert 'return accepted;' in gesture_probe and 'return NO;' not in gesture_probe
 assert 'ownsLandscapeBottomTouch' not in panel
+fluid_probe = tweak.split('static BOOL PXFluidReceiveTouch(', 1)[1].split('static void PXTraceGestureMethods', 1)[0]
+assert 'BOOL accepted = PXOriginalFluidReceiveTouch(manager, selector, recognizer, touch);' in fluid_probe
+assert 'return accepted;' in fluid_probe and 'return NO;' not in fluid_probe
