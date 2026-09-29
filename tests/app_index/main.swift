@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 for (name, expected) in [("微信", "W"), ("支付宝", "Z"), ("百度网盘", "B"),
                          ("YouTube", "Y"), ("  safari", "S"), ("Éclair", "E"),

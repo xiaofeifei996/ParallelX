@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 func PXAppRailX(base: CGFloat, bow: CGFloat, progress: CGFloat) -> CGFloat {
     base - bow * CGFloat(sin(Double(min(1, max(0, progress))) * Double.pi))
