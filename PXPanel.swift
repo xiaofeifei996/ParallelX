@@ -2054,7 +2054,7 @@ public final class PXPanelEntry: NSObject {
             title.isHidden = source.width <= 0 || source.height <= source.width ||
                 card.bounds.width < 64 || card.bounds.height < 48
             let titleWidth = min(160, card.bounds.width - 32, name.intrinsicContentSize.width + 35)
-            title.frame = CGRect(x: (card.bounds.width - titleWidth) / 2, y: 8, width: max(0, titleWidth), height: 24)
+            title.frame = CGRect(x: (card.bounds.width - titleWidth) / 2, y: 3, width: max(0, titleWidth), height: 24)
             name.frame = CGRect(x: 28, y: 0, width: max(0, titleWidth - 35), height: 24)
             title.superview?.bringSubviewToFront(title)
         }
