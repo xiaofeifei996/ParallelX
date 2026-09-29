@@ -1090,6 +1090,35 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     } @catch (__unused NSException *exception) { return NO; }
 }
 
+- (BOOL)layoutExternalKeyboardView:(UIView *)view
+{
+    CGSize screen = self.keyboardOverlay.bounds.size;
+    CGSize keyboard = view.bounds.size;
+    if (screen.width <= 0 || screen.height <= 0 || keyboard.height <= 0) return NO;
+    CGRect previous = self.keyboardSlot.frame;
+    if (screen.width > screen.height) {
+        // Scale the whole keyboard, including its hit area; clipping the portrait-height host hides its top rows.
+        CGFloat naturalWidth = self.sourceSize.width > 0 ? MIN(keyboard.width, self.sourceSize.width) : keyboard.width;
+        if (naturalWidth <= 0) return NO;
+        CGFloat scale = MIN(1, MIN(MAX(1, screen.height - 12) / keyboard.height, screen.width / naturalWidth));
+        CGFloat width = naturalWidth * scale, height = keyboard.height * scale;
+        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.moxuan.parallelx"];
+        CGFloat fraction = MIN(100, MAX(0, [defaults doubleForKey:@"externalKeyboardHorizontalPercent"])) / 100;
+        CGFloat x = (screen.width - width) * fraction;
+        self.keyboardSlot.transform = CGAffineTransformIdentity;
+        self.keyboardSlot.bounds = CGRectMake(0, 0, naturalWidth, keyboard.height);
+        view.frame = self.keyboardSlot.bounds;
+        self.keyboardSlot.transform = CGAffineTransformMakeScale(scale, scale);
+        self.keyboardSlot.center = CGPointMake(x + width / 2, screen.height - height / 2);
+    } else {
+        CGFloat height = MIN(keyboard.height, screen.height * 0.55);
+        self.keyboardSlot.transform = CGAffineTransformIdentity;
+        self.keyboardSlot.frame = CGRectMake(0, screen.height - height, screen.width, height);
+        view.frame = CGRectMake(0, height - keyboard.height, screen.width, keyboard.height);
+    }
+    return !CGRectEqualToRect(previous, self.keyboardSlot.frame);
+}
+
 - (void)relocateKeyboardView:(UIView *)view
 {
     if (self.relocatingKeyboard) return;
@@ -1118,16 +1147,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
             [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
         }
         else {
-            CGSize screen = self.keyboardOverlay.bounds.size;
-            CGFloat height = MIN(view.bounds.size.height, screen.height * 0.55);
-            if (height <= 0 || screen.width <= 0) return;
-            CGRect slotFrame = CGRectMake(0, screen.height - height, screen.width, height);
             self.relocatingKeyboard = YES;
-            BOOL changed = !CGRectEqualToRect(self.keyboardSlot.frame, slotFrame);
-            if (changed) self.keyboardSlot.frame = slotFrame;
-            CGRect keyboardFrame = CGRectMake(0, height - view.bounds.size.height,
-                                               screen.width, view.bounds.size.height);
-            if (!CGRectEqualToRect(view.frame, keyboardFrame)) view.frame = keyboardFrame;
+            BOOL changed = [self layoutExternalKeyboardView:view];
             self.relocatingKeyboard = NO;
             if (changed) [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];
             [self publishKeyboardVisibility];
@@ -1145,22 +1166,20 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     self.relocatingKeyboard = YES;
     if (!self.keyboardSlot) self.keyboardWindowLevel = overlay.window.windowLevel;
     overlay.window.windowLevel = MAX(overlay.window.windowLevel, self.canvas.window.windowLevel + 1);
-    CGFloat height = MIN(sourceHeight, screen.height * 0.55);
     UIView *previousSlot = self.keyboardSlot;
     self.keyboardHostView = nil;
     self.keyboardSlot = nil;
     previousSlot.userInteractionEnabled = NO;
     [previousSlot removeFromSuperview];
-    UIView *slot = [[PXKeyboardSlot alloc] initWithFrame:CGRectMake(0, screen.height - height,
-                                                            screen.width, height)];
+    UIView *slot = [[PXKeyboardSlot alloc] initWithFrame:CGRectZero];
     slot.backgroundColor = UIColor.clearColor;
     slot.opaque = NO;
     slot.clipsToBounds = YES;
     [overlay insertSubview:slot atIndex:0];
     [slot addSubview:view];
-    view.frame = CGRectMake(0, height - sourceHeight, screen.width, sourceHeight);
     self.keyboardSlot = slot;
     self.keyboardHostView = view;
+    [self layoutExternalKeyboardView:view];
     self.relocatingKeyboard = NO;
     [self publishKeyboardVisibility];
     [NSNotificationCenter.defaultCenter postNotificationName:@"PXKeyboardStateChanged" object:self];

@@ -232,6 +232,19 @@ assert 'relocateKeyboardView:(UIView *)view' in bridge
 assert 'self.keyboardOverlay = keyboardOverlay' in bridge
 assert 'slot.opaque = NO' in bridge
 assert 'screen.height * 0.55' in bridge and 'screen.height * 0.4' not in bridge
+keyboard_layout = bridge.split('- (BOOL)layoutExternalKeyboardView:(UIView *)view', 1)[1].split('- (void)relocateKeyboardView:', 1)[0]
+assert 'screen.width > screen.height' in keyboard_layout
+assert 'MAX(1, screen.height - 12) / keyboard.height' in keyboard_layout
+assert 'self.keyboardSlot.transform = CGAffineTransformMakeScale(scale, scale)' in keyboard_layout
+assert 'externalKeyboardHorizontalPercent' in keyboard_layout
+assert 'screen.height * 0.55' in keyboard_layout.split('} else {', 1)[1]
+assert 'key = "externalKeyboardHorizontalPercent"; default = 0; min = 0; max = 100;' in (root / 'prefs/Resources/Root.plist').read_text(encoding='utf-8')
+for screen, keyboard in (((926, 428), (428, 600)), ((926, 428), (428, 360))):
+    scale = min(1, (screen[1] - 12) / keyboard[1], screen[0] / keyboard[0])
+    width, height = keyboard[0] * scale, keyboard[1] * scale
+    for position in (0, .5, 1):
+        x = (screen[0] - width) * position
+        assert 0 <= x and x + width <= screen[0] and height <= screen[1] - 12
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 assert 'if (self.scene && [self.bundleID isEqualToString:bundleID])' in bridge
