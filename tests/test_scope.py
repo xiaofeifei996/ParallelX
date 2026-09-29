@@ -428,18 +428,17 @@ transition = external.split('static BOOL PXExecuteTransition', 1)[1].split('stat
 assert 'return YES;' not in transition
 assert 'PXOriginalExecuteTransition(workspace, selector, request)' in transition
 assert 'PXPendingURLTransition' not in external
+assert 'NSSelectorFromString(@"setBackground:")' in transition
+assert 'objc_msgSend)(context, background, YES)' in transition
+assert transition.index('objc_msgSend)(context, background, YES)') < transition.index('PXOriginalExecuteTransition(workspace, selector, request)')
+assert 'PXPendingURLBackgroundUntil = urlRoute ? PXRecentExternalTime + 2 : 0' in external
 assert 'self.updateCardShadow(dock.card)' in panel
 assert 'card.layer.shadowOpacity = 0\n        card.viewWithTag(0x505847)' not in panel
 assert 'onProgress?(self.progress)' in panel
 assert 'controller.onProgress = { [weak self] in self?.setHandlePanelProgress($0) }' in panel
 assert 'self.onProgress?(0)' in panel
-assert 'max(panelDragProgress, min(1' not in panel
-assert 'panel?.retract(to: panelDragProgress)' in panel
-assert 'if !panelRetracting, panelDragProgress >= 0.8' in panel
-progress = 1.0
-for delta in (-12, -24, -84):
-    progress = min(1, max(0, progress + delta / 120))
-assert progress == 0
+assert 'panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))' in panel
+assert 'panelRetracting' not in panel and 'func retract(' not in panel
 assert 'func completeOpening()' in panel
 assert 'withRenderingMode(.alwaysOriginal)' in panel
 
@@ -618,7 +617,10 @@ assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, 
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .alert + 51' in panel
 assert 'handle?.isHidden = deviceLocked' in panel
-assert 'handleWindow?.windowLevel = coverSheetVisible ? .normal : .alert + 51' in panel
+assert 'coverSheetWindowLevel ?? .alert + 51' in panel
+assert 'UIWindow.Level(rawValue: CGFloat(level) - 0.5)' in panel
+assert 'coverSheetVisible ? .normal' not in panel
+assert 'PXUpdateCoverSheetWindowLevel(controller)' in tweak
 assert 'shared.coverSheetVisible = visible' in panel
 assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak

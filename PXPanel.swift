@@ -276,17 +276,6 @@ private final class PXPanelViewController: UIViewController {
         PXMotion.spring(0.23) { self.setProgress(1) }
     }
 
-    func retract(to progress: CGFloat) {
-        opening = false
-        cancelSelectionFeedback()
-        selectedIndex = nil
-        selectedSince = nil
-        for view in [shade, pageControl, selectionPreview] + buttons {
-            view.layer.removeAllAnimations()
-        }
-        setProgress(progress)
-    }
-
     private func layoutPage() {
         cancelSelectionFeedback()
         selectedIndex = nil
@@ -782,9 +771,8 @@ public final class PXPanelEntry: NSObject {
     private var needsHostRefresh = false
     private var deviceLocked = false
     private var coverSheetVisible = false
+    private var coverSheetWindowLevel: UIWindow.Level?
     private var panelDragProgress: CGFloat = 0
-    private var panelLastDragDistance: CGFloat = 0
-    private var panelRetracting = false
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
     private var handleDragStartY: CGFloat = 0
     private var brightnessStart: (y: CGFloat, value: CGFloat)?
@@ -1175,13 +1163,13 @@ public final class PXPanelEntry: NSObject {
 
     private func setHandlePanelProgress(_ progress: CGFloat) {
         guard let pill = handle else { return }
-        pill.layer.removeAllAnimations()
         pill.transform = CGAffineTransform(translationX: (pill.bounds.width + 8) * min(1, max(0, progress)), y: 0)
     }
 
     private func updateHandleVisibility() {
         handle?.isHidden = deviceLocked
-        handleWindow?.windowLevel = coverSheetVisible ? .normal : .alert + 51
+        handleWindow?.windowLevel = coverSheetVisible
+            ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
     }
 
     @objc public static func setCoverSheetVisible(_ visible: Bool) {
@@ -1189,6 +1177,11 @@ public final class PXPanelEntry: NSObject {
         shared.coverSheetVisible = visible
         shared.updateHandleVisibility()
         if visible { shared.hidePanel() }
+    }
+
+    @objc public static func setCoverSheetWindowLevel(_ level: Double) {
+        shared.coverSheetWindowLevel = UIWindow.Level(rawValue: CGFloat(level) - 0.5)
+        shared.updateHandleVisibility()
     }
 
     private var handlePositionKey: String {
@@ -1257,8 +1250,6 @@ public final class PXPanelEntry: NSObject {
         switch gesture.state {
         case .began:
             panelDragProgress = 0
-            panelLastDragDistance = 0
-            panelRetracting = false
             brightnessStart = nil
             handleDragMode = 0
             handleDragStartY = pill.center.y
@@ -1286,17 +1277,8 @@ public final class PXPanelEntry: NSObject {
                 return
             }
             let prior = panelDragProgress
-            let delta = distance - panelLastDragDistance
-            panelLastDragDistance = distance
-            if delta < -1 { panelRetracting = true }
-            else if delta > 1 { panelRetracting = false }
-            panelDragProgress = min(1, max(0, panelDragProgress + delta / threshold))
-            if panelRetracting {
-                panel?.retract(to: panelDragProgress)
-                return
-            }
+            panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))
             if prior < 0.8 && panelDragProgress >= 0.8 {
-                panelDragProgress = 1
                 panel?.completeOpening()
             } else if panelDragProgress < 0.8 {
                 panel?.setProgress(panelDragProgress)
@@ -1325,7 +1307,7 @@ public final class PXPanelEntry: NSObject {
                 handleDragMode = 0
                 return
             }
-            if !panelRetracting, panelDragProgress >= 0.8,
+            if panelDragProgress >= 0.8,
                let controller = panel,
                let bundleID = controller.updateSelection(at: gesture.location(in: controller.view)) {
                 let fullscreen = controller.selectedDuration >= controller.holdDuration
