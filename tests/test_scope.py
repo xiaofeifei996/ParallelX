@@ -234,17 +234,23 @@ assert 'slot.opaque = NO' in bridge
 assert 'screen.height * 0.55' in bridge and 'screen.height * 0.4' not in bridge
 keyboard_layout = bridge.split('- (BOOL)layoutExternalKeyboardView:(UIView *)view', 1)[1].split('- (void)relocateKeyboardView:', 1)[0]
 assert 'screen.width > screen.height' in keyboard_layout
-assert 'MAX(1, screen.height - 12) / keyboard.height' in keyboard_layout
-assert 'self.keyboardSlot.transform = CGAffineTransformMakeScale(scale, scale)' in keyboard_layout
+assert 'self.keyboardSlot.transform = CGAffineTransformMakeScale' not in keyboard_layout
+assert 'self.keyboardSlot.frame = CGRectMake(x, screen.height - height, width, height)' in keyboard_layout
+assert 'view.frame = CGRectMake(0, height - keyboard.height, width, keyboard.height)' in keyboard_layout
+assert 'CGFloat height = MIN(keyboard.height, screen.height)' in keyboard_layout
 assert 'externalKeyboardHorizontalPercent' in keyboard_layout
 assert 'screen.height * 0.55' in keyboard_layout.split('} else {', 1)[1]
 assert 'key = "externalKeyboardHorizontalPercent"; default = 0; min = 0; max = 100;' in (root / 'prefs/Resources/Root.plist').read_text(encoding='utf-8')
+preferences_page = (root / 'prefs/PXRootListController.m').read_text(encoding='utf-8')
+assert 'BOOL horizontal = [[specifier propertyForKey:@"key"] isEqual:@"externalKeyboardHorizontalPercent"]' in preferences_page
+assert 'horizontal ? @"横屏外置键盘位置" : @"键盘关闭遮罩深度"' in preferences_page
+assert 'int maximum = horizontal ? 100 : 60' in preferences_page
+assert '[weakSelf setPreferenceValue:@(control.value / multiplier) specifier:specifier]' in preferences_page
 for screen, keyboard in (((926, 428), (428, 600)), ((926, 428), (428, 360))):
-    scale = min(1, (screen[1] - 12) / keyboard[1], screen[0] / keyboard[0])
-    width, height = keyboard[0] * scale, keyboard[1] * scale
+    width, height = min(keyboard[0], screen[0]), min(keyboard[1], screen[1])
     for position in (0, .5, 1):
         x = (screen[0] - width) * position
-        assert 0 <= x and x + width <= screen[0] and height <= screen[1] - 12
+        assert 0 <= x and x + width <= screen[0] and height <= screen[1]
 assert 'Class keyboard = NSClassFromString(@"_UIKeyboardLayerHostView")' in (root / "Tweak.m").read_text(encoding="utf-8")
 assert "openFullscreenApplication:" in (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 assert 'if (self.scene && [self.bundleID isEqualToString:bundleID])' in bridge
@@ -557,8 +563,8 @@ assert 'if (self.contentController || !self.specifier) return;' in prefs_host
 for name in ('CornerRadius', 'Dock', 'GestureArea'):
     page = (root / 'prefs' / f'PX{name}Controller.swift').read_text(encoding='utf-8')
     assert 'inputButtons' in page and 'PXSettingsStyle.inputButton' in page
-assert '键盘关闭遮罩深度：%.0f%%' in prefs_host
-assert 'setPreferenceValue:@(control.value / 100) specifier:specifier' in prefs_host
+assert 'label.text = [NSString stringWithFormat:@"%@：%.0f%%", title, control.value]' in prefs_host
+assert 'CGFloat multiplier = horizontal ? 1 : 100' in prefs_host
 assert 'PXScreenGeometryChanged' in panel and 'PXHostedGeometryChanged' in bridge
 assert 'handleCenterLandscapeFraction' in panel
 assert 'sourceOrientation = orientation' in bridge

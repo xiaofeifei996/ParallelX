@@ -1097,19 +1097,16 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (screen.width <= 0 || screen.height <= 0 || keyboard.height <= 0) return NO;
     CGRect previous = self.keyboardSlot.frame;
     if (screen.width > screen.height) {
-        // Scale the whole keyboard, including its hit area; clipping the portrait-height host hides its top rows.
         CGFloat naturalWidth = self.sourceSize.width > 0 ? MIN(keyboard.width, self.sourceSize.width) : keyboard.width;
         if (naturalWidth <= 0) return NO;
-        CGFloat scale = MIN(1, MIN(MAX(1, screen.height - 12) / keyboard.height, screen.width / naturalWidth));
-        CGFloat width = naturalWidth * scale, height = keyboard.height * scale;
+        CGFloat width = MIN(naturalWidth, screen.width);
+        CGFloat height = MIN(keyboard.height, screen.height);
         NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.moxuan.parallelx"];
         CGFloat fraction = MIN(100, MAX(0, [defaults doubleForKey:@"externalKeyboardHorizontalPercent"])) / 100;
         CGFloat x = (screen.width - width) * fraction;
         self.keyboardSlot.transform = CGAffineTransformIdentity;
-        self.keyboardSlot.bounds = CGRectMake(0, 0, naturalWidth, keyboard.height);
-        view.frame = self.keyboardSlot.bounds;
-        self.keyboardSlot.transform = CGAffineTransformMakeScale(scale, scale);
-        self.keyboardSlot.center = CGPointMake(x + width / 2, screen.height - height / 2);
+        self.keyboardSlot.frame = CGRectMake(x, screen.height - height, width, height);
+        view.frame = CGRectMake(0, height - keyboard.height, width, keyboard.height);
     } else {
         CGFloat height = MIN(keyboard.height, screen.height * 0.55);
         self.keyboardSlot.transform = CGAffineTransformIdentity;

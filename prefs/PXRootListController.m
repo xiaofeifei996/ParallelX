@@ -78,7 +78,11 @@
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
-    if ([[specifier propertyForKey:@"key"] isEqual:@"keyboardDimOpacity"]) {
+    BOOL horizontal = [[specifier propertyForKey:@"key"] isEqual:@"externalKeyboardHorizontalPercent"];
+    if (horizontal || [[specifier propertyForKey:@"key"] isEqual:@"keyboardDimOpacity"]) {
+        NSString *title = horizontal ? @"横屏外置键盘位置" : @"键盘关闭遮罩深度";
+        int maximum = horizontal ? 100 : 60;
+        CGFloat multiplier = horizontal ? 1 : 100;
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
@@ -88,24 +92,24 @@
         UISlider *slider = [UISlider new];
         slider.translatesAutoresizingMaskIntoConstraints = NO;
         slider.minimumValue = 0;
-        slider.maximumValue = 60;
-        slider.value = [[self readPreferenceValue:specifier] floatValue] * 100;
-        label.text = [NSString stringWithFormat:@"键盘关闭遮罩深度：%.0f%%", slider.value];
+        slider.maximumValue = maximum;
+        slider.value = [[self readPreferenceValue:specifier] floatValue] * multiplier;
+        label.text = [NSString stringWithFormat:@"%@：%.0f%%", title, slider.value];
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
         button.translatesAutoresizingMaskIntoConstraints = NO;
         [button setImage:[UIImage systemImageNamed:@"keyboard"] forState:UIControlStateNormal];
-        button.accessibilityLabel = @"输入键盘关闭遮罩深度";
+        button.accessibilityLabel = [@"输入" stringByAppendingString:title];
         __weak typeof(self) weakSelf = self;
         [slider addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
             UISlider *control = (UISlider *)action.sender;
             control.value = roundf(control.value);
-            label.text = [NSString stringWithFormat:@"键盘关闭遮罩深度：%.0f%%", control.value];
-            [weakSelf setPreferenceValue:@(control.value / 100) specifier:specifier];
+            label.text = [NSString stringWithFormat:@"%@：%.0f%%", title, control.value];
+            [weakSelf setPreferenceValue:@(control.value / multiplier) specifier:specifier];
         }] forControlEvents:UIControlEventValueChanged];
         __weak UISlider *weakSlider = slider;
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"键盘关闭遮罩深度"
-                message:@"输入 0–60（%）" preferredStyle:UIAlertControllerStyleAlert];
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                message:[NSString stringWithFormat:@"输入 0–%d（%%）", maximum] preferredStyle:UIAlertControllerStyleAlert];
             [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
                 field.keyboardType = UIKeyboardTypeNumberPad;
                 field.text = [NSString stringWithFormat:@"%.0f", weakSlider.value];
@@ -115,7 +119,7 @@
             [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
                 NSScanner *scanner = [NSScanner scannerWithString:weakAlert.textFields.firstObject.text ?: @""];
                 int value;
-                if (![scanner scanInt:&value] || !scanner.isAtEnd || value < 0 || value > 60) return;
+                if (![scanner scanInt:&value] || !scanner.isAtEnd || value < 0 || value > maximum) return;
                 weakSlider.value = value;
                 [weakSlider sendActionsForControlEvents:UIControlEventValueChanged];
             }]];
@@ -145,7 +149,8 @@
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    if ([[[self specifierAtIndexPath:indexPath] propertyForKey:@"key"] isEqual:@"keyboardDimOpacity"]) return 82;
+    NSString *key = [[self specifierAtIndexPath:indexPath] propertyForKey:@"key"];
+    if ([key isEqual:@"keyboardDimOpacity"] || [key isEqual:@"externalKeyboardHorizontalPercent"]) return 82;
     return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 
