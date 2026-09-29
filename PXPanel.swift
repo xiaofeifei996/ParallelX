@@ -2070,6 +2070,8 @@ public final class PXPanelEntry: NSObject {
             let grip = PXLandscapeBottomGestureFrame(card: frame, screen: root.bounds,
                 bottomInset: inset, width: width, height: height, offset: offset)
             hostMoveGrip?.frame = grip
+            // The inset band must not steal the corner resize controls' touches.
+            hostCorners.forEach { root.bringSubviewToFront($0) }
             if let indicator = card.viewWithTag(0x505847) {
                 let local = card.convert(CGPoint(x: grip.midX, y: grip.maxY - 8), from: root)
                 indicator.frame.origin.y = max(0, min(card.bounds.height - 4, local.y))
