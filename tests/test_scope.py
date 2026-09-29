@@ -33,7 +33,9 @@ assert 'method_getNumberOfArguments(initializer) == 5' in tweak
 probe = tweak.split('static void PXAnimationStart(', 1)[1].split('static BOOL PXExecuteTransition', 1)[0]
 assert probe.index('PXOriginalAnimationStart(controller, selector)') < probe.index('PXTransitionProbeCapture')
 assert 'PXTransitionProbeSamples >= 12' in probe and '__weak id weakController' in probe
-assert '@[@0.08, @0.22]' in probe and '[to count] != 0' in probe
+assert '@[@0.08, @0.22]' in probe and '[PXSceneBridge homeHandoffProbeActive]' in probe
+assert 'previousApplicationSceneEntities' in tweak and 'applicationSceneEntities' in tweak
+assert 'prepare target=%@ frontmost=%@ fullscreen=%d returnHome=%d' in bridge
 assert 'com.moxuan.parallelx.transition.log' in tweak and '1024 * 1024' in tweak
 assert 'depth > 8' in tweak and 'NSUInteger remaining = 100' in tweak
 assert 'layer.presentationLayer' in tweak and 'layer.animationKeys' in tweak

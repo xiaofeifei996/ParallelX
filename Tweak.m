@@ -23,7 +23,7 @@ static char PXHomeHandoffRequestKey;
 static void (*PXOriginalAnimationStart)(id, SEL);
 static NSUInteger PXTransitionProbeSamples;
 
-static void PXTransitionProbeWrite(NSString *message)
+void PXTransitionProbeWrite(NSString *message)
 {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
@@ -122,12 +122,10 @@ static void PXAnimationStart(id controller, SEL selector)
     PXOriginalAnimationStart(controller, selector);
     // Temporary probe: at most 12 departures to Home, three samples each.
     // No screen content/text is read and file writes stay off the UI thread.
-    if (!NSThread.isMainThread || PXTransitionProbeSamples >= 12) return;
+    if (!NSThread.isMainThread || PXTransitionProbeSamples >= 12 ||
+        ![PXSceneBridge homeHandoffProbeActive]) return;
     id request = PXValue(controller, @"transitionContextProvider");
-    id from = PXValue(request, @"fromApplicationSceneEntities");
-    id to = PXValue(request, @"toApplicationSceneEntities");
-    if (![from respondsToSelector:@selector(count)] || ![to respondsToSelector:@selector(count)] ||
-        [from count] == 0 || [to count] != 0) return;
+    if (!request) return;
     NSUInteger sample = ++PXTransitionProbeSamples;
     PXTransitionProbeCapture(controller, sample, @"start");
     __weak id weakController = controller;
@@ -161,11 +159,16 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
     }
     static NSUInteger recordedRequests;
     if (NSThread.isMainThread && recordedRequests < 24 &&
-        [to respondsToSelector:@selector(count)] && [to count] == 0) {
+        [PXSceneBridge homeHandoffProbeActive]) {
         ++recordedRequests;
-        PXTransitionProbeWrite([NSString stringWithFormat:@"request=%@ %p context=%@ from=%lu to=0 handoff=%d",
+        id previous = PXValue(context, @"previousApplicationSceneEntities");
+        id current = PXValue(context, @"applicationSceneEntities");
+        PXTransitionProbeWrite([NSString stringWithFormat:@"request=%@ %p context=%@ from=%lu to=%lu previous=%lu current=%lu handoff=%d",
             NSStringFromClass([request class]), request, NSStringFromClass([context class]),
             [from respondsToSelector:@selector(count)] ? (unsigned long)[from count] : 0,
+            [to respondsToSelector:@selector(count)] ? (unsigned long)[to count] : 0,
+            [previous respondsToSelector:@selector(count)] ? (unsigned long)[previous count] : 0,
+            [current respondsToSelector:@selector(count)] ? (unsigned long)[current count] : 0,
             [objc_getAssociatedObject(request, &PXHomeHandoffRequestKey) boolValue]]);
     }
     return PXOriginalExecuteTransition(workspace, selector, request);
@@ -186,7 +189,8 @@ static id PXFluidAnimationInit(id controller, SEL selector, id request, id setti
     }
     id result = PXOriginalFluidAnimationInit(controller, selector, request, settings, block);
     static NSUInteger recordedInitializers;
-    if (NSThread.isMainThread && recordedInitializers < 24) {
+    if (NSThread.isMainThread && recordedInitializers < 24 &&
+        [PXSceneBridge homeHandoffProbeActive]) {
         ++recordedInitializers;
         PXTransitionProbeWrite([NSString stringWithFormat:@"fluid-init controller=%p request=%p settings=%@ handoff=%d",
             result, request, NSStringFromClass([settings class]),
@@ -537,7 +541,7 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (probeInstalled)
             MSHookMessageEx(animationController, startAnimation, (IMP)PXAnimationStart,
                             (IMP *)&PXOriginalAnimationStart);
-        PXTransitionProbeWrite([NSString stringWithFormat:@"alpha101 probe ready animationStart=%d fluid=%d",
+        PXTransitionProbeWrite([NSString stringWithFormat:@"alpha102 probe ready animationStart=%d fluid=%d",
             probeInstalled, initializer != NULL]);
         SEL openRequest = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
         if (workspace && class_getInstanceMethod(workspace, openRequest))

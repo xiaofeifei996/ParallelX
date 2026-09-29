@@ -10,6 +10,7 @@
 
 static NSString *PXHomeHandoffBundleID;
 static CFAbsoluteTime PXHomeHandoffDeadline;
+extern void PXTransitionProbeWrite(NSString *message);
 
 @interface UIWindow (PXRotation)
 - (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
@@ -303,6 +304,11 @@ static int PXApplicationPID(NSString *bundleID)
 @end
 
 @implementation PXSceneBridge
++ (BOOL)homeHandoffProbeActive
+{
+    return PXHomeHandoffDeadline > 0 && CFAbsoluteTimeGetCurrent() <= PXHomeHandoffDeadline;
+}
+
 + (BOOL)consumeHomeHandoffForBundleID:(NSString *)bundleID
 {
     if (!NSThread.isMainThread) return NO;
@@ -694,6 +700,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     if (!completion) return;
     NSString *currentID = [self frontmostBundleID];
     BOOL shouldReturnHome = wasFullscreen && [currentID isEqualToString:bundleID];
+    PXTransitionProbeWrite([NSString stringWithFormat:@"prepare target=%@ frontmost=%@ fullscreen=%d returnHome=%d orientation=%ld",
+        bundleID, currentID, wasFullscreen, shouldReturnHome, (long)[PXSceneBridge systemOrientation]]);
     void (^finish)(BOOL) = ^(BOOL success){
         if (NSThread.isMainThread) completion(success);
         else dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
@@ -706,6 +714,8 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     // transition once by bundle ID; a stack-scoped flag misses queued requests.
     PXHomeHandoffBundleID = [bundleID copy];
     PXHomeHandoffDeadline = CFAbsoluteTimeGetCurrent() + 1.0;
+    PXTransitionProbeWrite([NSString stringWithFormat:@"pending-home target=%@ deadline=%.3f",
+        bundleID, PXHomeHandoffDeadline]);
     id actions = [NSClassFromString(@"SBHomeHardwareButtonActions") new];
     SEL press = NSSelectorFromString(@"performSinglePressUpActions");
     if ([actions respondsToSelector:press]) {
