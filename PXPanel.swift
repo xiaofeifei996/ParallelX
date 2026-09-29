@@ -640,12 +640,14 @@ private final class PXAppSelectorView: UIView {
     private var currentApps: [App] = []
     private var currentLetter = ""
     private var selected: Int?
+    private let entryPoint: CGPoint
     private var lastPoint = CGPoint.zero
     private var rail = CGRect.zero
     private var laidOutSize = CGSize.zero
     var selectedApp: String? { selected.map { currentApps[$0].id } }
 
     init(frame: CGRect, point: CGPoint) {
+        entryPoint = point
         super.init(frame: frame)
         isUserInteractionEnabled = false // The original handle drag owns this entire interaction.
         lastPoint = point
@@ -782,7 +784,10 @@ private final class PXAppSelectorView: UIView {
             updateLight(at: point.y)
             return
         }
-        guard scroll.frame.contains(point) else { setSelection(nil); return }
+        guard scroll.frame.contains(point), hypot(point.x - entryPoint.x, point.y - entryPoint.y) >= 12 else {
+            setSelection(nil)
+            return
+        }
         // Long sections follow the finger; release still selects the icon under it.
         if scroll.contentSize.height > scroll.bounds.height, scroll.frame.contains(previous) {
             let offset = min(max(0, scroll.contentSize.height - scroll.bounds.height),
