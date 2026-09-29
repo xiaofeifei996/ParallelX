@@ -1,7 +1,7 @@
 import Foundation
 
 func PXAppRailX(base: CGFloat, bow: CGFloat, progress: CGFloat) -> CGFloat {
-    base - bow * sin(min(1, max(0, progress)) * .pi)
+    base - bow * CGFloat(sin(Double(min(1, max(0, progress))) * Double.pi))
 }
 
 // Shared by the selector and its Foundation-only check.
