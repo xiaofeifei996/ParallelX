@@ -17,19 +17,28 @@ public final class PXExternalBlacklistController: UITableViewController, UISearc
             guard let id = app["id"], let name = app["name"] else { return nil }
             return (id, name)
         }
-        visible = apps
-        tableView.rowHeight = 52
+        tableView = UITableView(frame: .zero, style: .insetGrouped)
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.rowHeight = 64
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = "搜索应用"
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
+        updateSearchResults(for: search)
     }
 
     public func updateSearchResults(for searchController: UISearchController) {
         let query = search.searchBar.text ?? ""
         visible = query.isEmpty ? apps : apps.filter {
             $0.name.localizedCaseInsensitiveContains(query) || $0.id.localizedCaseInsensitiveContains(query)
+        }
+        visible.sort {
+            let left = excluded.contains($0.id), right = excluded.contains($1.id)
+            if left != right { return left }
+            let order = $0.name.localizedStandardCompare($1.name)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
         }
         tableView.reloadData()
     }
@@ -54,15 +63,19 @@ public final class PXExternalBlacklistController: UITableViewController, UISearc
             icons[app.id] = icon
             cell.imageView?.image = icon
         } else { cell.imageView?.image = UIImage(systemName: "app") }
-        cell.accessoryType = excluded.contains(app.id) ? .checkmark : .none
+        cell.accessoryType = .none
+        cell.selectionStyle = .none
+        let toggle = UISwitch()
+        toggle.isOn = excluded.contains(app.id)
+        toggle.accessibilityLabel = "禁止 \(app.name) URL 分屏"
+        toggle.addAction(UIAction { [weak self] action in
+            guard let self = self, let toggle = action.sender as? UISwitch else { return }
+            if toggle.isOn { self.excluded.insert(app.id) }
+            else { self.excluded.remove(app.id) }
+            self.defaults?.set(Array(self.excluded).sorted(), forKey: "urlSplitExcluded")
+            self.updateSearchResults(for: self.search)
+        }, for: .valueChanged)
+        cell.accessoryView = toggle
         return cell
-    }
-
-    public override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        let id = visible[indexPath.row].id
-        if !excluded.insert(id).inserted { excluded.remove(id) }
-        defaults?.set(Array(excluded).sorted(), forKey: "urlSplitExcluded")
-        tableView.reloadRows(at: [indexPath], with: .none)
-        tableView.deselectRow(at: indexPath, animated: true)
     }
 }

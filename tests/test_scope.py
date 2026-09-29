@@ -10,6 +10,26 @@ bridge_header = (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 tweak = (root / "Tweak.m").read_text(encoding="utf-8")
 app_picker = (root / "prefs/PXAppPickerController.swift").read_text(encoding="utf-8")
 action_picker = (root / "prefs/PXActionPickerController.swift").read_text(encoding="utf-8")
+blacklist = (root / "prefs/PXExternalBlacklistController.swift").read_text(encoding="utf-8")
+
+# Selected URL exclusions stay above other apps, including during search.
+assert 'style: .insetGrouped' in blacklist and 'let toggle = UISwitch()' in blacklist
+assert '.checkmark' not in blacklist and 'didSelectRowAt' not in blacklist
+assert 'if left != right { return left }' in blacklist
+assert 'for: .valueChanged' in blacklist and 'cell.accessoryView = toggle' in blacklist
+apps = [('c', 'C'), ('b', 'B'), ('a', 'A')]
+excluded = {'b'}
+assert sorted(apps, key=lambda app: (app[0] not in excluded, app[1])) == [('b', 'B'), ('a', 'A'), ('c', 'C')]
+
+# Only our matched app-to-Home request receives immediate fluid-switcher settings.
+handoff = tweak.split('static BOOL PXExecuteTransition(', 1)[1].split('static NSString *PXBundleID', 1)[0]
+assert '[to count] == 0' in handoff and 'consumeHomeHandoffForBundleID:bundleID' in handoff
+assert 'objc_setAssociatedObject(request, &PXHomeHandoffRequestKey' in handoff
+assert 'objc_getAssociatedObject(request, &PXHomeHandoffRequestKey)' in handoff
+assert 'PXOriginalFluidAnimationInit(controller, selector, request, settings, block)' in handoff
+assert 'settingsWithDuration:' in handoff and 'animation, zero, 0' in handoff
+assert 'dispatch_after' not in handoff and 'sleep' not in handoff
+assert 'method_getNumberOfArguments(initializer) == 5' in tweak
 
 assert 'originalCardFrame' not in panel
 assert 'PXLandscapeProbe' not in bridge and 'LandscapeProbe' not in bridge_header

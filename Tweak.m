@@ -17,6 +17,8 @@ static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
 static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL (*PXOriginalExecuteTransition)(id, SEL, id);
+static id (*PXOriginalFluidAnimationInit)(id, SEL, id, id, id);
+static char PXHomeHandoffRequestKey;
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
 static CFAbsoluteTime PXAppearanceChangeUntil;
 
@@ -59,11 +61,29 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
             if ([bundleID isKindOfClass:NSString.class] &&
                 [PXSceneBridge consumeHomeHandoffForBundleID:bundleID]) {
                 ((void (*)(id, SEL, BOOL))objc_msgSend)(context, disable, YES);
+                objc_setAssociatedObject(request, &PXHomeHandoffRequestKey, @YES,
+                                         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 break;
             }
         }
     }
     return PXOriginalExecuteTransition(workspace, selector, request);
+}
+
+static id PXFluidAnimationInit(id controller, SEL selector, id request, id settings, id block)
+{
+    // The fluid switcher receives its own settings, independently of the
+    // application context's animationDisabled flag. Only replace our Home
+    // handoff's settings; keep the animation block and system cleanup intact.
+    if ([objc_getAssociatedObject(request, &PXHomeHandoffRequestKey) boolValue]) {
+        Class animation = NSClassFromString(@"BSAnimationSettings");
+        SEL zero = NSSelectorFromString(@"settingsWithDuration:");
+        if ([animation respondsToSelector:zero]) {
+            id immediate = ((id (*)(id, SEL, double))objc_msgSend)(animation, zero, 0);
+            if (immediate) settings = immediate;
+        }
+    }
+    return PXOriginalFluidAnimationInit(controller, selector, request, settings, block);
 }
 
 static NSString *PXBundleID(id object)
@@ -391,6 +411,14 @@ __attribute__((constructor)) static void PXInitialize(void)
             (result[0] == 'B' || result[0] == 'c'))
             MSHookMessageEx(workspace, execute, (IMP)PXExecuteTransition,
                             (IMP *)&PXOriginalExecuteTransition);
+        Class fluid = NSClassFromString(@"SBFluidSwitcherAnimationController");
+        SEL fluidInit = NSSelectorFromString(@"initWithWorkspaceTransitionRequest:animationSettings:animationBlock:");
+        Method initializer = class_getInstanceMethod(fluid, fluidInit);
+        char initResult[8] = {0};
+        if (initializer) method_getReturnType(initializer, initResult, sizeof(initResult));
+        if (initializer && method_getNumberOfArguments(initializer) == 5 && initResult[0] == '@')
+            MSHookMessageEx(fluid, fluidInit, (IMP)PXFluidAnimationInit,
+                            (IMP *)&PXOriginalFluidAnimationInit);
         SEL openRequest = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
         if (workspace && class_getInstanceMethod(workspace, openRequest))
             MSHookMessageEx(workspace, openRequest, (IMP)PXHandleOpenRequest,
