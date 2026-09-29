@@ -1556,18 +1556,7 @@ public final class PXPanelEntry: NSObject {
                 }
             }
             self.matchHostAspect()
-            // alpha79's entry: animate the final-size card immediately while
-            // returning Home, rather than waiting for a second system animation.
-            if wasFullscreen {
-                card.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
-            }
-            window?.isHidden = false
-            if wasFullscreen {
-                PXMotion.spring(0.4, animations: { card.transform = .identity }) { _ in
-                    guard self.hostWindow === window else { return }
-                    self.layoutHostControls()
-                }
-            }
+            if !wasFullscreen { window?.isHidden = false }
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else {
@@ -1578,6 +1567,42 @@ public final class PXPanelEntry: NSObject {
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
+            }
+            if wasFullscreen {
+                var ticks = 0
+                let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self, weak window] timer in
+                    guard let self = self, let window = window, self.hostWindow === window else {
+                        timer.invalidate()
+                        return
+                    }
+                    ticks += 1
+                    if self.activeBridge.frontmostBundleID() == bundleID && ticks < 120 { return }
+                    timer.invalidate()
+                    self.matchHostAspect()
+                    let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+                    let frame = card.frame
+                    guard frame.width > 0, frame.height > 0 else {
+                        window.isHidden = false
+                        return
+                    }
+                    let radius = card.layer.cornerRadius
+                    let scale = min(screen.width / frame.width, screen.height / frame.height)
+                    card.transform = CGAffineTransform(scaleX: scale, y: scale)
+                    card.center = CGPoint(x: screen.midX, y: screen.midY)
+                    card.layer.cornerRadius = 0
+                    card.subviews.first?.layer.cornerRadius = 0
+                    window.isHidden = false
+                    PXMotion.spring(0.4, animations: {
+                        card.transform = .identity
+                        card.center = CGPoint(x: frame.midX, y: frame.midY)
+                        card.layer.cornerRadius = radius
+                        card.subviews.first?.layer.cornerRadius = radius
+                    }) { _ in
+                        guard self.hostWindow === window else { return }
+                        self.layoutHostControls()
+                    }
+                }
+                RunLoop.main.add(timer, forMode: .common)
             }
         }
     }

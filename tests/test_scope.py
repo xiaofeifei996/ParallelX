@@ -212,7 +212,9 @@ assert 'preview.layer.cornerRadius' not in handoff
 assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < handoff.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 assert 'window.isHidden = wasFullscreen' in handoff
 assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
-assert handoff.index('CGAffineTransform(scaleX: 1.1, y: 1.1)') < handoff.index('self.activeBridge.prepareWindow(')
+assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if self.activeBridge.frontmostBundleID() == bundleID && ticks < 120 { return }')
+assert handoff.index('if self.activeBridge.frontmostBundleID() == bundleID && ticks < 120 { return }') < handoff.index('window.isHidden = false\n                    PXMotion.spring(0.4')
+assert 'let scale = min(screen.width / frame.width, screen.height / frame.height)' in handoff
 assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
 assert 'UIActivityIndicatorView' not in handoff and 'spinner' not in handoff
 open_host = bridge.split('- (void)openApplication:', 1)[1].split('- (void)closeForFullscreen', 1)[0]
