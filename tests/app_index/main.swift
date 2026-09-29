@@ -38,3 +38,30 @@ precondition(sample(94, 30) == 1 && !selection.locked)
 precondition(sample(100, 10) == 0)
 precondition(sample(100, 110) == 5) // Fast vertical indexing still works.
 print("Letter departure lock and hysteresis checks passed")
+
+let portraitScreen = CGRect(x: 0, y: 0, width: 428, height: 926)
+let portraitCards = [CGRect(x: 80, y: 100, width: 300, height: 600),
+                     CGRect(x: 40, y: 300, width: 340, height: 160)] // Landscape app on a portrait phone.
+for card in portraitCards {
+    for offset in [CGFloat(-30), 0, 40] {
+        precondition(PXLandscapeBottomGestureFrame(card: card, screen: portraitScreen, bottomInset: 34,
+            width: 300, height: 80, offset: offset) ==
+            CGRect(x: card.midX - 150, y: card.maxY + offset, width: 300, height: 80))
+    }
+}
+let landscapeScreen = CGRect(x: 0, y: 0, width: 926, height: 428)
+for card in [CGRect(x: 560, y: 21, width: 178, height: 385),
+             CGRect(x: 530, y: 100, width: 330, height: 500), // Resized/moved below the screen.
+             CGRect(x: -40, y: 0, width: 500, height: 220)] {
+    for inset in [CGFloat(0), 21, 34] {
+        for offset in [CGFloat(-30), 0, 40] {
+            let grip = PXLandscapeBottomGestureFrame(card: card, screen: landscapeScreen, bottomInset: inset,
+                width: 300, height: 80, offset: offset)
+            precondition(!grip.isEmpty && card.contains(grip) && landscapeScreen.contains(grip))
+            precondition(grip.maxY <= landscapeScreen.maxY - max(21, inset) - 10)
+        }
+    }
+}
+precondition(PXLandscapeBottomGestureFrame(card: CGRect(x: 500, y: 410, width: 180, height: 300),
+    screen: landscapeScreen, bottomInset: 21, width: 300, height: 80, offset: 0).isEmpty)
+print("Landscape Home-strip avoidance and unchanged portrait checks passed")

@@ -667,8 +667,10 @@ for landscape in (False, True):
     if landscape:
         assert zoom == 1.6
 
-# Landscape docking uses alpha116's card-relative region, without taking over Home gestures.
+# Portrait retains alpha116's formula; landscape avoidance never takes over Home gestures.
 assert 'PXBottomGestureFrame' not in panel
 assert 'PXBottomGestureView' not in panel
 assert 'PXOriginalFluidReceiveTouch' not in tweak
 assert 'traceGesture' not in panel and 'traceGesture' not in tweak and 'traceGesture' not in bridge
+assert 'root.bounds.width > root.bounds.height' in panel
+assert 'PXLandscapeBottomGestureFrame(card: frame, screen: root.bounds' in panel

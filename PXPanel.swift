@@ -2065,6 +2065,17 @@ public final class PXPanelEntry: NSObject {
         let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
         hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
                                      width: width, height: height)
+        if let root = hostWindow?.rootViewController?.view, root.bounds.width > root.bounds.height {
+            let inset = max(root.safeAreaInsets.bottom, hostWindow?.safeAreaInsets.bottom ?? 0)
+            let grip = PXLandscapeBottomGestureFrame(card: frame, screen: root.bounds,
+                bottomInset: inset, width: width, height: height, offset: offset)
+            hostMoveGrip?.frame = grip
+            if let indicator = card.viewWithTag(0x505847) {
+                let local = card.convert(CGPoint(x: grip.midX, y: grip.maxY - 8), from: root)
+                indicator.frame.origin.y = max(0, min(card.bounds.height - 4, local.y))
+                indicator.isHidden = grip.isEmpty
+            }
+        }
         let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
         let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
         let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))

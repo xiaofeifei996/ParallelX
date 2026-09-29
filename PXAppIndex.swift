@@ -9,6 +9,23 @@ func PXAppGridCell(count: Int, width: CGFloat, height: CGFloat) -> CGFloat {
     min(max(0, width) / 3, max(0, height) / CGFloat(max(1, (count + 2) / 3)))
 }
 
+func PXLandscapeBottomGestureFrame(card: CGRect, screen: CGRect, bottomInset: CGFloat,
+                                   width: CGFloat, height: CGFloat, offset: CGFloat) -> CGRect {
+    guard screen.width > screen.height else {
+        return CGRect(x: card.midX - width / 2, y: card.maxY + offset, width: width, height: height)
+    }
+    // Overlay safe areas can be zero before layout; keep a conservative Home-strip fallback.
+    let bottom = screen.maxY - max(21, bottomInset) - 10
+    let safeScreen = CGRect(x: screen.minX, y: screen.minY, width: screen.width,
+                            height: max(0, bottom - screen.minY))
+    let available = card.intersection(safeScreen)
+    guard !available.isNull, available.width > 0, available.height > 0 else { return .zero }
+    let w = min(width, available.width), h = min(height, available.height)
+    let x = min(max(card.midX - w / 2, available.minX), available.maxX - w)
+    let y = min(max(card.maxY - h - 12 + offset, available.minY), available.maxY - h)
+    return CGRect(x: x, y: y, width: w, height: h)
+}
+
 struct PXAppRailSelection {
     private(set) var index: Int?
     private(set) var locked = false
