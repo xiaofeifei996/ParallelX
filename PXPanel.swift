@@ -1745,6 +1745,7 @@ public final class PXPanelEntry: NSObject {
 
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
+        let defaults = UserDefaults(suiteName: preferenceDomain)
         activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)
         updateCardShadow(card)
         card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
