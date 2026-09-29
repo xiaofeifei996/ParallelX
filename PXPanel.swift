@@ -2053,8 +2053,15 @@ public final class PXPanelEntry: NSObject {
             let source = activeBridge.hostedSourceSize()
             title.isHidden = source.width <= 0 || source.height <= source.width ||
                 card.bounds.width < 64 || card.bounds.height < 48
-            let titleWidth = min(160, card.bounds.width - 32, name.intrinsicContentSize.width + 35)
-            title.frame = CGRect(x: (card.bounds.width - titleWidth) / 2, y: 3, width: max(0, titleWidth), height: 24)
+            let screen = hostWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
+            let initialWidth = initialCardSize(in: screen, source: source).width
+            let scale = initialWidth > 0 ? card.bounds.width / initialWidth : 1
+            let titleWidth = min(160, (initialWidth > 0 ? initialWidth : card.bounds.width) - 32,
+                                 name.intrinsicContentSize.width + 35)
+            // Preview already scales the parent card; bounds-based scaling keeps the same size on release.
+            title.bounds = CGRect(x: 0, y: 0, width: max(0, titleWidth), height: 24)
+            title.transform = CGAffineTransform(scaleX: scale, y: scale)
+            title.center = CGPoint(x: card.bounds.midX, y: 15 * scale)
             name.frame = CGRect(x: 28, y: 0, width: max(0, titleWidth - 35), height: 24)
             title.superview?.bringSubviewToFront(title)
         }

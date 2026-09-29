@@ -683,3 +683,11 @@ assert 'titleName.text = PXApplicationDisplayName(bundleID)' in panel
 assert 'source.height <= source.width' in panel
 assert 'width: 16, height: 16' in panel and '.systemFont(ofSize: 12, weight: .medium)' in panel
 assert 'card.viewWithTag(0x505848)?.isHidden = true' in panel
+assert 'card.bounds.width / initialWidth' in panel
+assert 'title.transform = CGAffineTransform(scaleX: scale, y: scale)' in panel
+assert 'title.center = CGPoint(x: card.bounds.midX, y: 15 * scale)' in panel
+for base, current, drag in ((334, 334, 0.65), (334, 250, 1.4), (178, 178, 1.5), (178, 240, 0.8)):
+    # During preview the parent scales; after release the title owns exactly that scale.
+    preview_icon = 16 * current / base * drag
+    committed_icon = 16 * (current * drag) / base
+    assert abs(preview_icon - committed_icon) < .001
