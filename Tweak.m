@@ -33,6 +33,7 @@ static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
 static BOOL PXDeviceLocked;
 static void (*PXOriginalCoverSheetWillAppear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetDidDisappear)(id, SEL, BOOL);
+static void (*PXOriginalCoverSheetWillDisappear)(id, SEL, BOOL);
 
 static void PXSetCoverSheetVisible(BOOL visible)
 {
@@ -48,6 +49,21 @@ static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
     PXOriginalCoverSheetWillAppear(controller, selector, animated);
 }
 
+static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated)
+{
+    PXOriginalCoverSheetWillDisappear(controller, selector, animated);
+    Class lockManager = NSClassFromString(@"SBLockScreenManager");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    id manager = [lockManager respondsToSelector:shared]
+        ? ((id (*)(id, SEL))objc_msgSend)(lockManager, shared) : nil;
+    SEL locked = NSSelectorFromString(@"isUILocked");
+    if ([manager respondsToSelector:locked]) {
+        PXDeviceLocked = ((BOOL (*)(id, SEL))objc_msgSend)(manager, locked);
+        [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
+            object:nil userInfo:@{@"locked": @(PXDeviceLocked)}];
+    }
+}
+
 static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
 {
     PXOriginalCoverSheetDidDisappear(controller, selector, animated);
@@ -55,8 +71,6 @@ static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
 }
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
-static NSString *PXPendingURLTransitionTarget;
-static CFAbsoluteTime PXPendingURLTransitionUntil;
 
 static id PXValue(id object, NSString *selectorName)
 {
@@ -111,15 +125,6 @@ static NSString *PXURLRouteEntities(id entities)
     return [ids componentsJoinedByString:@","];
 }
 
-static BOOL PXTransitionTargetsBundle(id entities, NSString *bundleID)
-{
-    if (!bundleID.length || ![entities conformsToProtocol:@protocol(NSFastEnumeration)]) return NO;
-    for (id entity in entities)
-        if ([PXValue(PXValue(entity, @"application"), @"bundleIdentifier") isEqualToString:bundleID])
-            return YES;
-    return NO;
-}
-
 static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
 {
     id context = PXValue(request, @"applicationContext");
@@ -130,16 +135,6 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
             PXRecentExternalBundleID, PXURLRouteEntities(from), PXURLRouteEntities(to),
             PXValue(PXValue(request, @"originatingProcess"), @"bundleIdentifier") ?: @"?",
             [[PXSceneBridge sharedBridge] frontmostBundleID] ?: @"?"]);
-    NSString *frontmost = [[PXSceneBridge sharedBridge] frontmostBundleID];
-    if (CFAbsoluteTimeGetCurrent() < PXPendingURLTransitionUntil && frontmost.length &&
-        ![frontmost isEqualToString:PXPendingURLTransitionTarget] &&
-        PXTransitionTargetsBundle(to, PXPendingURLTransitionTarget)) {
-        PXURLRouteLog([NSString stringWithFormat:@"suppressed URL foreground target=%@ kept=%@",
-            PXPendingURLTransitionTarget, frontmost]);
-        PXPendingURLTransitionTarget = nil;
-        PXPendingURLTransitionUntil = 0;
-        return YES;
-    }
     SEL disable = NSSelectorFromString(@"setAnimationDisabled:");
     // Match only this app's departure to Home, after the request is prepared.
     if ([context respondsToSelector:disable] && [to respondsToSelector:@selector(count)] &&
@@ -278,6 +273,10 @@ static id PXOptionsWithSuspendedLaunch(id options)
     NSMutableDictionary *updated = [values mutableCopy];
     updated[PXSuspendedKey()] = @YES;
     if ([options isKindOfClass:NSDictionary.class]) return updated;
+    // Rebuild parsed flags as well as the dictionary; do not reuse cached options.
+    SEL factory = NSSelectorFromString(@"optionsWithDictionary:");
+    if ([[options class] respondsToSelector:factory])
+        return ((id (*)(id, SEL, id))objc_msgSend)([options class], factory, updated);
     if (![options respondsToSelector:setDictionary]) return nil;
     ((void (*)(id, SEL, id))objc_msgSend)(options, setDictionary, updated);
     return options;
@@ -321,17 +320,10 @@ static BOOL PXRouteRecentlyHandled(NSString *bundleID)
     return [PXRecentExternalBundleID isEqualToString:bundleID] && now - PXRecentExternalTime < 1;
 }
 
-static void PXRememberRoute(NSString *bundleID, BOOL urlRoute)
+static void PXRememberRoute(NSString *bundleID)
 {
     PXRecentExternalBundleID = [bundleID copy];
     PXRecentExternalTime = CFAbsoluteTimeGetCurrent();
-    if (urlRoute) {
-        PXPendingURLTransitionTarget = [bundleID copy];
-        PXPendingURLTransitionUntil = PXRecentExternalTime + 2;
-    } else {
-        PXPendingURLTransitionTarget = nil;
-        PXPendingURLTransitionUntil = 0;
-    }
     PXURLRouteLog([NSString stringWithFormat:@"route target=%@ front=%@", bundleID,
         [[PXSceneBridge sharedBridge] frontmostBundleID] ?: @"?"]);
 }
@@ -341,16 +333,18 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
     id options = PXValue(request, @"options");
     NSString *bundleID = nil;
     id source = PXValue(request, @"clientProcess");
-    BOOL route = PXExternalTarget(options, PXRequestBundleID(request), source, &bundleID) &&
-        !PXRouteRecentlyHandled(bundleID) &&
-        [options respondsToSelector:NSSelectorFromString(@"setDictionary:")] &&
-        PXOptionsWithSuspendedLaunch(options) != nil;
+    BOOL candidate = PXExternalTarget(options, PXRequestBundleID(request), source, &bundleID);
+    SEL setOptions = NSSelectorFromString(@"setOptions:");
+    id prepared = candidate && [request respondsToSelector:setOptions]
+        ? PXOptionsWithSuspendedLaunch(options) : nil;
+    BOOL route = prepared != nil && !PXRouteRecentlyHandled(bundleID);
+    if (prepared) ((void (*)(id, SEL, id))objc_msgSend)(request, setOptions, prepared);
     if (route || PXURLRouteLogActive())
         PXURLRouteLog([NSString stringWithFormat:@"open-request route=%d target=%@ options=%@ mutable=%d",
             route, bundleID ?: @"?", NSStringFromClass([options class]),
             [options respondsToSelector:NSSelectorFromString(@"setDictionary:")]]);
     if (route) {
-        PXRememberRoute(bundleID, !PXIsNotificationOpen(PXOptionsDictionary(options)));
+        PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
     }
     id routed = completion;
@@ -359,10 +353,6 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
         routed = [^(NSError *error) {
             PXURLRouteLog([NSString stringWithFormat:@"open-request callback target=%@ error=%@", bundleID,
                 error ? error.domain : @"none"]);
-            if (error && [PXPendingURLTransitionTarget isEqualToString:bundleID]) {
-                PXPendingURLTransitionTarget = nil;
-                PXPendingURLTransitionUntil = 0;
-            }
             if (original) original(error);
             if (!error) PXExternalOpen(bundleID);
         } copy];
@@ -385,7 +375,7 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
             NSStringFromClass([prepared class]), suspended ?: @"?"]);
     }
     if (route) {
-        PXRememberRoute(bundleID, !PXIsNotificationOpen(PXOptionsDictionary(options)));
+        PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
     }
     id routed = result;
@@ -394,10 +384,6 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
         routed = [^(NSError *error) {
             PXURLRouteLog([NSString stringWithFormat:@"trusted-open callback target=%@ error=%@", bundleID,
                 error ? error.domain : @"none"]);
-            if (error && [PXPendingURLTransitionTarget isEqualToString:bundleID]) {
-                PXPendingURLTransitionTarget = nil;
-                PXPendingURLTransitionUntil = 0;
-            }
             if (original) original(error);
             if (!error) PXExternalOpen(bundleID);
         } copy];
@@ -586,6 +572,9 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewDidDisappear:)))
             MSHookMessageEx(coverSheet, @selector(viewDidDisappear:), (IMP)PXCoverSheetDidDisappear,
                             (IMP *)&PXOriginalCoverSheetDidDisappear);
+        if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewWillDisappear:)))
+            MSHookMessageEx(coverSheet, @selector(viewWillDisappear:), (IMP)PXCoverSheetWillDisappear,
+                            (IMP *)&PXOriginalCoverSheetWillDisappear);
         notify_register_dispatch("com.apple.springboard.lockstate", &lockToken,
             dispatch_get_main_queue(), ^(int token) {
                 uint64_t state = 0;

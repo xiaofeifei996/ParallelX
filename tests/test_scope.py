@@ -415,21 +415,31 @@ assert 'FBSOpenApplicationOptionKeyActivateSuspended' in (root / 'Tweak.m').read
 assert 'externalOpenApplication:' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert 'externalPendingBundleID' in panel
 external = (root / 'Tweak.m').read_text(encoding='utf-8')
-assert '[options respondsToSelector:NSSelectorFromString(@"setDictionary:")]' in external
+assert '[request respondsToSelector:setOptions]' in external
+assert 'objc_msgSend)(request, setOptions, prepared)' in external
+assert 'objc_msgSend)([options class], factory, updated)' in external
 trusted = external.split('static void PXHandleTrustedOpen', 1)[1].split('static void PXActivateApplication', 1)[0]
 assert trusted.index('PXOptionsWithSuspendedLaunch(options)') < trusted.index('!PXRouteRecentlyHandled(bundleID)')
 assert 'shared.panelFrontmostBundleID = nil' in panel
 assert 'restoreExternalSource' not in panel
 assert 'com.moxuan.parallelx.url-route.log' in external
 assert 'PXURLRouteLogActive()' in external
-assert 'PXTransitionTargetsBundle(to, PXPendingURLTransitionTarget)' in external
-assert 'suppressed URL foreground' in external
-assert 'if (urlRoute)' in external and 'PXPendingURLTransitionUntil = PXRecentExternalTime + 2' in external
+transition = external.split('static BOOL PXExecuteTransition', 1)[1].split('static id PXFluidAnimationInit', 1)[0]
+assert 'return YES;' not in transition
+assert 'PXOriginalExecuteTransition(workspace, selector, request)' in transition
+assert 'PXPendingURLTransition' not in external
 assert 'self.updateCardShadow(dock.card)' in panel
 assert 'card.layer.shadowOpacity = 0\n        card.viewWithTag(0x505847)' not in panel
 assert 'onProgress?(self.progress)' in panel
 assert 'controller.onProgress = { [weak self] in self?.setHandlePanelProgress($0) }' in panel
 assert 'self.onProgress?(0)' in panel
+assert 'max(panelDragProgress, min(1' not in panel
+assert 'panel?.retract(to: panelDragProgress)' in panel
+assert 'if !panelRetracting, panelDragProgress >= 0.8' in panel
+progress = 1.0
+for delta in (-12, -24, -84):
+    progress = min(1, max(0, progress + delta / 120))
+assert progress == 0
 assert 'func completeOpening()' in panel
 assert 'withRenderingMode(.alwaysOriginal)' in panel
 
@@ -607,10 +617,12 @@ assert 'row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, co
 assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6)' in panel
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .alert + 51' in panel
-assert 'handle?.isHidden = deviceLocked || coverSheetVisible' in panel
+assert 'handle?.isHidden = deviceLocked' in panel
+assert 'handleWindow?.windowLevel = coverSheetVisible ? .normal : .alert + 51' in panel
 assert 'shared.coverSheetVisible = visible' in panel
 assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
+assert 'PXCoverSheetWillDisappear' in tweak and 'NSSelectorFromString(@"isUILocked")' in tweak
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel
 assert '!keyboardHideInFlight, !keyboardDismissSuppressed, activeBridge.isHostedKeyboardVisible()' in panel
 for source, previous, current, mask, expected in (
