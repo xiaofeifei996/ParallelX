@@ -676,6 +676,11 @@ assert 'PXLandscapeBottomGestureFrame' not in panel
 assert 'hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,' in panel
 
 # The compact app identity follows hosted content orientation, never consumes touches or appears on docks.
+root_preferences = (root / "prefs/Resources/Root.plist").read_text(encoding="utf-8")
+assert 'key = "showSplitAppIdentity"; default = 1;' in root_preferences
+assert 'defaults?.object(forKey: "showSplitAppIdentity") as? Bool ?? true' in panel
+capture_update = panel.split('@objc public static func updateCaptureVisibility()', 1)[1].split('@objc public static func', 1)[0]
+assert 'shared.layoutHostControls()' in capture_update
 assert '滑动字母查找' not in panel and '移入图标松手打开' not in panel
 assert 'private let hint = UILabel()' not in panel
 assert 'title.isUserInteractionEnabled = false' in panel

@@ -5,6 +5,7 @@
         { cell = PSLinkCell; label = "应用、快捷操作与排序"; detail = PXPageHostController; id = picker; },
         { cell = PSLinkCell; label = "面板与手柄"; detail = PXPageHostController; id = launcher; },
         { cell = PSGroupCell; label = "窗口"; },
+        { cell = PSSwitchCell; label = "显示分屏应用图标与名称"; defaults = "com.moxuan.parallelx"; key = "showSplitAppIdentity"; default = 1; PostNotification = "com.moxuan.parallelx.capture-updated"; },
         { cell = PSLinkCell; label = "位置、圆角与阴影"; detail = PXPageHostController; id = radius; },
         { cell = PSLinkCell; label = "角落小窗"; detail = PXPageHostController; id = dock; },
         { cell = PSGroupCell; label = "交互"; },

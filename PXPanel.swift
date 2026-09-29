@@ -1068,6 +1068,7 @@ public final class PXPanelEntry: NSObject {
         let hide = UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "hideForScreenshot") == true
         if let handle = shared.handle { PXSceneBridge.setCaptureHidden(hide, for: handle) }
         if let view = shared.panel?.view { PXSceneBridge.setCaptureHidden(hide, for: view) }
+        shared.layoutHostControls()
         shared.activeBridge.refreshKeyboardPlacement()
         shared.refreshKeyboardDismissLayer()
     }
@@ -2051,7 +2052,8 @@ public final class PXPanelEntry: NSObject {
         card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
         if let title = card.viewWithTag(0x505848), let name = title.viewWithTag(0x505849) as? UILabel {
             let source = activeBridge.hostedSourceSize()
-            title.isHidden = source.width <= 0 || source.height <= source.width ||
+            title.isHidden = !(defaults?.object(forKey: "showSplitAppIdentity") as? Bool ?? true) ||
+                source.width <= 0 || source.height <= source.width ||
                 card.bounds.width < 64 || card.bounds.height < 48
             // Keep one portrait reference: landscape's smaller card must also shrink its identity.
             let physical = (hostWindow?.screen ?? UIScreen.main).fixedCoordinateSpace.bounds.size
