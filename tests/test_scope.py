@@ -403,6 +403,10 @@ assert 'initialRightInset' in panel
 initial_frame = panel.split('private func initialCardFrame(', 1)[1].split('private func initialCardSize(', 1)[0]
 assert 'screen.width > screen.height ? "landscapeInitialRightInset" : "initialRightInset"' in initial_frame
 assert 'saved?.doubleValue ?? legacy?.doubleValue ?? 12' in initial_frame
+assert 'landscapeDockWidth' not in initial_frame
+for screen_width, card_width, right_inset in ((926, 332, 0), (926, 332, 40), (390, 304, 12)):
+    inset = min(max(0, screen_width - card_width), max(0, right_inset))
+    assert screen_width - (screen_width - card_width - inset + card_width) == right_inset
 radius_settings = (root / 'prefs/PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")' in radius_settings
 assert '(landscapeRightInsetLabel, landscapeRightInset)' in radius_settings

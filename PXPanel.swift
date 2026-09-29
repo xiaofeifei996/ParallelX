@@ -1941,8 +1941,7 @@ public final class PXPanelEntry: NSObject {
         let key = screen.width > screen.height ? "landscapeInitialRightInset" : "initialRightInset"
         let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "initialRightInset") as? NSNumber
-        let lane = screen.width > screen.height ? landscapeDockWidth(in: screen) + 24 : 0
-        let inset = min(max(0, screen.width - size.width), lane + max(0, CGFloat(saved?.doubleValue ?? legacy?.doubleValue ?? 12)))
+        let inset = min(max(0, screen.width - size.width), max(0, CGFloat(saved?.doubleValue ?? legacy?.doubleValue ?? 12)))
         return CGRect(x: screen.maxX - size.width - inset,
                       y: screen.midY - size.height / 2, width: size.width, height: size.height)
     }
