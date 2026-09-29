@@ -2410,11 +2410,16 @@ public final class PXPanelEntry: NSObject {
            gesture.velocity(in: window.rootViewController?.view).y > 500 {
             moveStartFrame = nil
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-            let target = initialCardFrame(in: screen, size: card.frame.size)
-            PXMotion.ease(0.24) {
+            let size = initialCardSize(in: screen, source: activeBridge.hostedSourceSize())
+            let target = initialCardFrame(in: screen, size: size)
+            PXMotion.ease(0.24, animations: {
                 card.frame = target
                 self.layoutHostControls()
-            }
+            }, completion: { _ in
+                card.layoutIfNeeded()
+                self.activeBridge.layoutHost()
+                self.layoutHostControls()
+            })
             return
         }
         if gesture.state == .changed || gesture.state == .ended {

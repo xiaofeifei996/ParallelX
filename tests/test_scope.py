@@ -410,8 +410,9 @@ for screen_width, card_width, right_inset in ((926, 332, 0), (926, 332, 40), (39
 move_host = panel.split('@objc private func moveHost(_ gesture: UIPanGestureRecognizer)', 1)[1].split('private func closeHost(', 1)[0]
 assert 'translation.y < -35' in move_host and 'parkMain(side: defaultDockSide)' in move_host
 assert 'translation.y > 35' in move_host and 'velocity(in: window.rootViewController?.view).y > 500' in move_host
-assert 'initialCardFrame(in: screen, size: card.frame.size)' in move_host
-assert 'card.frame = target' in move_host and 'self.layoutHostControls()' in move_host
+assert 'initialCardSize(in: screen, source: activeBridge.hostedSourceSize())' in move_host
+assert 'initialCardFrame(in: screen, size: size)' in move_host
+assert 'card.frame = target' in move_host and 'self.activeBridge.layoutHost()' in move_host
 radius_settings = (root / 'prefs/PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")' in radius_settings
 assert '(landscapeRightInsetLabel, landscapeRightInset)' in radius_settings
