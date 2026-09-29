@@ -666,3 +666,9 @@ for landscape in (False, True):
     assert abs(target_y + h * zoom - (y + h)) < .001
     if landscape:
         assert zoom == 1.6
+
+# The temporary gesture probe must observe, never veto or change, the system's decision.
+gesture_probe = tweak.split('static BOOL PXSystemGestureTouch(', 1)[1].split('static void PXSetStyleMode', 1)[0]
+assert 'BOOL accepted = PXOriginalSystemGestureTouch(manager, selector, location);' in gesture_probe
+assert 'return accepted;' in gesture_probe and 'return NO;' not in gesture_probe
+assert 'ownsLandscapeBottomTouch' not in panel

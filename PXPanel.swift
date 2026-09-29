@@ -82,6 +82,9 @@ private func panelPreviewIcon(_ id: String) -> UIImage? {
 private final class PXHandleWindow: PXOverlayWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let result = super.hitTest(point, with: event)
+        if event?.allTouches?.contains(where: { $0.phase == .began }) == true {
+            PXPanelEntry.traceOverlayTouch(point, window: self, hit: result)
+        }
         return result === self || result === rootViewController?.view ? nil : result
     }
 }
@@ -663,7 +666,7 @@ private final class PXAppSelectorView: UIView {
         lastPoint = point
         backgroundColor = .clear
         isOpaque = false
-        blur.alpha = 0.38
+        blur.alpha = 0.46
         addSubview(blur)
         scroll.isUserInteractionEnabled = false
         scroll.clipsToBounds = true
@@ -755,14 +758,14 @@ private final class PXAppSelectorView: UIView {
         let top = safeAreaInsets.top + 16
         let bottom = bounds.height - safeAreaInsets.bottom - 62
         let rows = max(1, (currentApps.count + 2) / 3)
-        let width = min(240, bounds.width * 0.40)
+        let width = min(260, bounds.width * 0.46)
         let cellWidth = PXAppGridCell(count: currentApps.count, width: width, height: bottom - top)
         let height = CGFloat(rows) * cellWidth
         scroll.frame = CGRect(x: railBaseX - railBow - 14 - cellWidth * 3,
                               y: min(max(top, rail.midY - height / 2), bottom - height),
                               width: cellWidth * 3, height: height)
         scroll.contentOffset = .zero
-        let iconSize = min(48, cellWidth * 0.70)
+        let iconSize = min(48, cellWidth * 0.62)
         let rowHeight = cellWidth
         tiles = currentApps.enumerated().map { index, app in
             let tile = UIView(frame: CGRect(x: CGFloat(index % 3) * cellWidth,
@@ -1052,6 +1055,27 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func hasVisibleHost() -> Bool {
         shared.hostWindow?.isHidden == false
+    }
+
+    private var lastGestureProbeTime: CFTimeInterval = 0
+    private var lastSystemProbeTime: CFTimeInterval = 0
+
+    static func traceOverlayTouch(_ point: CGPoint, window: UIWindow, hit: UIView?) {
+        guard shared.hostWindow === window else { return }
+        PXSceneBridge.traceGesture("HIT point=\(point) hit=\(hit.map { NSStringFromClass(type(of: $0)) } ?? "nil") root=\(window.rootViewController?.view.bounds ?? .zero)")
+    }
+
+    @objc public static func traceSystemTouch(_ point: CGPoint, accepted: Bool) {
+        let entry = shared
+        guard Thread.isMainThread, let window = entry.hostWindow,
+              let root = window.rootViewController?.view, let grip = entry.hostMoveGrip else { return }
+        let now = CACurrentMediaTime()
+        guard now - entry.lastSystemProbeTime > 0.08 else { return }
+        entry.lastSystemProbeTime = now
+        let local = window.convert(point, from: nil)
+        let gripPoint = grip.convert(local, from: window)
+        let hit = grip.point(inside: gripPoint, with: nil)
+        PXSceneBridge.traceGesture("SYSTEM accepted=\(accepted) raw=\(point) local=\(local) gripPoint=\(gripPoint) hit=\(hit) orientation=\(PXSceneBridge.systemOrientation().rawValue) root=\(root.bounds) window=\(window.frame) transform=\(window.transform) level=\(window.windowLevel.rawValue) card=\(entry.hostCard?.frame ?? .zero) grip=\(grip.frame) regions=\((grip as? PXBottomGestureView)?.hitRegions ?? []) hidden=\(window.isHidden) enabled=\(window.isUserInteractionEnabled) keyboard=\(entry.activeBridge.isHostedKeyboardVisible()) lock=\(entry.deviceLocked) cover=\(entry.coverSheetVisible) panel=\(entry.panelWindow != nil)")
     }
 
     @objc public static func start() {
@@ -1727,6 +1751,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func presentHost(_ bundleID: String, wasFullscreen: Bool) {
+        PXSceneBridge.traceGesture("OPEN app=\(bundleID) fullscreen=\(wasFullscreen) orientation=\(PXSceneBridge.systemOrientation().rawValue)")
         guard let scene = activeScene(),
               let controls = handleWindow?.rootViewController?.view else { return }
         if hostWindow != nil, hostedBundleID != bundleID {
@@ -1897,6 +1922,7 @@ public final class PXPanelEntry: NSObject {
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
+                PXSceneBridge.traceGesture("READY root=\(window?.rootViewController?.view.bounds ?? .zero) card=\(card.frame) grip=\(self.hostMoveGrip?.frame ?? .zero) orientation=\(PXSceneBridge.systemOrientation().rawValue)")
             }
             if wasFullscreen {
                 PXMotion.spring(0.4, animations: {
@@ -2093,6 +2119,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     @discardableResult private func parkMain(side: Int) -> Bool {
+        PXSceneBridge.traceGesture("PARK begin host=\(hostWindow != nil) card=\(hostCard != nil) canvas=\(hostCanvas != nil) app=\(hostedBundleID ?? "nil")")
         restoreKeyboardFocus()
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
@@ -2130,6 +2157,7 @@ public final class PXPanelEntry: NSObject {
         activeBridge = PXSceneBridge()
         refreshKeyboardDismissLayer()
         layoutDocks()
+        PXSceneBridge.traceGesture("PARK success count=\(dockedHosts.count)")
         return true
     }
 
@@ -2371,6 +2399,12 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func moveHost(_ gesture: UIPanGestureRecognizer) {
+        let now = CACurrentMediaTime()
+        if gesture.state != .changed || now - lastGestureProbeTime > 0.08 {
+            lastGestureProbeTime = now
+            let view = gesture.view?.window?.rootViewController?.view
+            PXSceneBridge.traceGesture("PAN state=\(gesture.state.rawValue) bottom=\(gesture.view === hostMoveGrip) translation=\(gesture.translation(in: view)) velocity=\(gesture.velocity(in: view)) host=\(hostWindow != nil) root=\(view?.bounds ?? .zero) orientation=\(PXSceneBridge.systemOrientation().rawValue)")
+        }
         guard let window = hostWindow, let card = hostCard else { return }
         if gesture.state == .began {
             restoreKeyboardFocus()

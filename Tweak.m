@@ -21,6 +21,17 @@ static id (*PXOriginalFluidAnimationInit)(id, SEL, id, id, id);
 static char PXHomeHandoffRequestKey;
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
 static CFAbsoluteTime PXAppearanceChangeUntil;
+static BOOL (*PXOriginalSystemGestureTouch)(id, SEL, CGPoint);
+
+static BOOL PXSystemGestureTouch(id manager, SEL selector, CGPoint location)
+{
+    BOOL accepted = PXOriginalSystemGestureTouch(manager, selector, location);
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL trace = NSSelectorFromString(@"traceSystemTouch:accepted:");
+    if ([entry respondsToSelector:trace])
+        ((void (*)(id, SEL, CGPoint, BOOL))objc_msgSend)(entry, trace, location, accepted);
+    return accepted; // Probe only: preserve SpringBoard's original decision.
+}
 
 static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
 {
@@ -390,6 +401,9 @@ static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application
     PXOriginalFrontDisplayDidChange(springBoard, selector, application);
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL changed = NSSelectorFromString(@"frontDisplayChanged:");
+    SEL visible = NSSelectorFromString(@"hasVisibleHost");
+    if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible))
+        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"FRONT app=%@ orientation=%ld", bundleID ?: @"Home", (long)[PXSceneBridge systemOrientation]]];
     if ([entry respondsToSelector:changed])
         ((void (*)(id, SEL, id))objc_msgSend)(entry, changed, bundleID);
 }
@@ -399,6 +413,10 @@ static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation
 {
     PXOriginalOrientationChanged(manager, selector, orientation, duration, mirrored, force, message);
     [PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation];
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL visible = NSSelectorFromString(@"hasVisibleHost");
+    if ([entry respondsToSelector:visible] && ((BOOL (*)(id, SEL))objc_msgSend)(entry, visible))
+        [PXSceneBridge traceGesture:[NSString stringWithFormat:@"ROTATE orientation=%ld", (long)orientation]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
     });
@@ -489,6 +507,21 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(ui, activate, (IMP)PXActivateApplication,
                             (IMP *)&PXOriginalActivateApplication);
         Class springBoard = NSClassFromString(@"SpringBoard");
+        Class gestures = NSClassFromString(@"SBSystemGestureManager");
+        SEL receiveTouch = NSSelectorFromString(@"shouldSystemGestureReceiveTouchWithLocation:");
+        Method receive = class_getInstanceMethod(gestures, receiveTouch);
+        char receiveResult[16] = {0}, receiveArgument[128] = {0};
+        if (receive) {
+            method_getReturnType(receive, receiveResult, sizeof(receiveResult));
+            method_getArgumentType(receive, 2, receiveArgument, sizeof(receiveArgument));
+        }
+        if (receive && method_getNumberOfArguments(receive) == 3 &&
+            (receiveResult[0] == 'B' || receiveResult[0] == 'c') &&
+            strcmp(receiveArgument, @encode(CGPoint)) == 0) {
+            MSHookMessageEx(gestures, receiveTouch, (IMP)PXSystemGestureTouch,
+                            (IMP *)&PXOriginalSystemGestureTouch);
+            [PXSceneBridge traceGesture:@"PROBE alpha118 system-touch hook=installed observe-only"];
+        } else { [PXSceneBridge traceGesture:@"PROBE alpha118 system-touch hook=unavailable"]; }
         SEL orientation = NSSelectorFromString(@"noteInterfaceOrientationChanged:duration:updateMirroredDisplays:force:logMessage:");
         Method rotation = class_getInstanceMethod(springBoard, orientation);
         if (rotation && method_getNumberOfArguments(rotation) == 7)

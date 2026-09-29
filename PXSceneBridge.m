@@ -11,6 +11,27 @@
 static NSString *PXHomeHandoffBundleID;
 static CFAbsoluteTime PXHomeHandoffDeadline;
 
+// Temporary, bounded, asynchronous diagnostic output; never changes touch routing.
+static void PXWriteGestureTrace(NSString *message)
+{
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.moxuan.parallelx.gesture-trace", DISPATCH_QUEUE_SERIAL); });
+    NSString *line = [NSString stringWithFormat:@"%.3f %@\n", NSDate.date.timeIntervalSince1970, message];
+    dispatch_async(queue, ^{
+        NSString *directory = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Logs"];
+        [NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
+        NSString *path = [directory stringByAppendingPathComponent:@"com.moxuan.parallelx.gesture.log"];
+        unsigned long long size = [[NSFileManager.defaultManager attributesOfItemAtPath:path error:nil] fileSize];
+        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+        if (!size || size > 256 * 1024) { [data writeToFile:path atomically:YES]; return; }
+        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+        @try { [handle seekToEndOfFile]; [handle writeData:data]; }
+        @catch (__unused NSException *exception) { /* Diagnostics must not crash SpringBoard. */ }
+        @finally { [handle closeFile]; }
+    });
+}
+
 @interface UIWindow (PXRotation)
 - (void)_rotateWindowToOrientation:(long long)orientation updateStatusBar:(BOOL)updateStatusBar
                          duration:(double)duration skipCallbacks:(BOOL)skipCallbacks;
@@ -303,6 +324,7 @@ static int PXApplicationPID(NSString *bundleID)
 @end
 
 @implementation PXSceneBridge
++ (void)traceGesture:(NSString *)message { PXWriteGestureTrace(message); }
 + (BOOL)consumeHomeHandoffForBundleID:(NSString *)bundleID
 {
     if (!NSThread.isMainThread) return NO;
