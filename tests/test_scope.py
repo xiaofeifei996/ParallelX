@@ -154,6 +154,8 @@ resize = panel.split('private func resizeHost', 1)[1].split('private func applyR
 assert 'card.layer.shadowOpacity = 0' not in resize
 assert 'card.layer.cornerRadius = resizeStartRadius / preview.scale' in panel
 assert 'let change = (horizontal + vertical) / 2' in panel
+assert '(base.width > 0 ? base.width : start.width) * limit' in panel
+assert '"resizeMaxPercent"' in (root / 'prefs' / 'PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'abs(horizontal) > abs(vertical)' not in panel
 assert 'PXCornerGrip' not in panel and 'path.addQuadCurve' not in panel
 assert 'corner.isOpaque = false' in panel

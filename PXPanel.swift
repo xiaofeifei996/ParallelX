@@ -2013,8 +2013,12 @@ public final class PXPanelEntry: NSObject {
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let horizontalRoom = gesture.view?.tag == -1 ?
                 start.maxX - screen.minX - 12 : screen.maxX - start.minX - 12
+            let base = initialCardSize(in: screen, source: activeBridge.hostedSourceSize())
+            let limit = CGFloat(min(200, max(100, UserDefaults(suiteName: preferenceDomain)?
+                .object(forKey: "resizeMaxPercent") as? Int ?? 200))) / 100
             let maximum = min(horizontalRoom / start.width,
-                              (screen.maxY - start.minY - 20) / start.height)
+                              (screen.maxY - start.minY - 20) / start.height,
+                              (base.width > 0 ? base.width : start.width) * limit / start.width)
             let minimumWidth = min(220, max(80, (screen.height - 40) * start.width / start.height))
             let minimum = minimumWidth / start.width
             let scale = min(max(1 + change, minimum), max(minimum, maximum))
