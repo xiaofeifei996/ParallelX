@@ -86,6 +86,13 @@ private final class PXHandleWindow: PXOverlayWindow {
     }
 }
 
+private final class PXBottomGestureView: UIView {
+    var hitRegions: [CGRect] = []
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        super.point(inside: point, with: event) && hitRegions.contains { $0.contains(point) }
+    }
+}
+
 private final class PXHostViewController: UIViewController {
     var onLayout: (() -> Void)?
     var onAppearance: (() -> Void)?
@@ -627,7 +634,7 @@ private final class PXPanelViewController: UIViewController {
 
 private final class PXAppSelectorView: UIView {
     private typealias App = (id: String, name: String)
-    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let scroll = UIScrollView()
     private let heading = UILabel()
     private let hint = UILabel()
@@ -656,7 +663,7 @@ private final class PXAppSelectorView: UIView {
         lastPoint = point
         backgroundColor = .clear
         isOpaque = false
-        blur.alpha = 0.8
+        blur.alpha = 0.38
         addSubview(blur)
         scroll.isUserInteractionEnabled = false
         scroll.clipsToBounds = true
@@ -725,14 +732,8 @@ private final class PXAppSelectorView: UIView {
         rail = CGRect(x: railBaseX - railBow - 22,
                       y: top + (available - railHeight) * 0.54,
                       width: railBow + 44, height: railHeight)
-        let width = min(240, bounds.width * 0.40)
-        let cellWidth = width / 3
-        let iconSize = min(48, max(28, cellWidth / 1.3 - 4))
-        let gridTop = top + available * 0.48 - 12 - iconSize / 2
-        scroll.frame = CGRect(x: railBaseX - railBow - 14 - width, y: gridTop,
-                              width: width, height: max(1, min(bottom - gridTop - 42, (iconSize + 48) * 3)))
         heading.frame = CGRect(x: safeAreaInsets.left + bounds.width * 0.08,
-                               y: top + available * 0.64 - 40, width: bounds.width * 0.18, height: 80)
+                               y: rail.midY - 40, width: bounds.width * 0.18, height: 80)
         hint.frame = CGRect(x: 20, y: bottom - 32, width: bounds.width - 40, height: 32)
         for (index, label) in letterLabels.enumerated() {
             let step = rail.height / CGFloat(max(1, letters.count))
@@ -751,26 +752,30 @@ private final class PXAppSelectorView: UIView {
     private func renderApps() {
         tiles.forEach { $0.removeFromSuperview() }
         selected = nil
-        let cellWidth = scroll.bounds.width / 3
-        let iconSize = min(48, max(28, cellWidth / 1.3 - 4))
-        let rowHeight = iconSize + 48
+        let top = safeAreaInsets.top + 16
+        let bottom = bounds.height - safeAreaInsets.bottom - 62
+        let rows = max(1, (currentApps.count + 2) / 3)
+        let width = min(240, bounds.width * 0.40)
+        let cellWidth = PXAppGridCell(count: currentApps.count, width: width, height: bottom - top)
+        let height = CGFloat(rows) * cellWidth
+        scroll.frame = CGRect(x: railBaseX - railBow - 14 - cellWidth * 3,
+                              y: min(max(top, rail.midY - height / 2), bottom - height),
+                              width: cellWidth * 3, height: height)
+        scroll.contentOffset = .zero
+        let iconSize = min(48, cellWidth * 0.70)
+        let rowHeight = cellWidth
         tiles = currentApps.enumerated().map { index, app in
             let tile = UIView(frame: CGRect(x: CGFloat(index % 3) * cellWidth,
                                            y: CGFloat(index / 3) * rowHeight,
                                            width: cellWidth, height: rowHeight))
             tile.layer.cornerRadius = 14
             let icon = UIImageView(image: PXApplicationIconLarge(app.id) ?? UIImage(systemName: "app"))
-            icon.frame = CGRect(x: (cellWidth - iconSize) / 2, y: 12, width: iconSize, height: iconSize)
+            icon.frame = CGRect(x: (cellWidth - iconSize) / 2, y: (cellWidth - iconSize) / 2,
+                                width: iconSize, height: iconSize)
             icon.contentMode = .scaleAspectFit
             icon.layer.cornerRadius = iconSize * 0.225
             icon.clipsToBounds = true
             tile.addSubview(icon)
-            let title = UILabel(frame: CGRect(x: 3, y: iconSize + 24, width: cellWidth - 6, height: 20))
-            title.text = app.name
-            title.textColor = .label
-            title.textAlignment = .center
-            title.font = .systemFont(ofSize: 11)
-            tile.addSubview(title)
             tile.accessibilityLabel = app.name
             tile.accessibilityTraits = .button
             scroll.addSubview(tile)
@@ -781,7 +786,6 @@ private final class PXAppSelectorView: UIView {
     }
 
     func update(at point: CGPoint) {
-        let previous = lastPoint
         lastPoint = point
         guard !letters.isEmpty else { return }
         if abs(point.x - railX(at: point.y)) <= 26, rail.minY <= point.y, point.y <= rail.maxY {
@@ -805,12 +809,6 @@ private final class PXAppSelectorView: UIView {
         guard scroll.frame.contains(point), hypot(point.x - entryPoint.x, point.y - entryPoint.y) >= 12 else {
             setSelection(nil)
             return
-        }
-        // Long sections follow the finger; release still selects the icon under it.
-        if scroll.contentSize.height > scroll.bounds.height, scroll.frame.contains(previous) {
-            let offset = min(max(0, scroll.contentSize.height - scroll.bounds.height),
-                             max(0, scroll.contentOffset.y + previous.y - point.y))
-            scroll.contentOffset.y = offset
         }
         let local = scroll.convert(point, from: self)
         setSelection(tiles.firstIndex { $0.frame.contains(local) })
@@ -1818,7 +1816,7 @@ public final class PXPanelEntry: NSObject {
                                                                   action: #selector(moveGripHeld(_:))))
         root.view.insertSubview(topGrip, belowSubview: hostTopCorners[0])
         hostTopGrip = topGrip
-        let moveGrip = UIView(frame: .zero)
+        let moveGrip = PXBottomGestureView(frame: .zero)
         moveGrip.backgroundColor = .clear
         PXSceneBridge.keepTransparentGestureViewHittable(moveGrip)
         if debug {
@@ -2069,8 +2067,19 @@ public final class PXPanelEntry: NSObject {
         let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
         let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
         let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
-        hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
-                                     width: width, height: height)
+        hostMoveGrip?.frame = PXBottomGestureFrame(card: frame,
+            screen: hostWindow?.rootViewController?.view.bounds ?? .zero,
+            width: width, height: height, offset: offset)
+        if let grip = hostMoveGrip as? PXBottomGestureView,
+           let screen = hostWindow?.rootViewController?.view.bounds {
+            var regions = [CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
+                                  width: width, height: height)]
+            if screen.width > screen.height {
+                regions.append(CGRect(x: screen.midX - width / 2, y: screen.maxY - height,
+                                      width: width, height: height))
+            }
+            grip.hitRegions = regions.map { $0.offsetBy(dx: -grip.frame.minX, dy: -grip.frame.minY) }
+        }
         let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
         let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
         let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))

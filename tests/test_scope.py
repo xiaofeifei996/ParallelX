@@ -167,7 +167,7 @@ assert 'root.view.addSubview(corner)' in panel
 assert 'root.view.addSubview(moveGrip)' in panel
 assert 'window.frame = scene.coordinateSpace.bounds' in panel
 assert 'window.isUserInteractionEnabled = false' in panel
-assert 'hostMoveGrip?.frame = CGRect' in panel
+assert 'hostMoveGrip?.frame = PXBottomGestureFrame' in panel
 assert 'hostTopGrip?.frame = CGRect' in panel and 'hostTopGrip = dock.topGrip' in panel
 assert 'gestureWidth' in panel and 'gestureHeight' in panel and 'gestureOffset' in panel
 assert 'gestureDebug' in panel and 'moveLine' not in panel
