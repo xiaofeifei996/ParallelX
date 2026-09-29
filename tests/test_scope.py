@@ -422,8 +422,8 @@ trusted = external.split('static void PXHandleTrustedOpen', 1)[1].split('static 
 assert trusted.index('PXOptionsWithSuspendedLaunch(options)') < trusted.index('!PXRouteRecentlyHandled(bundleID)')
 assert 'shared.panelFrontmostBundleID = nil' in panel
 assert 'restoreExternalSource' not in panel
-assert 'com.moxuan.parallelx.url-route.log' in external
-assert 'PXURLRouteLogActive()' in external
+assert 'com.moxuan.parallelx.url-route' not in external
+assert 'PXURLRouteLog' not in external and 'PXURLRouteEntities' not in external
 transition = external.split('static BOOL PXExecuteTransition', 1)[1].split('static id PXFluidAnimationInit', 1)[0]
 assert 'return YES;' not in transition
 assert 'PXOriginalExecuteTransition(workspace, selector, request)' in transition
