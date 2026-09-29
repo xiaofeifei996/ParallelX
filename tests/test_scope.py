@@ -30,20 +30,13 @@ assert 'PXOriginalFluidAnimationInit(controller, selector, request, settings, bl
 assert 'settingsWithDuration:' in handoff and 'animation, zero, 0' in handoff
 assert 'dispatch_after' not in handoff and 'sleep' not in handoff
 assert 'method_getNumberOfArguments(initializer) == 5' in tweak
-probe = tweak.split('static void PXAnimationStart(', 1)[1].split('static BOOL PXExecuteTransition', 1)[0]
-assert probe.index('PXOriginalAnimationStart(controller, selector)') < probe.index('PXTransitionProbeCapture')
-assert 'PXTransitionProbeSamples >= 12' in probe and '__weak id weakController' in probe
-assert '@[@0.08, @0.22]' in probe and '[PXSceneBridge homeHandoffProbeActive]' in probe
-assert 'previousApplicationSceneEntities' in tweak and 'applicationSceneEntities' in tweak
-assert 'prepare target=%@ frontmost=%@ fullscreen=%d returnHome=%d' in bridge
+assert 'PXTransitionProbe' not in tweak and 'PXTransitionProbe' not in bridge
+assert 'SBUIAnimationController' not in tweak
 assert 'consumeHomeHandoffForCurrentApplication' in tweak and 'consumeHomeHandoffForCurrentApplication' in bridge_header
 handoff = tweak.split('static BOOL PXExecuteTransition(', 1)[1].split('static id PXFluidAnimationInit', 1)[0]
 assert handoff.index('if (!matched &&') < handoff.index('if (matched)')
 assert '[from count] == 0' in handoff and '[to count] == 0' in handoff
 assert handoff.index('consumeHomeHandoffForCurrentApplication') < handoff.index('objc_setAssociatedObject')
-assert 'com.moxuan.parallelx.transition.log' in tweak and '1024 * 1024' in tweak
-assert 'depth > 8' in tweak and 'NSUInteger remaining = 100' in tweak
-assert 'layer.presentationLayer' in tweak and 'layer.animationKeys' in tweak
 assert 'layer.hidden =' not in tweak and 'layer.opacity =' not in tweak
 
 assert 'originalCardFrame' not in panel
@@ -81,7 +74,7 @@ assert 'PXRuntimeHostedOrientation(client)' in bridge.split('static UIInterfaceO
 assert '- (BOOL)hasHostedSurface;' in bridge_header
 assert 'if activeBridge.hasHostedSurface(), !window.isHidden {' in panel
 assert 'frontDisplayChanged:' in tweak and 'frontDisplayChanged(_ bundleID: String?)' in panel
-assert 'window.windowLevel = .statusBar + 2' in panel.split('private func beginPanel()', 1)[1].split('@objc private func dragHandle', 1)[0]
+assert 'window.windowLevel = .alert + 52' in panel.split('private func beginPanel()', 1)[1].split('@objc private func dragHandle', 1)[0]
 
 assert "Package: com.moxuan.parallelx" in control
 assert "firmware (<< 16.0)" in control
@@ -171,12 +164,13 @@ assert 'root.view.addSubview(moveGrip)' in panel
 assert 'window.frame = scene.coordinateSpace.bounds' in panel
 assert 'window.isUserInteractionEnabled = false' in panel
 assert 'hostMoveGrip?.frame = CGRect' in panel
+assert 'hostTopGrip?.frame = CGRect' in panel and 'hostTopGrip = dock.topGrip' in panel
 assert 'gestureWidth' in panel and 'gestureHeight' in panel and 'gestureOffset' in panel
 assert 'gestureDebug' in panel and 'moveLine' not in panel
 assert 'moveGrip.backgroundColor = .clear' in panel
 assert 'corner.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear' in panel
 assert 'top.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.25) : .clear' in panel
-assert panel.count('PXSceneBridge.keepTransparentGestureViewHittable(') == 3
+assert panel.count('PXSceneBridge.keepTransparentGestureViewHittable(') == 4
 assert 'PXSetBool(view.layer, @"setHitTestsAsOpaque:", YES)' in bridge
 assert 'hostCorners.forEach { $0.removeFromSuperview() }' in panel
 assert 'moveGrip.addGestureRecognizer(doubleTap)' in panel
@@ -212,8 +206,8 @@ assert 'preview.layer.cornerRadius' not in handoff
 assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < handoff.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 assert 'window.isHidden = wasFullscreen' in handoff
 assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
-assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if self.activeBridge.frontmostBundleID() == bundleID && ticks < 120 { return }')
-assert handoff.index('if self.activeBridge.frontmostBundleID() == bundleID && ticks < 120 { return }') < handoff.index('window.isHidden = false\n                    PXMotion.spring(0.4')
+assert handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
+assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if wasFullscreen {\n                PXMotion.spring(0.4')
 assert 'let scale = min(screen.width / frame.width, screen.height / frame.height)' in handoff
 assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
 assert 'UIActivityIndicatorView' not in handoff and 'spinner' not in handoff
@@ -383,7 +377,9 @@ assert "UISlider()" in radius and "UILongPressGestureRecognizer" in radius
 assert '"shadowStrength"' in radius and '"shadowBlur"' in radius
 assert '"initialWidthPercent"' in radius and '"initialWidthPercent"' in panel
 gesture = (root / "prefs" / "PXGestureAreaController.swift").read_text(encoding="utf-8")
-assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureOffset", "gestureDebug"))
+assert all(key in gesture for key in ("gestureWidth", "gestureHeight", "gestureOffset", "gestureDebug",
+                                      "topGestureWidth", "topGestureHeight", "topGestureOffset"))
+assert 'title = "手势区域"' in gesture and '顶部触发区域' in gesture and '底部触发区域' in gesture
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 launcher = (root / "prefs" / "PXLauncherController.swift").read_text(encoding="utf-8")
 assert all(key in launcher for key in ("launcherIconSize", "launcherRing1", "launcherRing4"))
@@ -592,7 +588,9 @@ assert 'CGSize sourceSize = PXSourceSize(mutable)' in bridge
 assert 'row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, constant: 6)' in panel
 assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6)' in panel
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
-assert 'window.windowLevel = .statusBar + 0.5' in panel
+assert 'window.windowLevel = .alert + 51' in panel
+assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel
+assert '!keyboardHideInFlight, !keyboardDismissSuppressed, activeBridge.isHostedKeyboardVisible()' in panel
 for source, previous, current, mask, expected in (
     (1, 1, 3, 30, True),  # App requests landscape video.
     (1, 3, 3, 30, False), # Unchanged client state after device rotation.

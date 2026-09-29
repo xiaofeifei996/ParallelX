@@ -3,37 +3,42 @@ import UIKit
 @objc(PXGestureAreaController)
 public final class PXGestureAreaController: UIViewController {
     private let defaults = UserDefaults(suiteName: "com.moxuan.parallelx")
-    private let keys = ["gestureWidth", "gestureHeight", "gestureOffset"]
-    private let titles = ["区域宽度", "区域高度", "垂直偏移"]
-    private let initial: [Float] = [300, 80, 0]
-    private let limits: [(Float, Float)] = [(120, 360), (36, 120), (-30, 40)]
-    private let labels = (0..<3).map { _ in UILabel() }
-    private let sliders = (0..<3).map { _ in UISlider() }
+    private let keys = ["gestureWidth", "gestureHeight", "gestureOffset",
+                        "topGestureWidth", "topGestureHeight", "topGestureOffset"]
+    private let titles = ["区域宽度", "区域高度", "垂直偏移", "区域宽度", "区域高度", "垂直偏移"]
+    private let initial: [Float] = [300, 80, 0, 300, 80, 0]
+    private let limits: [(Float, Float)] = [(120, 360), (36, 120), (-30, 40),
+                                           (120, 360), (36, 120), (-30, 40)]
+    private let labels = (0..<6).map { _ in UILabel() }
+    private let sliders = (0..<6).map { _ in UISlider() }
     private let debugLabel = UILabel()
     private let debugSwitch = UISwitch()
     private let hint = UILabel()
     private let gestureCard = UIView()
+    private let topCard = UIView()
     private let debugCard = UIView()
     private let gestureHeading = UILabel()
+    private let topHeading = UILabel()
     private let debugHeading = UILabel()
-    private let lines = [UIView(), UIView()]
+    private let lines = (0..<4).map { _ in UIView() }
     private var inputButtons: [UIButton] = []
     private let scroll = UIScrollView()
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        title = "底部手势区域"
+        title = "手势区域"
         view.backgroundColor = .systemGroupedBackground
         scroll.frame = view.bounds
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(scroll)
-        for (label, title) in [(gestureHeading, "触发区域"), (debugHeading, "调试")] {
+        for (label, title) in [(gestureHeading, "底部触发区域"),
+                               (topHeading, "顶部触发区域"), (debugHeading, "调试")] {
             label.text = title
             label.font = .preferredFont(forTextStyle: .footnote)
             label.textColor = .secondaryLabel
             scroll.addSubview(label)
         }
-        for card in [gestureCard, debugCard] {
+        for card in [gestureCard, topCard, debugCard] {
             card.backgroundColor = .secondarySystemGroupedBackground
             card.layer.cornerRadius = 16
             card.layer.cornerCurve = .continuous
@@ -68,7 +73,7 @@ public final class PXGestureAreaController: UIViewController {
         debugSwitch.isOn = defaults?.bool(forKey: "gestureDebug") ?? false
         debugSwitch.addTarget(self, action: #selector(debugChanged), for: .valueChanged)
         scroll.addSubview(debugSwitch)
-        hint.text = "透明区域位于分屏窗口下方；双击关闭、长按全屏、拖动移动。更改在下次打开窗口时生效。"
+        hint.text = "顶部和底部透明区域分别设置；双击关闭、长按全屏、拖动移动。更改在下次打开窗口时生效。"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
         hint.numberOfLines = 0
@@ -81,17 +86,19 @@ public final class PXGestureAreaController: UIViewController {
         let top: CGFloat = 20
         gestureHeading.frame = CGRect(x: 32, y: top, width: width - 64, height: 22)
         gestureCard.frame = CGRect(x: 16, y: top + 30, width: width - 32, height: 234)
+        topHeading.frame = CGRect(x: 32, y: top + 292, width: width - 64, height: 22)
+        topCard.frame = CGRect(x: 16, y: top + 322, width: width - 32, height: 234)
         for index in keys.indices {
-            let y = top + 30 + CGFloat(index) * 78
+            let y = top + 30 + CGFloat(index / 3) * 292 + CGFloat(index % 3) * 78
             labels[index].frame = CGRect(x: 32, y: y + 8, width: width - 64, height: 28)
             sliders[index].frame = CGRect(x: 32, y: y + 38, width: width - 112, height: 34)
             inputButtons[index].frame = CGRect(x: width - 70, y: y + 36, width: 38, height: 38)
-            if index < 2 {
-                lines[index].frame = CGRect(x: 32, y: y + 77,
+            if index % 3 < 2 {
+                lines[index - index / 3].frame = CGRect(x: 32, y: y + 77,
                                             width: width - 64, height: 0.5)
             }
         }
-        let row = top + 292
+        let row = top + 584
         debugHeading.frame = CGRect(x: 32, y: row, width: width - 64, height: 22)
         debugCard.frame = CGRect(x: 16, y: row + 30, width: width - 32, height: 62)
         debugLabel.frame = CGRect(x: 32, y: row + 43, width: width - 130, height: 36)

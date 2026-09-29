@@ -4,7 +4,6 @@
 #import <substrate.h>
 #import <notify.h>
 #import <dlfcn.h>
-#import <QuartzCore/QuartzCore.h>
 #import "PXSceneBridge.h"
 
 static void (*PXOriginalSceneUpdate)(id, SEL, id, id, id);
@@ -20,46 +19,6 @@ static void (*PXOriginalHandleTrustedOpen)(id, SEL, id, id, id, id, id);
 static BOOL (*PXOriginalExecuteTransition)(id, SEL, id);
 static id (*PXOriginalFluidAnimationInit)(id, SEL, id, id, id);
 static char PXHomeHandoffRequestKey;
-static void (*PXOriginalAnimationStart)(id, SEL);
-static NSUInteger PXTransitionProbeSamples;
-
-void PXTransitionProbeWrite(NSString *message)
-{
-    static dispatch_queue_t queue;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.moxuan.parallelx.transition-probe", DISPATCH_QUEUE_SERIAL); });
-    NSString *line = [NSString stringWithFormat:@"%.3f %@\n", CFAbsoluteTimeGetCurrent(), message];
-    dispatch_async(queue, ^{
-        @try {
-            NSString *directory = @"/var/mobile/Library/Logs";
-            NSString *path = [directory stringByAppendingPathComponent:@"com.moxuan.parallelx.transition.log"];
-            NSFileManager *manager = NSFileManager.defaultManager;
-            [manager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
-            if (![manager fileExistsAtPath:path] ||
-                [[manager attributesOfItemAtPath:path error:nil] fileSize] > 1024 * 1024)
-                [manager createFileAtPath:path contents:nil attributes:nil];
-            NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:path];
-            [file seekToEndOfFile];
-            [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-            [file closeFile];
-        } @catch (__unused NSException *exception) { }
-    });
-}
-
-static void PXTransitionProbeLayer(CALayer *layer, NSMutableString *output,
-                                   NSUInteger depth, NSUInteger *remaining)
-{
-    if (!layer || depth > 8 || !*remaining) return;
-    --*remaining;
-    CALayer *presentation = layer.presentationLayer;
-    [output appendFormat:@"\n%lu %p %@ delegate=%@ frame=%@ presented=%@ hidden=%d opacity=%.2f presentedOpacity=%.2f contents=%d animations=%@",
-        (unsigned long)depth, layer, NSStringFromClass(layer.class),
-        layer.delegate ? NSStringFromClass([layer.delegate class]) : @"nil",
-        NSStringFromCGRect(layer.frame), presentation ? NSStringFromCGRect(presentation.frame) : @"nil",
-        layer.hidden, layer.opacity, presentation ? presentation.opacity : layer.opacity,
-        layer.contents != nil, layer.animationKeys ?: @[]];
-    for (CALayer *child in layer.sublayers) PXTransitionProbeLayer(child, output, depth + 1, remaining);
-}
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
 static CFAbsoluteTime PXAppearanceChangeUntil;
 
@@ -86,55 +45,6 @@ static NSDictionary *PXOptionsDictionary(id options)
 {
     id values = [options isKindOfClass:NSDictionary.class] ? options : PXValue(options, @"dictionary");
     return [values isKindOfClass:NSDictionary.class] ? values : nil;
-}
-
-static void PXTransitionProbeCapture(id controller, NSUInteger sample, NSString *phase)
-{
-    if (!NSThread.isMainThread || !controller) return;
-    @try {
-        id provider = PXValue(controller, @"transitionContextProvider");
-        NSMutableString *output = [NSMutableString stringWithFormat:@"sample=%lu phase=%@ controller=%@ %p provider=%@ %p handoff=%d orientation=%ld screen=%@",
-            (unsigned long)sample, phase, NSStringFromClass([controller class]), controller,
-            NSStringFromClass([provider class]), provider,
-            [objc_getAssociatedObject(provider, &PXHomeHandoffRequestKey) boolValue],
-            (long)[PXSceneBridge systemOrientation], NSStringFromCGRect(UIScreen.mainScreen.bounds)];
-        UIView *container = PXValue(controller, @"containerView");
-        if ([container isKindOfClass:UIView.class]) {
-            [output appendFormat:@"\ncontainer=%@ window=%@ level=%.1f", NSStringFromClass(container.class),
-                NSStringFromClass(container.window.class), container.window.windowLevel];
-            NSUInteger remaining = 100;
-            PXTransitionProbeLayer(container.layer, output, 0, &remaining);
-        }
-        id switcher = PXValue(NSClassFromString(@"SBMainSwitcherViewController"), @"sharedInstance");
-        if ([switcher isKindOfClass:UIViewController.class] && [switcher isViewLoaded]) {
-            [output appendString:@"\nswitcher:"];
-            NSUInteger remaining = 100;
-            PXTransitionProbeLayer([(UIViewController *)switcher view].layer, output, 0, &remaining);
-        }
-        PXTransitionProbeWrite(output);
-    } @catch (__unused NSException *exception) {
-        PXTransitionProbeWrite(@"capture failed safely");
-    }
-}
-
-static void PXAnimationStart(id controller, SEL selector)
-{
-    PXOriginalAnimationStart(controller, selector);
-    // Temporary probe: at most 12 departures to Home, three samples each.
-    // No screen content/text is read and file writes stay off the UI thread.
-    if (!NSThread.isMainThread || PXTransitionProbeSamples >= 12 ||
-        ![PXSceneBridge homeHandoffProbeActive]) return;
-    id request = PXValue(controller, @"transitionContextProvider");
-    if (!request) return;
-    NSUInteger sample = ++PXTransitionProbeSamples;
-    PXTransitionProbeCapture(controller, sample, @"start");
-    __weak id weakController = controller;
-    for (NSNumber *delay in @[@0.08, @0.22]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            PXTransitionProbeCapture(weakController, sample, delay.stringValue);
-        });
-    }
 }
 
 static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
@@ -165,20 +75,6 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
-    static NSUInteger recordedRequests;
-    if (NSThread.isMainThread && recordedRequests < 24 &&
-        [PXSceneBridge homeHandoffProbeActive]) {
-        ++recordedRequests;
-        id previous = PXValue(context, @"previousApplicationSceneEntities");
-        id current = PXValue(context, @"applicationSceneEntities");
-        PXTransitionProbeWrite([NSString stringWithFormat:@"request=%@ %p context=%@ from=%lu to=%lu previous=%lu current=%lu handoff=%d",
-            NSStringFromClass([request class]), request, NSStringFromClass([context class]),
-            [from respondsToSelector:@selector(count)] ? (unsigned long)[from count] : 0,
-            [to respondsToSelector:@selector(count)] ? (unsigned long)[to count] : 0,
-            [previous respondsToSelector:@selector(count)] ? (unsigned long)[previous count] : 0,
-            [current respondsToSelector:@selector(count)] ? (unsigned long)[current count] : 0,
-            [objc_getAssociatedObject(request, &PXHomeHandoffRequestKey) boolValue]]);
-    }
     return PXOriginalExecuteTransition(workspace, selector, request);
 }
 
@@ -195,16 +91,7 @@ static id PXFluidAnimationInit(id controller, SEL selector, id request, id setti
             if (immediate) settings = immediate;
         }
     }
-    id result = PXOriginalFluidAnimationInit(controller, selector, request, settings, block);
-    static NSUInteger recordedInitializers;
-    if (NSThread.isMainThread && recordedInitializers < 24 &&
-        [PXSceneBridge homeHandoffProbeActive]) {
-        ++recordedInitializers;
-        PXTransitionProbeWrite([NSString stringWithFormat:@"fluid-init controller=%p request=%p settings=%@ handoff=%d",
-            result, request, NSStringFromClass([settings class]),
-            [objc_getAssociatedObject(request, &PXHomeHandoffRequestKey) boolValue]]);
-    }
-    return result;
+    return PXOriginalFluidAnimationInit(controller, selector, request, settings, block);
 }
 
 static NSString *PXBundleID(id object)
@@ -540,17 +427,6 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (initializer && method_getNumberOfArguments(initializer) == 5 && initResult[0] == '@')
             MSHookMessageEx(fluid, fluidInit, (IMP)PXFluidAnimationInit,
                             (IMP *)&PXOriginalFluidAnimationInit);
-        Class animationController = NSClassFromString(@"SBUIAnimationController");
-        SEL startAnimation = NSSelectorFromString(@"__startAnimation");
-        Method animationStartMethod = class_getInstanceMethod(animationController, startAnimation);
-        char startResult[8] = {0};
-        if (animationStartMethod) method_getReturnType(animationStartMethod, startResult, sizeof(startResult));
-        BOOL probeInstalled = animationStartMethod && method_getNumberOfArguments(animationStartMethod) == 2 && startResult[0] == 'v';
-        if (probeInstalled)
-            MSHookMessageEx(animationController, startAnimation, (IMP)PXAnimationStart,
-                            (IMP *)&PXOriginalAnimationStart);
-        PXTransitionProbeWrite([NSString stringWithFormat:@"alpha102 probe ready animationStart=%d fluid=%d",
-            probeInstalled, initializer != NULL]);
         SEL openRequest = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
         if (workspace && class_getInstanceMethod(workspace, openRequest))
             MSHookMessageEx(workspace, openRequest, (IMP)PXHandleOpenRequest,
