@@ -240,7 +240,7 @@ assert 'view.frame = CGRectMake(0, height - keyboard.height, width, keyboard.hei
 assert 'CGFloat height = MIN(keyboard.height, screen.height)' in keyboard_layout
 assert 'externalKeyboardHorizontalPercent' in keyboard_layout
 assert 'screen.height * 0.55' in keyboard_layout.split('} else {', 1)[1]
-assert 'key = "externalKeyboardHorizontalPercent"; default = 0; min = 0; max = 100;' in (root / 'prefs/Resources/Root.plist').read_text(encoding='utf-8')
+assert 'key = "externalKeyboardHorizontalPercent"; default = 0; min = 0; max = 100;' in (root / 'prefs/Resources/Keyboard.plist').read_text(encoding='utf-8')
 preferences_page = (root / 'prefs/PXRootListController.m').read_text(encoding='utf-8')
 assert 'BOOL horizontal = [[specifier propertyForKey:@"key"] isEqual:@"externalKeyboardHorizontalPercent"]' in preferences_page
 assert 'horizontal ? @"横屏外置键盘位置" : @"键盘关闭遮罩深度"' in preferences_page
@@ -344,7 +344,7 @@ assert 'localizedCaseInsensitiveContains(query)' in picker
 assert 'CGSize(width: 32, height: 32)' in picker
 root_plist = (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')
 assert 'cell = PSLinkCell; label = "应用、快捷操作与排序"' in root_plist
-assert 'key = "clearOnLock"' in root_plist
+assert 'key = "clearOnLock"' in (root / 'prefs/Resources/System.plist').read_text(encoding='utf-8')
 assert 'self.canvas.window.windowLevel + 1' in bridge
 assert 'self.keyboardOverlay.window.windowLevel = self.keyboardWindowLevel' in bridge
 assert 'self.relocatingKeyboard' in bridge
@@ -386,7 +386,7 @@ assert 'px.action.screenshot.copy' in panel and 'px.action.screenshot.copy' in b
 copy_shot = bridge.split('if ([identifier isEqualToString:@"px.action.screenshot.copy"])', 1)[1].split('if ([identifier isEqualToString:@"px.action.screenshot"])', 1)[0]
 assert '_UICreateScreenUIImage' in copy_shot and 'UIPasteboard.generalPasteboard.image = image' in copy_shot
 assert 'takeScreenshot' not in copy_shot and 'UIImageWriteToSavedPhotosAlbum' not in copy_shot
-assert 'urlSplitExcluded' in entry and 'URL 分屏黑名单' in root_plist
+assert 'urlSplitExcluded' in entry and 'URL 分屏黑名单' in (root / 'prefs/Resources/External.plist').read_text(encoding='utf-8')
 assert '!notification && link ? [defaults stringArrayForKey:@"urlSplitExcluded"] : nil' in entry
 assert 'displayItemWithType:bundleIdentifier:uniqueIdentifier:' not in bridge
 assert 'self.processAssertion = nil' in bridge
@@ -415,8 +415,8 @@ assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
 assert 'px.action.window' in picker
 assert 'px.action.recent' in picker and 'urls.count < 10' in picker
 assert 'px.action.kayoko' in picker
-assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')
-assert 'closeOutsideWithKeyboard' in panel and 'key = "closeOutsideWithKeyboard"' in root_plist
+assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'System.plist').read_text(encoding='utf-8')
+assert 'closeOutsideWithKeyboard' in panel and 'key = "closeOutsideWithKeyboard"' in (root / 'prefs/Resources/Keyboard.plist').read_text(encoding='utf-8')
 assert panel.count('initialCardFrame(in: screen, size:') == 4
 assert 'initialRightInset' in panel
 initial_frame = panel.split('private func initialCardFrame(', 1)[1].split('private func initialCardSize(', 1)[0]
@@ -441,7 +441,7 @@ for landscape, landscape_inset, expected in ((False, 80, 12), (True, 80, 80), (T
     selected = preferences['landscapeInitialRightInset' if landscape else 'initialRightInset']
     assert (selected if selected is not None else preferences['initialRightInset']) == expected
 assert 'mask = hidden ? mask | 0x12 : mask & ~0x12' in bridge
-assert 'com.moxuan.parallelx.capture-updated' in entry and 'PostNotification' in root_plist
+assert 'com.moxuan.parallelx.capture-updated' in entry and 'PostNotification' in (root / 'prefs/Resources/Keyboard.plist').read_text(encoding='utf-8')
 blacklist = (root / 'prefs' / 'PXExternalBlacklistController.swift').read_text(encoding='utf-8')
 assert 'PXApplicationIcon(app.id)' in blacklist and 'CGSize(width: 32, height: 32)' in blacklist
 assert 'self.animateFullscreenReady()' in panel
@@ -530,7 +530,7 @@ assert 'PXStaticActions(bundleID).count' in catalog
 assert 'PXFetchApplicationActions(app.id)' in action_picker
 assert 'kind == "apps" { onSave?([item]) }' in action_picker
 assert 'localizedStringForKey:title value:title table:@"InfoPlist"' in catalog
-assert 'keyboardDimOpacity' in panel and 'keyboardDimOpacity' in root_plist
+assert 'keyboardDimOpacity' in panel and 'keyboardDimOpacity' in (root / 'prefs/Resources/Keyboard.plist').read_text(encoding='utf-8')
 assert 'frontDisplayDidChange:' in (root / 'Tweak.m').read_text(encoding='utf-8')
 assert 'PXOriginalFrontDisplayDidChange(springBoard, selector, application)' in (root / 'Tweak.m').read_text(encoding='utf-8')
 
@@ -546,7 +546,7 @@ prefs_host = (root / 'prefs' / 'PXRootListController.m').read_text(encoding='utf
 assert '@interface PXPageHostController : PSViewController' in prefs_host
 assert 'initForContentSize:(CGSize)contentSize' in prefs_host
 assert '[super initWithNibName:nil bundle:nil]' in prefs_host
-assert root_plist.count('detail = PXPageHostController') == 6
+assert root_plist.count('detail = PXPageHostController') == 4
 for name in ('AppPicker', 'Launcher', 'CornerRadius', 'Dock', 'GestureArea'):
     assert ': UIViewController' in (root / 'prefs' / f'PX{name}Controller.swift').read_text(encoding='utf-8')
 assert 'canvas.traitCollection.userInterfaceStyle' in bridge
@@ -596,7 +596,8 @@ for screen_w, screen_h in ((844, 390), (852, 393), (932, 430)):
         zoom = max(1, min(1.6, (right - 12) / width))
         assert right - width * zoom >= 12 - .001
         assert abs(width / height - source_w / source_h) < .001
-assert 'portraitExternalKeyboard' in root_plist and 'landscapeExternalKeyboard' in root_plist
+keyboard_plist = (root / 'prefs/Resources/Keyboard.plist').read_text(encoding='utf-8')
+assert 'portraitExternalKeyboard' in keyboard_plist and 'landscapeExternalKeyboard' in keyboard_plist
 assert '![self usesExternalKeyboard]' in bridge
 assert '[self.keyboardOriginalParent addSubview:view]' in bridge
 assert 'activeBridge.isHostedKeyboardVisible()' in panel
@@ -716,7 +717,7 @@ assert 'PXLandscapeBottomGestureFrame' not in panel
 assert 'hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,' in panel
 
 # The compact app identity follows hosted content orientation, never consumes touches or appears on docks.
-root_preferences = (root / "prefs/Resources/Root.plist").read_text(encoding="utf-8")
+root_preferences = (root / "prefs/Resources/Window.plist").read_text(encoding="utf-8")
 assert 'key = "showSplitAppIdentity"; default = 1;' in root_preferences
 assert 'defaults?.object(forKey: "showSplitAppIdentity") as? Bool ?? true' in panel
 capture_update = panel.split('@objc public static func updateCaptureVisibility()', 1)[1].split('@objc public static func', 1)[0]

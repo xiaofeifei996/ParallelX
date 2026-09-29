@@ -42,7 +42,8 @@
         @"radius": @"PXCornerRadiusController",
         @"dock": @"PXDockController",
         @"gestures": @"PXGestureAreaController",
-        @"urlBlacklist": @"PXExternalBlacklistController"
+        @"urlBlacklist": @"PXExternalBlacklistController",
+        @"backup": @"PXBackupController"
     };
     NSString *className = pages[identifier ?: @""];
     Class pageClass = className ? NSClassFromString(className) : Nil;
@@ -64,14 +65,25 @@
 
 @end
 
-@interface PXRootListController : PSListController
+@interface PXSettingsListController : PSListController
 @end
 
-@implementation PXRootListController
+@implementation PXSettingsListController
+
+- (void)setSpecifier:(PSSpecifier *)specifier
+{
+    [super setSpecifier:specifier];
+    _specifiers = nil;
+}
 
 - (NSArray *)specifiers
 {
-    if (!_specifiers) _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
+    if (!_specifiers) {
+        NSString *page = [self.specifier propertyForKey:@"id"];
+        NSDictionary *pages = @{@"window": @"Window", @"keyboard": @"Keyboard",
+                                @"external": @"External", @"system": @"System"};
+        _specifiers = [self loadSpecifiersFromPlistName:pages[page ?: @""] ?: @"Root" target:self];
+    }
     return _specifiers;
 }
 
@@ -154,4 +166,10 @@
     return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 
+@end
+
+@interface PXRootListController : PXSettingsListController
+@end
+
+@implementation PXRootListController
 @end

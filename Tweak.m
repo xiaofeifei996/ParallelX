@@ -568,6 +568,7 @@ __attribute__((constructor)) static void PXInitialize(void)
         static int captureToken;
         notify_register_dispatch("com.moxuan.parallelx.capture-updated", &captureToken,
             dispatch_get_main_queue(), ^(__unused int token) {
+                [[[NSUserDefaults alloc] initWithSuiteName:@"com.moxuan.parallelx"] synchronize];
                 SEL refresh = NSSelectorFromString(@"updateCaptureVisibility");
                 if ([entry respondsToSelector:refresh])
                     ((void (*)(id, SEL))objc_msgSend)(entry, refresh);
