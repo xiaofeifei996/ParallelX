@@ -318,6 +318,12 @@ static int PXApplicationPID(NSString *bundleID)
     return YES;
 }
 
++ (BOOL)consumeHomeHandoffForCurrentApplication
+{
+    NSString *current = [[self sharedBridge] frontmostBundleID];
+    return current.length && [self consumeHomeHandoffForBundleID:current];
+}
+
 + (void)noteSystemOrientation:(UIInterfaceOrientation)orientation
 {
     if (orientation == UIInterfaceOrientationPortrait || orientation == UIInterfaceOrientationPortraitUpsideDown ||

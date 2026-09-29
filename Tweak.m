@@ -146,15 +146,23 @@ static BOOL PXExecuteTransition(id workspace, SEL selector, id request)
     // Match only this app's departure to Home, after the request is prepared.
     if ([context respondsToSelector:disable] && [to respondsToSelector:@selector(count)] &&
         [to count] == 0 && [from conformsToProtocol:@protocol(NSFastEnumeration)]) {
+        BOOL matched = NO;
         for (id entity in from) {
             id bundleID = PXValue(PXValue(entity, @"application"), @"bundleIdentifier");
             if ([bundleID isKindOfClass:NSString.class] &&
                 [PXSceneBridge consumeHomeHandoffForBundleID:bundleID]) {
-                ((void (*)(id, SEL, BOOL))objc_msgSend)(context, disable, YES);
-                objc_setAssociatedObject(request, &PXHomeHandoffRequestKey, @YES,
-                                         OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                matched = YES;
                 break;
             }
+        }
+        // iOS 15 can send the same Home handoff with empty scene-entity sets.
+        // The pending one-shot target must still be the frontmost app.
+        if (!matched && [from respondsToSelector:@selector(count)] && [from count] == 0)
+            matched = [PXSceneBridge consumeHomeHandoffForCurrentApplication];
+        if (matched) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(context, disable, YES);
+            objc_setAssociatedObject(request, &PXHomeHandoffRequestKey, @YES,
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
     static NSUInteger recordedRequests;
