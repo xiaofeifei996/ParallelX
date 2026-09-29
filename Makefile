@@ -6,7 +6,7 @@ FINALPACKAGE = 1
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = ParallelX
-ParallelX_FILES = Tweak.m PXPanel.swift PXSceneBridge.m PXAppCatalog.m
+ParallelX_FILES = Tweak.m PXPanel.swift PXAppIndex.swift PXSceneBridge.m PXAppCatalog.m
 ParallelX_FRAMEWORKS = UIKit Foundation QuartzCore
 ParallelX_LIBRARIES = substrate sqlite3
 ParallelX_CFLAGS = -fobjc-arc -Wall -Wextra

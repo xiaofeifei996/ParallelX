@@ -157,7 +157,9 @@ assert 'let change = (horizontal + vertical) / 2' in panel
 assert '(base.width > 0 ? base.width : start.width) * limit' in panel
 assert '"resizeMaxPercent"' in (root / 'prefs' / 'PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'abs(horizontal) > abs(vertical)' not in panel
-assert 'PXCornerGrip' not in panel and 'path.addQuadCurve' not in panel
+# The alphabet selector deliberately draws an arc; corner gesture regions must stay invisible.
+outside_selector = panel.split('private final class PXAppSelectorView:', 1)[0] + panel.split('private final class PXSearchViewController:', 1)[1]
+assert 'PXCornerGrip' not in panel and 'path.addQuadCurve' not in outside_selector
 assert 'corner.isOpaque = false' in panel
 assert 'corner.backgroundColor = debug ?' in panel
 assert 'for side in [-1, 1]' in panel

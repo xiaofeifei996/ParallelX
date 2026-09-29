@@ -166,6 +166,10 @@ private final class PXPanelViewController: UIViewController {
     private var groupOriginY: CGFloat = 0
     private var groupCancel: UILabel?
     var groupMenuActive: Bool { groupMenu != nil }
+    private var appSelector: PXAppSelectorView?
+    var appSelectorActive: Bool { appSelector != nil }
+    var selectedIndexedApp: String? { appSelector?.selectedApp }
+    func updateAppSelector(at point: CGPoint) { appSelector?.update(at: point) }
     private var page = 0
     private var pageCapacity = 1
     private var lastSize = CGSize.zero
@@ -240,6 +244,10 @@ private final class PXPanelViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         shade.frame = view.bounds
+        if let selector = appSelector {
+            selector.frame = view.bounds
+            return
+        }
         pageControl.frame = CGRect(x: view.bounds.width - 110,
                                    y: min(view.bounds.maxY - 42,
                                           handleCenterY + min(300, view.bounds.height * 0.38)),
@@ -257,6 +265,7 @@ private final class PXPanelViewController: UIViewController {
     func setProgress(_ progress: CGFloat) {
         self.progress = min(1, max(0, progress))
         onProgress?(self.progress)
+        guard appSelector == nil else { return }
         shade.alpha = self.progress
         for (index, button) in buttons.enumerated() {
             let step = CGFloat(buttonRings[index]) * 0.12
@@ -382,13 +391,15 @@ private final class PXPanelViewController: UIViewController {
                 selectionFeedback.prepare()
                 let id = apps[next].id
                 let group = configuredAction(id)
-                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" || group?["kind"] as? String == "group" {
+                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" || id == "px.action.search" || group?["kind"] as? String == "group" {
                     holdFeedback.prepare()
                     let task = DispatchWorkItem { [weak self] in
                         guard let self = self, self.selectedIndex == next else { return }
                         self.holdFeedback.impactOccurred()
                         if id == "px.action.brightness" {
                             self.onBrightnessHold?(self.lastSelectionPoint)
+                        } else if id == "px.action.search" {
+                            self.showAppSelector(at: self.lastSelectionPoint)
                         } else if group?["kind"] as? String == "group" {
                             self.showGroupMenu(group?["items"] as? [[String: Any]] ?? [], at: self.lastSelectionPoint)
                         } else if applicationID(id) != nil {
@@ -453,6 +464,23 @@ private final class PXPanelViewController: UIViewController {
         holdFeedbackTask?.cancel()
         fullscreenReadyView?.removeFromSuperview()
         fullscreenReadyView = nil
+    }
+
+    private func showAppSelector(at point: CGPoint) {
+        guard appSelector == nil else { return }
+        cancelSelectionFeedback()
+        buttons.forEach { $0.alpha = 0 }
+        selectionPreview.alpha = 0
+        pageControl.alpha = 0
+        let selector = PXAppSelectorView(frame: view.bounds, point: point)
+        appSelector = selector
+        view.addSubview(selector)
+        selector.alpha = 0
+        selector.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+        PXMotion.ease(0.18) {
+            selector.alpha = 1
+            selector.transform = .identity
+        }
     }
 
     private func showGroupMenu(_ items: [[String: Any]], at point: CGPoint) {
@@ -591,7 +619,215 @@ private final class PXPanelViewController: UIViewController {
             self.selectionPreview.alpha = 0
             self.brightnessOverlay.alpha = 0
             self.groupMenu?.alpha = 0
+            self.appSelector?.alpha = 0
         }, completion: { _ in completion() })
+    }
+}
+
+private final class PXAppSelectorView: UIView {
+    private typealias App = (id: String, name: String)
+    private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    private let scroll = UIScrollView()
+    private let heading = UILabel()
+    private let hint = UILabel()
+    private let glow = CAGradientLayer()
+    private let glowMask = CAShapeLayer()
+    private let feedback = UISelectionFeedbackGenerator()
+    private var groups: [String: [App]] = [:]
+    private var letters: [String] = []
+    private var letterLabels: [UILabel] = []
+    private var tiles: [UIView] = []
+    private var currentApps: [App] = []
+    private var currentLetter = ""
+    private var selected: Int?
+    private var lastPoint = CGPoint.zero
+    private var rail = CGRect.zero
+    private var laidOutSize = CGSize.zero
+    var selectedApp: String? { selected.map { currentApps[$0].id } }
+
+    init(frame: CGRect, point: CGPoint) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false // The original handle drag owns this entire interaction.
+        lastPoint = point
+        addSubview(blur)
+        scroll.isUserInteractionEnabled = false
+        scroll.clipsToBounds = true
+        addSubview(scroll)
+        heading.font = .systemFont(ofSize: 28, weight: .semibold)
+        heading.textColor = .label
+        heading.textAlignment = .center
+        addSubview(heading)
+        hint.text = "滑动字母查找 · 移入图标松手打开"
+        hint.font = .systemFont(ofSize: 12)
+        hint.textColor = .secondaryLabel
+        hint.textAlignment = .center
+        hint.numberOfLines = 2
+        addSubview(hint)
+        glow.colors = [UIColor.systemBlue.withAlphaComponent(0).cgColor,
+                       UIColor.systemCyan.cgColor, UIColor.systemBlue.cgColor,
+                       UIColor.systemPurple.withAlphaComponent(0).cgColor]
+        glowMask.fillColor = nil
+        glowMask.strokeColor = UIColor.white.cgColor
+        glowMask.lineWidth = 3
+        glowMask.lineCap = .round
+        glow.mask = glowMask
+        layer.addSublayer(glow)
+        feedback.prepare()
+        // Catalogue work stays off the gesture's main-thread path. Icons load only for the visible letter.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let apps = PXInstalledApplications().compactMap { item -> App? in
+                guard let id = item["id"], let name = item["name"] else { return nil }
+                return (id, name)
+            }
+            let groups = Dictionary(grouping: apps, by: { PXAppInitial($0.name) })
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.superview != nil else { return }
+                self.groups = groups
+                self.letters = groups.keys.sorted { $0 == "#" ? false : ($1 == "#" || $0 < $1) }
+                self.letterLabels = self.letters.map { letter in
+                    let label = UILabel()
+                    label.text = letter
+                    label.textAlignment = .center
+                    label.font = .systemFont(ofSize: 11, weight: .semibold)
+                    label.textColor = .secondaryLabel
+                    self.addSubview(label)
+                    return label
+                }
+                self.setNeedsLayout()
+                self.layoutIfNeeded()
+                let point = self.lastPoint
+                self.update(at: CGPoint(x: self.rail.midX, y: min(self.rail.maxY, max(self.rail.minY, point.y))))
+                self.update(at: point)
+            }
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        blur.frame = bounds
+        let top = safeAreaInsets.top + 16
+        let bottom = bounds.height - safeAreaInsets.bottom - 20
+        rail = CGRect(x: bounds.width - safeAreaInsets.right - 36, y: top,
+                      width: 28, height: max(1, bottom - top))
+        let width = min(300, max(120, rail.minX - safeAreaInsets.left - 40))
+        scroll.frame = CGRect(x: rail.minX - width - 16, y: top + 52,
+                              width: width, height: max(1, bottom - top - 92))
+        heading.frame = CGRect(x: scroll.frame.minX, y: top, width: width, height: 44)
+        hint.frame = CGRect(x: scroll.frame.minX, y: bottom - 36, width: width, height: 36)
+        for (index, label) in letterLabels.enumerated() {
+            let step = rail.height / CGFloat(max(1, letters.count))
+            label.bounds = CGRect(x: 0, y: 0, width: 28, height: step)
+            label.center = CGPoint(x: rail.midX, y: rail.minY + (CGFloat(index) + 0.5) * step)
+        }
+        if laidOutSize != bounds.size {
+            laidOutSize = bounds.size
+            renderApps()
+        }
+        updateLight(at: lastPoint.y)
+    }
+
+    private func renderApps() {
+        tiles.forEach { $0.removeFromSuperview() }
+        selected = nil
+        let cellWidth = scroll.bounds.width / 3
+        let iconSize = min(56, max(30, cellWidth - 18))
+        let rowHeight = iconSize + 40
+        tiles = currentApps.enumerated().map { index, app in
+            let tile = UIView(frame: CGRect(x: CGFloat(index % 3) * cellWidth,
+                                           y: CGFloat(index / 3) * rowHeight,
+                                           width: cellWidth, height: rowHeight))
+            tile.layer.cornerRadius = 14
+            let icon = UIImageView(image: PXApplicationIconLarge(app.id) ?? UIImage(systemName: "app"))
+            icon.frame = CGRect(x: (cellWidth - iconSize) / 2, y: 6, width: iconSize, height: iconSize)
+            icon.contentMode = .scaleAspectFit
+            icon.layer.cornerRadius = iconSize * 0.225
+            icon.clipsToBounds = true
+            tile.addSubview(icon)
+            let title = UILabel(frame: CGRect(x: 3, y: iconSize + 12, width: cellWidth - 6, height: 20))
+            title.text = app.name
+            title.textColor = .label
+            title.textAlignment = .center
+            title.font = .systemFont(ofSize: 11)
+            tile.addSubview(title)
+            tile.accessibilityLabel = app.name
+            tile.accessibilityTraits = .button
+            scroll.addSubview(tile)
+            return tile
+        }
+        scroll.contentSize = CGSize(width: scroll.bounds.width,
+                                    height: CGFloat((currentApps.count + 2) / 3) * rowHeight)
+    }
+
+    func update(at point: CGPoint) {
+        let previous = lastPoint
+        lastPoint = point
+        guard !letters.isEmpty else { return }
+        if point.x >= rail.minX - 14, point.x <= bounds.maxX, rail.minY <= point.y, point.y <= rail.maxY {
+            let index = min(letters.count - 1, max(0, Int((point.y - rail.minY) / rail.height * CGFloat(letters.count))))
+            let letter = letters[index]
+            if letter != currentLetter {
+                currentLetter = letter
+                currentApps = groups[letter] ?? []
+                scroll.contentOffset = .zero
+                renderApps()
+                scroll.alpha = 0.55
+                PXMotion.ease(0.16) { self.scroll.alpha = 1 }
+                feedback.selectionChanged()
+                feedback.prepare()
+            }
+            setSelection(nil)
+            heading.text = letter
+            updateLight(at: point.y)
+            return
+        }
+        guard scroll.frame.contains(point) else { setSelection(nil); return }
+        // Long sections follow the finger; release still selects the icon under it.
+        if scroll.contentSize.height > scroll.bounds.height, scroll.frame.contains(previous) {
+            let offset = min(max(0, scroll.contentSize.height - scroll.bounds.height),
+                             max(0, scroll.contentOffset.y + previous.y - point.y))
+            scroll.contentOffset.y = offset
+        }
+        let local = scroll.convert(point, from: self)
+        setSelection(tiles.firstIndex { $0.frame.contains(local) })
+    }
+
+    private func setSelection(_ next: Int?) {
+        guard next != selected else { return }
+        selected = next
+        feedback.selectionChanged()
+        feedback.prepare()
+        heading.text = next.map { currentApps[$0].name } ?? currentLetter
+        heading.adjustsFontSizeToFitWidth = true
+        heading.minimumScaleFactor = 0.45
+        PXMotion.ease(0.12) {
+            for (index, tile) in self.tiles.enumerated() {
+                tile.backgroundColor = index == next ? UIColor.systemBlue.withAlphaComponent(0.15) : .clear
+                tile.subviews.first?.transform = index == next ? CGAffineTransform(scaleX: 1.12, y: 1.12) : .identity
+            }
+        }
+    }
+
+    private func updateLight(at y: CGFloat) {
+        let y = min(rail.maxY, max(rail.minY, y))
+        let radius = min(80, rail.height / 4)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        glow.frame = CGRect(x: rail.midX - 35, y: y - radius, width: 40, height: radius * 2)
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: 35, y: 0))
+        path.addQuadCurve(to: CGPoint(x: 35, y: radius * 2), controlPoint: CGPoint(x: -20, y: radius))
+        glowMask.frame = glow.bounds
+        glowMask.path = path.cgPath
+        glow.isHidden = letters.isEmpty || UIAccessibility.isReduceMotionEnabled
+        CATransaction.commit()
+        for label in letterLabels {
+            let amount = max(0, 1 - abs(label.center.y - y) / max(1, radius))
+            label.transform = CGAffineTransform(translationX: -26 * amount * amount, y: 0)
+                .scaledBy(x: 1 + 0.6 * amount, y: 1 + 0.6 * amount)
+            label.textColor = amount > 0.6 ? .systemBlue : .secondaryLabel
+        }
     }
 }
 
@@ -1265,6 +1501,10 @@ public final class PXPanelEntry: NSObject {
                 return
             }
             guard handleDragMode == 1 else { return }
+            if let controller = panel, controller.appSelectorActive {
+                controller.updateAppSelector(at: gesture.location(in: controller.view))
+                return
+            }
             if let controller = panel, controller.groupMenuActive {
                 controller.updateGroupSelection(at: gesture.location(in: controller.view))
                 return
@@ -1290,6 +1530,13 @@ public final class PXPanelEntry: NSObject {
                 }
             }
         case .ended:
+            if let controller = panel, controller.appSelectorActive {
+                controller.updateAppSelector(at: gesture.location(in: controller.view))
+                let appID = controller.selectedIndexedApp
+                hidePanel()
+                if let appID = appID { openHost(appID) }
+                return
+            }
             if let controller = panel, controller.groupMenuActive {
                 controller.updateGroupSelection(at: gesture.location(in: controller.view))
                 let entry = controller.selectedGroupAction
