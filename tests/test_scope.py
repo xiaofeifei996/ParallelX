@@ -400,6 +400,17 @@ assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'Root.plis
 assert 'closeOutsideWithKeyboard' in panel and 'key = "closeOutsideWithKeyboard"' in root_plist
 assert panel.count('initialCardFrame(in: screen, size:') == 3
 assert 'initialRightInset' in panel
+initial_frame = panel.split('private func initialCardFrame(', 1)[1].split('private func initialCardSize(', 1)[0]
+assert 'screen.width > screen.height ? "landscapeInitialRightInset" : "initialRightInset"' in initial_frame
+assert 'saved?.doubleValue ?? legacy?.doubleValue ?? 12' in initial_frame
+radius_settings = (root / 'prefs/PXCornerRadiusController.swift').read_text(encoding='utf-8')
+assert 'defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")' in radius_settings
+assert '(landscapeRightInsetLabel, landscapeRightInset)' in radius_settings
+assert '0..<8' in radius_settings
+for landscape, landscape_inset, expected in ((False, 80, 12), (True, 80, 80), (True, None, 12)):
+    preferences = {'initialRightInset': 12, 'landscapeInitialRightInset': landscape_inset}
+    selected = preferences['landscapeInitialRightInset' if landscape else 'initialRightInset']
+    assert (selected if selected is not None else preferences['initialRightInset']) == expected
 assert 'mask = hidden ? mask | 0x12 : mask & ~0x12' in bridge
 assert 'com.moxuan.parallelx.capture-updated' in entry and 'PostNotification' in root_plist
 blacklist = (root / 'prefs' / 'PXExternalBlacklistController.swift').read_text(encoding='utf-8')

@@ -12,6 +12,8 @@ public final class PXCornerRadiusController: UIViewController {
     private let shadowBlurLabel = UILabel()
     private let rightInset = UISlider()
     private let rightInsetLabel = UILabel()
+    private let landscapeRightInset = UISlider()
+    private let landscapeRightInsetLabel = UILabel()
     private let initialWidth = UISlider()
     private let initialWidthLabel = UILabel()
     private let portraitWidth = UISlider()
@@ -42,7 +44,7 @@ public final class PXCornerRadiusController: UIViewController {
             headings.append(PXSettingsStyle.heading(title, in: scroll))
             cards.append(PXSettingsStyle.card(in: scroll))
         }
-        lines = (0..<7).map { _ in PXSettingsStyle.separator(in: scroll) }
+        lines = (0..<8).map { _ in PXSettingsStyle.separator(in: scroll) }
         caption.text = "圆角大小"
         caption.font = .preferredFont(forTextStyle: .body)
         scroll.addSubview(caption)
@@ -69,6 +71,7 @@ public final class PXCornerRadiusController: UIViewController {
             (shadowStrength, shadowStrengthLabel, "shadowStrength", 22, 50),
             (shadowBlur, shadowBlurLabel, "shadowBlur", 15, 24),
             (rightInset, rightInsetLabel, "initialRightInset", 12, 120),
+            (landscapeRightInset, landscapeRightInsetLabel, "landscapeInitialRightInset", (defaults?.object(forKey: "initialRightInset") as? NSNumber)?.intValue ?? 12, 120),
             (initialWidth, initialWidthLabel, "initialWidthPercent", 78, 95),
             (portraitWidth, portraitWidthLabel, "portraitInitialWidthPercent", (defaults?.object(forKey: "initialWidthPercent") as? NSNumber)?.intValue ?? 78, 95),
             (portraitLandscapeWidth, portraitLandscapeWidthLabel, "portraitLandscapeInitialWidthPercent", (defaults?.object(forKey: "portraitInitialWidthPercent") as? NSNumber)?.intValue ?? 78, 95),
@@ -85,7 +88,7 @@ public final class PXCornerRadiusController: UIViewController {
             control.addTarget(self, action: #selector(shadowFinished),
                               for: [.touchUpInside, .touchUpOutside, .touchCancel])
             scroll.addSubview(control)
-            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : key == "initialRightInset" ? "初始右边距（pt）" : key == "resizeMaxPercent" ? "拖动缩放上限（%）" : key == "portraitCornerRadius" ? "竖屏圆角（pt）" : key == "portraitLandscapeCornerRadius" ? "竖屏横屏应用圆角（pt）" : key == "portraitInitialWidthPercent" ? "竖屏初始尺寸（%）" : key == "portraitLandscapeInitialWidthPercent" ? "竖屏横屏应用尺寸（%）" : "横屏初始尺寸（%）", in: self)
+            let button = PXSettingsStyle.inputButton(for: control, title: key == "shadowStrength" ? "阴影强度（%）" : key == "shadowBlur" ? "阴影模糊（pt）" : (key == "initialRightInset" || key == "landscapeInitialRightInset") ? "初始右边距（pt）" : key == "resizeMaxPercent" ? "拖动缩放上限（%）" : key == "portraitCornerRadius" ? "竖屏圆角（pt）" : key == "portraitLandscapeCornerRadius" ? "竖屏横屏应用圆角（pt）" : key == "portraitInitialWidthPercent" ? "竖屏初始尺寸（%）" : key == "portraitLandscapeInitialWidthPercent" ? "竖屏横屏应用尺寸（%）" : "横屏初始尺寸（%）", in: self)
             scroll.addSubview(button)
             inputButtons[control] = button
         }
@@ -97,7 +100,7 @@ public final class PXCornerRadiusController: UIViewController {
         super.viewDidLayoutSubviews()
         let width = scroll.bounds.width
         let groups: [[(UILabel, UISlider)]] = [
-            [(rightInsetLabel, rightInset), (portraitWidthLabel, portraitWidth), (portraitLandscapeWidthLabel, portraitLandscapeWidth), (initialWidthLabel, initialWidth), (resizeMaxLabel, resizeMax)],
+            [(rightInsetLabel, rightInset), (landscapeRightInsetLabel, landscapeRightInset), (portraitWidthLabel, portraitWidth), (portraitLandscapeWidthLabel, portraitLandscapeWidth), (initialWidthLabel, initialWidth), (resizeMaxLabel, resizeMax)],
             [(portraitRadiusLabel, portraitRadius), (portraitLandscapeRadiusLabel, portraitLandscapeRadius), (caption, slider)],
             [(shadowStrengthLabel, shadowStrength), (shadowBlurLabel, shadowBlur)]
         ]
@@ -144,7 +147,8 @@ public final class PXCornerRadiusController: UIViewController {
     @objc private func shadowChanged() {
         shadowStrengthLabel.text = "阴影强度：\(Int(shadowStrength.value.rounded()))%"
         shadowBlurLabel.text = "阴影模糊：\(Int(shadowBlur.value.rounded())) pt"
-        rightInsetLabel.text = "初始窗口距离右边缘：\(Int(rightInset.value.rounded())) pt"
+        rightInsetLabel.text = "竖屏初始窗口距离右边缘：\(Int(rightInset.value.rounded())) pt"
+        landscapeRightInsetLabel.text = "横屏初始窗口距离右边缘：\(Int(landscapeRightInset.value.rounded())) pt"
         initialWidthLabel.text = "横屏初始尺寸：屏幕高度的 \(Int(initialWidth.value.rounded()))%"
         portraitWidthLabel.text = "竖屏初始尺寸：屏幕宽度的 \(Int(portraitWidth.value.rounded()))%"
         portraitLandscapeWidthLabel.text = "竖屏横屏应用尺寸：屏幕宽度的 \(Int(portraitLandscapeWidth.value.rounded()))%"
@@ -157,6 +161,7 @@ public final class PXCornerRadiusController: UIViewController {
         shadowStrength.value = shadowStrength.value.rounded()
         shadowBlur.value = shadowBlur.value.rounded()
         rightInset.value = rightInset.value.rounded()
+        landscapeRightInset.value = landscapeRightInset.value.rounded()
         initialWidth.value = initialWidth.value.rounded()
         portraitWidth.value = portraitWidth.value.rounded()
         portraitLandscapeWidth.value = portraitLandscapeWidth.value.rounded()
@@ -167,6 +172,7 @@ public final class PXCornerRadiusController: UIViewController {
         defaults?.set(Int(shadowStrength.value), forKey: "shadowStrength")
         defaults?.set(Int(shadowBlur.value), forKey: "shadowBlur")
         defaults?.set(Int(rightInset.value), forKey: "initialRightInset")
+        defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")
         defaults?.set(Int(initialWidth.value), forKey: "initialWidthPercent")
         defaults?.set(Int(portraitWidth.value), forKey: "portraitInitialWidthPercent")
         defaults?.set(Int(portraitLandscapeWidth.value), forKey: "portraitLandscapeInitialWidthPercent")
