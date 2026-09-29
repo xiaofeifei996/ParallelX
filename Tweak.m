@@ -530,10 +530,10 @@ __attribute__((constructor)) static void PXInitialize(void)
                             (IMP *)&PXOriginalFluidAnimationInit);
         Class animationController = NSClassFromString(@"SBUIAnimationController");
         SEL startAnimation = NSSelectorFromString(@"__startAnimation");
-        Method start = class_getInstanceMethod(animationController, startAnimation);
+        Method animationStartMethod = class_getInstanceMethod(animationController, startAnimation);
         char startResult[8] = {0};
-        if (start) method_getReturnType(start, startResult, sizeof(startResult));
-        BOOL probeInstalled = start && method_getNumberOfArguments(start) == 2 && startResult[0] == 'v';
+        if (animationStartMethod) method_getReturnType(animationStartMethod, startResult, sizeof(startResult));
+        BOOL probeInstalled = animationStartMethod && method_getNumberOfArguments(animationStartMethod) == 2 && startResult[0] == 'v';
         if (probeInstalled)
             MSHookMessageEx(animationController, startAnimation, (IMP)PXAnimationStart,
                             (IMP *)&PXOriginalAnimationStart);
