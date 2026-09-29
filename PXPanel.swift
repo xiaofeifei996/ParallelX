@@ -2053,8 +2053,11 @@ public final class PXPanelEntry: NSObject {
             let source = activeBridge.hostedSourceSize()
             title.isHidden = source.width <= 0 || source.height <= source.width ||
                 card.bounds.width < 64 || card.bounds.height < 48
-            let screen = hostWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
-            let initialWidth = initialCardSize(in: screen, source: source).width
+            // Keep one portrait reference: landscape's smaller card must also shrink its identity.
+            let physical = (hostWindow?.screen ?? UIScreen.main).fixedCoordinateSpace.bounds.size
+            let referenceScreen = CGRect(x: 0, y: 0, width: min(physical.width, physical.height),
+                                         height: max(physical.width, physical.height))
+            let initialWidth = initialCardSize(in: referenceScreen, source: source).width
             let scale = initialWidth > 0 ? card.bounds.width / initialWidth : 1
             let titleWidth = min(160, (initialWidth > 0 ? initialWidth : card.bounds.width) - 32,
                                  name.intrinsicContentSize.width + 35)
