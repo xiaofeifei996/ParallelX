@@ -31,6 +31,28 @@ static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
     PXOriginalSetStyleMode(mode, selector, value);
 }
 static BOOL PXDeviceLocked;
+static void (*PXOriginalCoverSheetWillAppear)(id, SEL, BOOL);
+static void (*PXOriginalCoverSheetDidDisappear)(id, SEL, BOOL);
+
+static void PXSetCoverSheetVisible(BOOL visible)
+{
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL setter = NSSelectorFromString(@"setCoverSheetVisible:");
+    if ([entry respondsToSelector:setter])
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, visible);
+}
+
+static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
+{
+    PXSetCoverSheetVisible(YES);
+    PXOriginalCoverSheetWillAppear(controller, selector, animated);
+}
+
+static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
+{
+    PXOriginalCoverSheetDidDisappear(controller, selector, animated);
+    PXSetCoverSheetVisible(NO);
+}
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
 static NSString *PXPendingURLTransitionTarget;
@@ -557,6 +579,13 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(keyboard, @selector(layoutSubviews), (IMP)PXKeyboardLayout,
                             (IMP *)&PXOriginalKeyboardLayout);
         static int lockToken;
+        Class coverSheet = NSClassFromString(@"CSCoverSheetViewController");
+        if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewWillAppear:)))
+            MSHookMessageEx(coverSheet, @selector(viewWillAppear:), (IMP)PXCoverSheetWillAppear,
+                            (IMP *)&PXOriginalCoverSheetWillAppear);
+        if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewDidDisappear:)))
+            MSHookMessageEx(coverSheet, @selector(viewDidDisappear:), (IMP)PXCoverSheetDidDisappear,
+                            (IMP *)&PXOriginalCoverSheetDidDisappear);
         notify_register_dispatch("com.apple.springboard.lockstate", &lockToken,
             dispatch_get_main_queue(), ^(int token) {
                 uint64_t state = 0;
@@ -580,5 +609,7 @@ __attribute__((constructor)) static void PXInitialize(void)
         SEL start = NSSelectorFromString(@"start");
         if ([entry respondsToSelector:start])
             ((void (*)(id, SEL))objc_msgSend)(entry, start);
+        [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
+            object:nil userInfo:@{@"locked": @(PXDeviceLocked)}];
     });
 }

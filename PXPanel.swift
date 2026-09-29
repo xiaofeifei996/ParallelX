@@ -770,6 +770,7 @@ public final class PXPanelEntry: NSObject {
     private var moveStartFrame: CGRect?
     private var needsHostRefresh = false
     private var deviceLocked = false
+    private var coverSheetVisible = false
     private var panelDragProgress: CGFloat = 0
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
     private var handleDragStartY: CGFloat = 0
@@ -870,6 +871,7 @@ public final class PXPanelEntry: NSObject {
         let locked = notification.userInfo?["locked"] as? Bool ?? false
         guard locked != deviceLocked else { return }
         deviceLocked = locked
+        updateHandleVisibility()
         if locked {
             if UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "clearOnLock") == true {
                 closeHost(animated: false)
@@ -1138,7 +1140,7 @@ public final class PXPanelEntry: NSObject {
     private func updateHandleAppearance() {
         guard let window = handleWindow, let pill = handle else { return }
         window.windowLevel = .alert + 51
-        window.isHidden = false
+        updateHandleVisibility()
         let defaults = UserDefaults(suiteName: preferenceDomain)
         let width = min(52, max(12, CGFloat(defaults?.object(forKey: "handleWidth") as? Int ?? 24)))
         let height = min(160, max(44, CGFloat(defaults?.object(forKey: "handleHeight") as? Int ?? 86)))
@@ -1161,6 +1163,16 @@ public final class PXPanelEntry: NSObject {
     private func setHandlePanelProgress(_ progress: CGFloat) {
         guard let pill = handle else { return }
         pill.transform = CGAffineTransform(translationX: (pill.bounds.width + 8) * min(1, max(0, progress)), y: 0)
+    }
+
+    private func updateHandleVisibility() {
+        handle?.isHidden = deviceLocked || coverSheetVisible
+    }
+
+    @objc public static func setCoverSheetVisible(_ visible: Bool) {
+        shared.coverSheetVisible = visible
+        shared.updateHandleVisibility()
+        if visible { shared.hidePanel() }
     }
 
     private var handlePositionKey: String {

@@ -607,6 +607,10 @@ assert 'row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, co
 assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6)' in panel
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .alert + 51' in panel
+assert 'handle?.isHidden = deviceLocked || coverSheetVisible' in panel
+assert 'shared.coverSheetVisible = visible' in panel
+assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
+assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel
 assert '!keyboardHideInFlight, !keyboardDismissSuppressed, activeBridge.isHostedKeyboardVisible()' in panel
 for source, previous, current, mask, expected in (
