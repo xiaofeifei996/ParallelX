@@ -2405,6 +2405,18 @@ public final class PXPanelEntry: NSObject {
             parkMain(side: defaultDockSide)
             return
         }
+        if gesture.state == .ended, translation.y > 35,
+           translation.y > abs(translation.x) * 1.2,
+           gesture.velocity(in: window.rootViewController?.view).y > 500 {
+            moveStartFrame = nil
+            let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+            let target = initialCardFrame(in: screen, size: card.frame.size)
+            PXMotion.ease(0.24) {
+                card.frame = target
+                self.layoutHostControls()
+            }
+            return
+        }
         if gesture.state == .changed || gesture.state == .ended {
             card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
             layoutHostControls()

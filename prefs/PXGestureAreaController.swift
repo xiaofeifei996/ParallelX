@@ -73,7 +73,7 @@ public final class PXGestureAreaController: UIViewController {
         debugSwitch.isOn = defaults?.bool(forKey: "gestureDebug") ?? false
         debugSwitch.addTarget(self, action: #selector(debugChanged), for: .valueChanged)
         scroll.addSubview(debugSwitch)
-        hint.text = "顶部和底部透明区域分别设置；双击关闭、长按全屏、拖动移动。更改在下次打开窗口时生效。"
+        hint.text = "顶部和底部透明区域分别设置；双击关闭、长按全屏、拖动移动、上滑变小窗、下滑回到初始位置。更改在下次打开窗口时生效。"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
         hint.numberOfLines = 0
