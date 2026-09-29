@@ -138,6 +138,7 @@ private final class PXPanelViewController: UIViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .all }
     var apps: [(id: String, name: String)] = []
     var onBrightnessHold: ((CGPoint) -> Void)?
+    var onProgress: ((CGFloat) -> Void)?
     var handleCenterY: CGFloat = 0
     var handleCenterX: CGFloat = 0
     var holdDuration: TimeInterval = 0.7
@@ -255,6 +256,7 @@ private final class PXPanelViewController: UIViewController {
 
     func setProgress(_ progress: CGFloat) {
         self.progress = min(1, max(0, progress))
+        onProgress?(self.progress)
         shade.alpha = self.progress
         for (index, button) in buttons.enumerated() {
             let step = CGFloat(buttonRings[index]) * 0.12
@@ -583,6 +585,7 @@ private final class PXPanelViewController: UIViewController {
             }
         }
         PXMotion.ease(duration + Double(outer) * 0.028, options: .curveEaseIn, animations: {
+            self.onProgress?(0)
             self.shade.alpha = 0
             self.pageControl.alpha = 0
             self.selectionPreview.alpha = 0
@@ -1142,14 +1145,22 @@ public final class PXPanelEntry: NSObject {
         window.applySystemOrientation()
         let bounds = window.rootViewController?.view.bounds ?? window.bounds
         let fraction = min(0.78, max(0.22, CGFloat(defaults?.object(forKey: handlePositionKey) as? Double ?? 0.5)))
+        let panelTransform = pill.transform
+        pill.transform = .identity
         pill.frame = CGRect(x: bounds.maxX - width,
                             y: bounds.height * fraction - height / 2, width: width, height: height)
+        pill.transform = panelTransform
         pill.layer.cornerRadius = min(width / 2, 16)
         let markHeight = height * 0.46
         pill.subviews.first?.frame = CGRect(x: (width - 4) / 2,
                                            y: (height - markHeight) / 2,
                                            width: 4, height: markHeight)
         Self.updateCaptureVisibility()
+    }
+
+    private func setHandlePanelProgress(_ progress: CGFloat) {
+        guard let pill = handle else { return }
+        pill.transform = CGAffineTransform(translationX: (pill.bounds.width + 8) * min(1, max(0, progress)), y: 0)
     }
 
     private var handlePositionKey: String {
@@ -1183,6 +1194,7 @@ public final class PXPanelEntry: NSObject {
         window.windowLevel = .alert + 52
         window.backgroundColor = .clear
         let controller = PXPanelViewController()
+        controller.onProgress = { [weak self] in self?.setHandlePanelProgress($0) }
         controller.apps = selectedApps()
         controller.handleCenterY = handle?.center.y ?? window.bounds.midY
         controller.handleCenterX = handle?.center.x ?? window.bounds.maxX
@@ -1245,8 +1257,11 @@ public final class PXPanelEntry: NSObject {
             }
             let prior = panelDragProgress
             panelDragProgress = max(panelDragProgress, min(1, max(0, distance / threshold)))
-            if prior < 0.8 && panelDragProgress >= 0.8 { panel?.completeOpening() }
-            else if panelDragProgress < 0.8 { panel?.setProgress(panelDragProgress) }
+            if prior < 0.8 && panelDragProgress >= 0.8 {
+                panel?.completeOpening()
+            } else if panelDragProgress < 0.8 {
+                panel?.setProgress(panelDragProgress)
+            }
             if panelDragProgress >= 0.8 {
                 panel?.advancePage(forDrag: gesture.translation(in: root).y)
                 if let controller = panel {
@@ -1451,14 +1466,7 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
         card.layer.cornerRadius = configuredCornerRadius(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
         card.layer.cornerCurve = .continuous
-        card.layer.shadowColor = UIColor.black.cgColor
-        let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
-        let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
-        let dark = card.traitCollection.userInterfaceStyle == .dark
-        card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
-        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
-        card.layer.shadowRadius = dark ? blur + 4 : blur
-        card.layer.shadowOffset = CGSize(width: 0, height: 3)
+        updateCardShadow(card)
         root.view.addSubview(card)
         let clip = UIView(frame: card.bounds)
         clip.backgroundColor = .secondarySystemBackground
@@ -1718,6 +1726,19 @@ public final class PXPanelEntry: NSObject {
         return CGFloat(min(60, max(0, saved?.doubleValue ?? fallback?.doubleValue ?? 20)))
     }
 
+    private func updateCardShadow(_ card: UIView) {
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
+        let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
+        let dark = card.traitCollection.userInterfaceStyle == .dark
+        card.layer.shadowColor = dark ? UIColor.white.cgColor : UIColor.black.cgColor
+        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
+        card.layer.shadowRadius = dark ? blur + 4 : blur
+        card.layer.shadowOffset = CGSize(width: 0, height: 3)
+        card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
+                                             cornerRadius: card.layer.cornerRadius).cgPath
+    }
+
     private var defaultDockSide: Int {
         UserDefaults(suiteName: preferenceDomain)?.integer(forKey: "dockSide") == -1 ? -1 : 1
     }
@@ -1725,17 +1746,7 @@ public final class PXPanelEntry: NSObject {
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
         activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)
-        let defaults = UserDefaults(suiteName: preferenceDomain)
-        let strength = Float(min(50, max(0, defaults?.object(forKey: "shadowStrength") as? Int ?? 22))) / 100
-        let blur = CGFloat(min(24, max(0, defaults?.object(forKey: "shadowBlur") as? Int ?? 15)))
-        let dark = card.traitCollection.userInterfaceStyle == .dark
-        card.layer.shadowColor = dark ? UIColor(white: 1, alpha: 1).cgColor : UIColor.black.cgColor
-        card.layer.shadowOpacity = dark ? min(0.35, strength * 0.8) : strength
-        card.layer.shadowRadius = dark ? blur + 4 : blur
-        if card.layer.shadowPath?.boundingBox != card.bounds || card.subviews.first?.layer.cornerRadius != card.layer.cornerRadius {
-            card.layer.shadowPath = UIBezierPath(roundedRect: card.bounds,
-                                                  cornerRadius: card.layer.cornerRadius).cgPath
-        }
+        updateCardShadow(card)
         card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
         if let indicator = card.viewWithTag(0x505847) {
             let barWidth = min(100, card.bounds.width * 0.32)
@@ -1794,7 +1805,6 @@ public final class PXPanelEntry: NSObject {
         }
         root.addSubview(overlay)
         window.windowLevel = .statusBar + 0.3
-        card.layer.shadowOpacity = 0
         card.viewWithTag(0x505847)?.isHidden = true
         canvas.isUserInteractionEnabled = false
         activeBridge.setHostedInteractionEnabled(false)
@@ -1844,6 +1854,7 @@ public final class PXPanelEntry: NSObject {
             let scale = width / max(1, baseSize.width)
             let changes = {
                 dock.card.bounds = CGRect(origin: .zero, size: baseSize)
+                self.updateCardShadow(dock.card)
                 dock.card.layoutIfNeeded()
                 dock.bridge.layoutHost()
                 dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)
@@ -1910,7 +1921,6 @@ public final class PXPanelEntry: NSObject {
             dock.card.frame = frame
             dock.card.layoutIfNeeded()
             dock.bridge.layoutHost()
-            dock.card.layer.shadowOpacity = 0
         }, completion: { [weak self, weak dock] _ in
             guard let self = self, let dock = dock, self.hostWindow === dock.window else { return }
             self.layoutHostControls()

@@ -265,7 +265,7 @@ assert 'overlay.addGestureRecognizer(swipe)' in panel
 park = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
 assert 'root.addSubview(overlay)' in park and 'controls.addSubview(overlay)' not in park
 assert 'window.windowLevel = .statusBar + 0.3' in park
-assert 'card.layer.shadowOpacity = 0' in park
+assert 'card.layer.shadowOpacity = 0' not in park
 assert 'let overlay = UIView(frame: card.frame)' in park
 assert 'dock.overlay.frame = frame' in panel
 assert 'dock.window.windowLevel = .statusBar + 0.3' in panel
@@ -422,6 +422,14 @@ assert 'shared.panelFrontmostBundleID = nil' in panel
 assert 'restoreExternalSource' not in panel
 assert 'com.moxuan.parallelx.url-route.log' in external
 assert 'PXURLRouteLogActive()' in external
+assert 'PXTransitionTargetsBundle(to, PXPendingURLTransitionTarget)' in external
+assert 'suppressed URL foreground' in external
+assert 'if (urlRoute)' in external and 'PXPendingURLTransitionUntil = PXRecentExternalTime + 2' in external
+assert 'self.updateCardShadow(dock.card)' in panel
+assert 'card.layer.shadowOpacity = 0\n        card.viewWithTag(0x505847)' not in panel
+assert 'onProgress?(self.progress)' in panel
+assert 'controller.onProgress = { [weak self] in self?.setHandlePanelProgress($0) }' in panel
+assert 'self.onProgress?(0)' in panel
 assert 'func completeOpening()' in panel
 assert 'withRenderingMode(.alwaysOriginal)' in panel
 
