@@ -674,3 +674,12 @@ assert 'PXOriginalFluidReceiveTouch' not in tweak
 assert 'traceGesture' not in panel and 'traceGesture' not in tweak and 'traceGesture' not in bridge
 assert 'root.bounds.width > root.bounds.height' in panel
 assert 'PXLandscapeBottomGestureFrame(card: frame, screen: root.bounds' in panel
+
+# The compact app identity follows hosted content orientation, never consumes touches or appears on docks.
+assert '滑动字母查找' not in panel and '移入图标松手打开' not in panel
+assert 'private let hint = UILabel()' not in panel
+assert 'title.isUserInteractionEnabled = false' in panel
+assert 'titleName.text = PXApplicationDisplayName(bundleID)' in panel
+assert 'source.height <= source.width' in panel
+assert 'width: 16, height: 16' in panel and '.systemFont(ofSize: 12, weight: .medium)' in panel
+assert 'card.viewWithTag(0x505848)?.isHidden = true' in panel

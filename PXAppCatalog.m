@@ -182,6 +182,19 @@ NSArray<NSDictionary<NSString *, NSString *> *> *PXInstalledApplications(void)
                                                scale:(CGFloat)scale;
 @end
 
+NSString *PXApplicationDisplayName(NSString *bundleID)
+{
+    @try {
+        Class cls = NSClassFromString(@"LSApplicationProxy");
+        SEL selector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+        id proxy = [cls respondsToSelector:selector]
+            ? ((id (*)(id, SEL, id))objc_msgSend)(cls, selector, bundleID) : nil;
+        NSString *name = PXRead(proxy, @"localizedName");
+        if (![name isKindOfClass:NSString.class] || !name.length) name = PXRead(proxy, @"itemName");
+        return [name isKindOfClass:NSString.class] && name.length ? name : bundleID;
+    } @catch (__unused NSException *exception) { return bundleID; }
+}
+
 UIImage *PXApplicationIcon(NSString *bundleID)
 {
     if (bundleID.length == 0) return nil;

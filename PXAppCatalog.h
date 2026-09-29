@@ -2,6 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 FOUNDATION_EXPORT NSArray<NSDictionary<NSString *, NSString *> *> *PXInstalledApplications(void);
+FOUNDATION_EXPORT NSString *PXApplicationDisplayName(NSString *bundleID);
 FOUNDATION_EXPORT BOOL PXApplicationHasActions(NSString *bundleID);
 FOUNDATION_EXPORT UIImage * _Nullable PXApplicationIcon(NSString *bundleID);
 FOUNDATION_EXPORT UIImage * _Nullable PXApplicationIconLarge(NSString *bundleID);

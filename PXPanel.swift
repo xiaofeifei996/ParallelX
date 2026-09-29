@@ -630,7 +630,6 @@ private final class PXAppSelectorView: UIView {
     private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let scroll = UIScrollView()
     private let heading = UILabel()
-    private let hint = UILabel()
     private let glow = CAGradientLayer()
     private let glowMask = CAShapeLayer()
     private let feedback = UISelectionFeedbackGenerator()
@@ -666,12 +665,6 @@ private final class PXAppSelectorView: UIView {
         heading.textColor = .label
         heading.textAlignment = .center
         addSubview(heading)
-        hint.text = "滑动字母查找 · 移入图标松手打开"
-        hint.font = .systemFont(ofSize: 12)
-        hint.textColor = .secondaryLabel
-        hint.textAlignment = .center
-        hint.numberOfLines = 2
-        addSubview(hint)
         glow.colors = [UIColor.systemBlue.withAlphaComponent(0).cgColor,
                        UIColor.systemCyan.cgColor, UIColor.systemBlue.cgColor,
                        UIColor.systemPurple.withAlphaComponent(0).cgColor]
@@ -728,7 +721,6 @@ private final class PXAppSelectorView: UIView {
                       width: railBow + 44, height: railHeight)
         heading.frame = CGRect(x: safeAreaInsets.left + bounds.width * 0.08,
                                y: rail.midY - 40, width: bounds.width * 0.18, height: 80)
-        hint.frame = CGRect(x: 20, y: bottom - 32, width: bounds.width - 40, height: 32)
         for (index, label) in letterLabels.enumerated() {
             let step = rail.height / CGFloat(max(1, letters.count))
             let y = rail.minY + (CGFloat(index) + 0.5) * step
@@ -747,7 +739,7 @@ private final class PXAppSelectorView: UIView {
         tiles.forEach { $0.removeFromSuperview() }
         selected = nil
         let top = safeAreaInsets.top + 16
-        let bottom = bounds.height - safeAreaInsets.bottom - 62
+        let bottom = bounds.height - safeAreaInsets.bottom - 20
         let rows = max(1, (currentApps.count + 2) / 3)
         let width = min(260, bounds.width * 0.46)
         let cellWidth = PXAppGridCell(count: currentApps.count, width: width, height: bottom - top)
@@ -1773,6 +1765,25 @@ public final class PXPanelEntry: NSObject {
         indicator.layer.cornerRadius = 2
         indicator.isUserInteractionEnabled = false
         clip.addSubview(indicator)
+        let title = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        title.tag = 0x505848
+        title.isUserInteractionEnabled = false
+        title.layer.cornerRadius = 12
+        title.clipsToBounds = true
+        let titleIcon = UIImageView(image: PXApplicationIcon(bundleID) ?? UIImage(systemName: "app"))
+        titleIcon.frame = CGRect(x: 7, y: 4, width: 16, height: 16)
+        titleIcon.layer.cornerRadius = 3.6
+        titleIcon.clipsToBounds = true
+        titleIcon.contentMode = .scaleAspectFit
+        title.contentView.addSubview(titleIcon)
+        let titleName = UILabel()
+        titleName.tag = 0x505849
+        titleName.text = PXApplicationDisplayName(bundleID)
+        titleName.textColor = .label
+        titleName.font = .systemFont(ofSize: 12, weight: .medium)
+        titleName.lineBreakMode = .byTruncatingTail
+        title.contentView.addSubview(titleName)
+        clip.addSubview(title)
         hostCanvas = canvas
         let coldStart = !activeBridge.hasScene(forApplication: bundleID)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
@@ -2038,6 +2049,15 @@ public final class PXPanelEntry: NSObject {
         activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)
         updateCardShadow(card)
         card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
+        if let title = card.viewWithTag(0x505848), let name = title.viewWithTag(0x505849) as? UILabel {
+            let source = activeBridge.hostedSourceSize()
+            title.isHidden = source.width <= 0 || source.height <= source.width ||
+                card.bounds.width < 64 || card.bounds.height < 48
+            let titleWidth = min(160, card.bounds.width - 32, name.intrinsicContentSize.width + 35)
+            title.frame = CGRect(x: (card.bounds.width - titleWidth) / 2, y: 8, width: max(0, titleWidth), height: 24)
+            name.frame = CGRect(x: 28, y: 0, width: max(0, titleWidth - 35), height: 24)
+            title.superview?.bringSubviewToFront(title)
+        }
         if let indicator = card.viewWithTag(0x505847) {
             let barWidth = min(100, card.bounds.width * 0.32)
             indicator.frame = CGRect(x: (card.bounds.width - barWidth) / 2,
@@ -2109,6 +2129,7 @@ public final class PXPanelEntry: NSObject {
         root.addSubview(overlay)
         window.windowLevel = .statusBar + 0.3
         card.viewWithTag(0x505847)?.isHidden = true
+        card.viewWithTag(0x505848)?.isHidden = true
         canvas.isUserInteractionEnabled = false
         activeBridge.setHostedInteractionEnabled(false)
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
