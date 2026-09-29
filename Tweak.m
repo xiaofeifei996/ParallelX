@@ -138,14 +138,29 @@ static NSString *PXSourceBundleID(id source, NSDictionary *values)
     return payloadID ?: PXBundleID(values[UIApplicationLaunchOptionsSourceApplicationKey]) ?: bundleID;
 }
 
+static BOOL PXIsNotificationOpen(NSDictionary *values)
+{
+    NSString *origin = values[@"__LaunchOrigin"];
+    return [origin isEqualToString:@"BulletinDestinationBanner"] ||
+        [origin isEqualToString:@"BulletinDestinationCoverSheet"];
+}
+
+static NSString *PXExternalSource(id options, id source, NSString *targetID)
+{
+    NSDictionary *values = PXOptionsDictionary(options);
+    if (PXIsNotificationOpen(values)) return nil;
+    NSString *bundleID = [[PXSceneBridge sharedBridge] frontmostBundleID] ?:
+        PXSourceBundleID(source, values);
+    return [bundleID isEqualToString:targetID] ||
+        [bundleID isEqualToString:@"com.apple.springboard"] ? nil : bundleID;
+}
+
 static BOOL PXExternalTarget(id options, id target, id source, NSString **bundleOut)
 {
     NSDictionary *values = PXOptionsDictionary(options);
     NSString *bundleID = PXBundleID(target);
     if (!values || !bundleID.length || PXDeviceLocked || !PXSuspendedKey().length) return NO;
-    NSString *origin = values[@"__LaunchOrigin"];
-    BOOL notification = [origin isEqualToString:@"BulletinDestinationBanner"] ||
-        [origin isEqualToString:@"BulletinDestinationCoverSheet"];
+    BOOL notification = PXIsNotificationOpen(values);
     id url = PXValue(options, @"url") ?: values[@"__PayloadURL"] ?: values[@"__PayloadOpenURL"];
     NSString *sourceID = PXSourceBundleID(source, values);
     BOOL link = ([url isKindOfClass:NSURL.class] || [url isKindOfClass:NSString.class]) &&
@@ -186,13 +201,14 @@ static id PXOptionsWithSuspendedLaunch(id options)
     return options;
 }
 
-static void PXExternalOpen(NSString *bundleID)
+static void PXExternalOpen(NSString *bundleID, NSString *sourceID)
 {
     dispatch_async(dispatch_get_main_queue(), ^{
         Class entry = NSClassFromString(@"PXPanelEntry");
         SEL open = NSSelectorFromString(@"externalOpenApplication:");
         if ([entry respondsToSelector:open])
-            ((void (*)(id, SEL, id))objc_msgSend)(entry, open, bundleID);
+            ((void (*)(id, SEL, id))objc_msgSend)(entry, open,
+                @{ @"target": bundleID, @"source": sourceID ?: @"" });
     });
 }
 
@@ -237,6 +253,7 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
     id source = PXValue(request, @"clientProcess");
     BOOL route = PXExternalTarget(options, PXRequestBundleID(request), source, &bundleID) &&
         !PXRouteRecentlyHandled(bundleID) && PXOptionsWithSuspendedLaunch(options) != nil;
+    NSString *sourceID = route ? PXExternalSource(options, source, bundleID) : nil;
     if (route) {
         PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
@@ -246,7 +263,7 @@ static void PXHandleOpenRequest(id workspace, SEL selector, id service, id reque
         void (^original)(NSError *) = completion;
         routed = [^(NSError *error) {
             if (original) original(error);
-            if (!error) PXExternalOpen(bundleID);
+            if (!error) PXExternalOpen(bundleID, sourceID);
         } copy];
     }
     PXOriginalHandleOpenRequest(workspace, selector, service, request, routed);
@@ -260,6 +277,7 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
         !PXRouteRecentlyHandled(bundleID);
     id prepared = candidate ? PXOptionsWithSuspendedLaunch(options) : nil;
     BOOL route = prepared != nil;
+    NSString *sourceID = route ? PXExternalSource(options, origin, bundleID) : nil;
     if (route) {
         PXRememberRoute(bundleID);
         PXDismissOpenedNotificationBanner(options);
@@ -269,7 +287,7 @@ static void PXHandleTrustedOpen(id workspace, SEL selector, id application, id o
         void (^original)(NSError *) = result;
         routed = [^(NSError *error) {
             if (original) original(error);
-            if (!error) PXExternalOpen(bundleID);
+            if (!error) PXExternalOpen(bundleID, sourceID);
         } copy];
     }
     PXOriginalHandleTrustedOpen(workspace, selector, application, prepared ?: options,
