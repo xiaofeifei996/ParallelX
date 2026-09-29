@@ -1069,15 +1069,30 @@ public final class PXPanelEntry: NSObject {
         PXSceneBridge.traceGesture("HIT point=\(point) hit=\(hit.map { NSStringFromClass(type(of: $0)) } ?? "nil") root=\(window.rootViewController?.view.bounds ?? .zero) gripHit=\(gripHit) grip=\(grip?.frame ?? .zero) enabled=\(window.isUserInteractionEnabled) orientation=\(PXSceneBridge.systemOrientation().rawValue)")
     }
 
-    @objc public static func traceSystemTouch(_ point: CGPoint, accepted: Bool) {
+    @objc public static func ownsLandscapeBottomTouch(_ touch: UITouch) -> Bool {
+        let entry = shared
+        guard Thread.isMainThread, touch.phase == .began,
+              let window = entry.hostWindow, !window.isHidden, window.isUserInteractionEnabled,
+              let root = window.rootViewController?.view, root.bounds.width > root.bounds.height,
+              let grip = entry.hostMoveGrip, !grip.isHidden, grip.isUserInteractionEnabled,
+              !entry.deviceLocked, !entry.coverSheetVisible,
+              entry.panelWindow == nil, entry.searchWindow == nil,
+              !entry.fullscreenToWindowInProgress, !entry.fullscreenLaunchInProgress,
+              !entry.activeBridge.isHostedKeyboardVisible() else { return false }
+        // UITouch converts from the system gesture window's fixed coordinates into this window.
+        return grip.point(inside: touch.location(in: grip), with: nil)
+    }
+
+    @objc public static func traceSystemTouch(_ touch: UITouch, accepted: Bool) {
         let entry = shared
         guard Thread.isMainThread, let window = entry.hostWindow,
               let root = window.rootViewController?.view, let grip = entry.hostMoveGrip else { return }
         let now = CACurrentMediaTime()
         guard now - entry.lastSystemProbeTime > 0.08 else { return }
         entry.lastSystemProbeTime = now
-        let local = window.convert(point, from: nil)
-        let gripPoint = grip.convert(local, from: window)
+        let point = touch.location(in: nil)
+        let local = touch.location(in: window)
+        let gripPoint = touch.location(in: grip)
         let hit = grip.point(inside: gripPoint, with: nil)
         PXSceneBridge.traceGesture("SYSTEM accepted=\(accepted) raw=\(point) local=\(local) gripPoint=\(gripPoint) hit=\(hit) orientation=\(PXSceneBridge.systemOrientation().rawValue) root=\(root.bounds) window=\(window.frame) transform=\(window.transform) level=\(window.windowLevel.rawValue) card=\(entry.hostCard?.frame ?? .zero) grip=\(grip.frame) regions=\((grip as? PXBottomGestureView)?.hitRegions ?? []) hidden=\(window.isHidden) enabled=\(window.isUserInteractionEnabled) keyboard=\(entry.activeBridge.isHostedKeyboardVisible()) lock=\(entry.deviceLocked) cover=\(entry.coverSheetVisible) panel=\(entry.panelWindow != nil)")
     }

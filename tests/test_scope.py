@@ -667,11 +667,18 @@ for landscape in (False, True):
     if landscape:
         assert zoom == 1.6
 
-# The temporary gesture probe must observe, never veto or change, the system's decision.
-gesture_probe = tweak.split('static BOOL PXSystemGestureTouch(', 1)[1].split('static void PXSetStyleMode', 1)[0]
-assert 'BOOL accepted = PXOriginalSystemGestureTouch(manager, selector, location);' in gesture_probe
-assert 'return accepted;' in gesture_probe and 'return NO;' not in gesture_probe
-assert 'ownsLandscapeBottomTouch' not in panel
-fluid_probe = tweak.split('static BOOL PXFluidReceiveTouch(', 1)[1].split('static void PXTraceGestureMethods', 1)[0]
+# Only the verified Home pan yields touches owned by the visible landscape bottom region.
+fluid_probe = tweak.split('static BOOL PXFluidReceiveTouch(', 1)[1].split('static void PXSetStyleMode', 1)[0]
 assert 'BOOL accepted = PXOriginalFluidReceiveTouch(manager, selector, recognizer, touch);' in fluid_probe
-assert 'return accepted;' in fluid_probe and 'return NO;' not in fluid_probe
+assert 'accepted && homePan && [recognizer isKindOfClass:homePan]' in fluid_probe
+assert 'ownsLandscapeBottomTouch:' in fluid_probe and 'return accepted;' in fluid_probe
+ownership = panel.split('func ownsLandscapeBottomTouch(', 1)[1].split('@objc public static func traceSystemTouch', 1)[0]
+for scope in ('touch.phase == .began', '!window.isHidden', 'window.isUserInteractionEnabled',
+              'root.bounds.width > root.bounds.height', '!grip.isHidden',
+              '!entry.deviceLocked', '!entry.coverSheetVisible', 'entry.panelWindow == nil',
+              'entry.searchWindow == nil', '!entry.fullscreenToWindowInProgress',
+              '!entry.fullscreenLaunchInProgress', '!entry.activeBridge.isHostedKeyboardVisible()'):
+    assert scope in ownership
+assert 'grip.point(inside: touch.location(in: grip), with: nil)' in ownership
+assert 'window.convert(point, from: nil)' not in ownership
+assert 'PXOriginalSystemGestureTouch' not in tweak and 'PXTraceGestureMethods' not in tweak
