@@ -398,7 +398,7 @@ assert 'px.action.recent' in picker and 'urls.count < 10' in picker
 assert 'px.action.kayoko' in picker
 assert 'key = "hideForScreenshot"' in (root / 'prefs' / 'Resources' / 'Root.plist').read_text(encoding='utf-8')
 assert 'closeOutsideWithKeyboard' in panel and 'key = "closeOutsideWithKeyboard"' in root_plist
-assert panel.count('initialCardFrame(in: screen, size:') == 3
+assert panel.count('initialCardFrame(in: screen, size:') == 4
 assert 'initialRightInset' in panel
 initial_frame = panel.split('private func initialCardFrame(', 1)[1].split('private func initialCardSize(', 1)[0]
 assert 'screen.width > screen.height ? "landscapeInitialRightInset" : "initialRightInset"' in initial_frame
