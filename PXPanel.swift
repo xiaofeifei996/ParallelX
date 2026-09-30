@@ -1769,11 +1769,11 @@ public final class PXPanelEntry: NSObject {
         let title = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
         title.tag = 0x505848
         title.isUserInteractionEnabled = false
-        title.layer.cornerRadius = 12
+        title.layer.cornerRadius = 9
         title.clipsToBounds = true
         let titleIcon = UIImageView(image: PXApplicationIcon(bundleID) ?? UIImage(systemName: "app"))
-        titleIcon.frame = CGRect(x: 7, y: 4, width: 16, height: 16)
-        titleIcon.layer.cornerRadius = 3.6
+        titleIcon.frame = CGRect(x: 6, y: 3, width: 12, height: 12)
+        titleIcon.layer.cornerRadius = 2.8
         titleIcon.clipsToBounds = true
         titleIcon.contentMode = .scaleAspectFit
         title.contentView.addSubview(titleIcon)
@@ -1781,7 +1781,7 @@ public final class PXPanelEntry: NSObject {
         titleName.tag = 0x505849
         titleName.text = PXApplicationDisplayName(bundleID)
         titleName.textColor = .label
-        titleName.font = .systemFont(ofSize: 12, weight: .medium)
+        titleName.font = .systemFont(ofSize: 11, weight: .medium)
         titleName.lineBreakMode = .byTruncatingTail
         title.contentView.addSubview(titleName)
         clip.addSubview(title)
@@ -2064,12 +2064,12 @@ public final class PXPanelEntry: NSObject {
             let initialWidth = initialCardSize(in: referenceScreen, source: source).width
             let scale = initialWidth > 0 ? card.bounds.width / initialWidth : 1
             let titleWidth = min(160, (initialWidth > 0 ? initialWidth : card.bounds.width) - 32,
-                                 name.intrinsicContentSize.width + 35)
+                                 name.intrinsicContentSize.width + 29)
             // Preview already scales the parent card; bounds-based scaling keeps the same size on release.
-            title.bounds = CGRect(x: 0, y: 0, width: max(0, titleWidth), height: 24)
+            title.bounds = CGRect(x: 0, y: 0, width: max(0, titleWidth), height: 18)
             title.transform = CGAffineTransform(scaleX: scale, y: scale)
-            title.center = CGPoint(x: card.bounds.midX, y: 15 * scale)
-            name.frame = CGRect(x: 28, y: 0, width: max(0, titleWidth - 35), height: 24)
+            title.center = CGPoint(x: card.bounds.midX, y: 12 * scale)
+            name.frame = CGRect(x: 23, y: 0, width: max(0, titleWidth - 29), height: 18)
             title.superview?.bringSubviewToFront(title)
         }
         if let indicator = card.viewWithTag(0x505847) {
