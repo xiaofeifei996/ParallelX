@@ -785,7 +785,7 @@ assert 'width: 12, height: 12' in panel and '.systemFont(ofSize: 11, weight: .me
 assert 'card.viewWithTag(0x505848)?.isHidden = true' in panel
 assert 'card.bounds.width / initialWidth' in panel
 assert 'title.transform = CGAffineTransform(scaleX: scale * 1.067, y: scale * 1.067)' in panel
-assert 'title.center = CGPoint(x: card.bounds.midX, y: 12 * scale)' in panel
+assert 'title.center = CGPoint(x: card.bounds.midX, y: 13 * scale)' in panel
 assert 'initialCardSize(in: referenceScreen, source: source).width' in panel
 assert 'width: min(physical.width, physical.height)' in panel
 assert 'height: max(physical.width, physical.height)' in panel

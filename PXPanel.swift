@@ -2191,7 +2191,7 @@ public final class PXPanelEntry: NSObject {
             // Preview already scales the parent card; bounds-based scaling keeps the same size on release.
             title.bounds = CGRect(x: 0, y: 0, width: max(0, titleWidth), height: 18)
             title.transform = CGAffineTransform(scaleX: scale * 1.067, y: scale * 1.067)
-            title.center = CGPoint(x: card.bounds.midX, y: 12 * scale)
+            title.center = CGPoint(x: card.bounds.midX, y: 13 * scale)
             name.frame = CGRect(x: 23, y: 0, width: max(0, titleWidth - 29), height: 18)
             title.superview?.bringSubviewToFront(title)
         }
