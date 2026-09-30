@@ -75,7 +75,7 @@ assert '- (BOOL)hasHostedSurface;' in bridge_header
 assert 'if activeBridge.hasHostedSurface(), !window.isHidden {' in panel
 assert 'frontDisplayChanged:' in tweak and 'frontDisplayChanged(_ bundleID: String?)' in panel
 front_display = panel.split('@objc public static func frontDisplayChanged(_ bundleID: String?)', 1)[1].split('@objc public static func', 1)[0]
-assert 'shared.coverSheetVisible, !shared.coverSheetPresented' in front_display
+assert 'shared.coverSheetVisible, !shared.coverSheetPresented, !shared.coverSheetEntering' in front_display
 assert front_display.index('shared.coverSheetVisible = false') < front_display.index('shared.updateHandleVisibility()')
 switcher_cleanup = panel.split('@objc public static func switcherRemovedApplication', 1)[1].split('@objc public static func externalOpenApplication', 1)[0]
 assert 'shared.hostedBundleID == bundleID' in switcher_cleanup and 'shared.closeHost(animated: false)' in switcher_cleanup
@@ -729,17 +729,28 @@ assert 'shared.coverSheetVisible = visible' in panel
 assert 'handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)' in panel
 assert 'PXSetCoverSheetPresented(YES)' in tweak
 assert 'PXSetCoverSheetPresented(NO)' in tweak
+assert 'PXSetCoverSheetEntering(YES)' in tweak and 'PXSetCoverSheetEntering(NO)' in tweak
 assert 'handleProbeState' not in panel and 'PXHandleProbe' not in tweak
 assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
 assert 'PXCoverSheetWillDisappear' in tweak and 'NSSelectorFromString(@"isUILocked")' in tweak
 cover_sheet_exit = tweak.split('static void PXCoverSheetWillDisappear(', 1)[1].split('static void PXCoverSheetDidDisappear(', 1)[0]
 cover_sheet_done = tweak.split('static void PXCoverSheetDidDisappear(', 1)[1].split('static NSString *PXRecentExternalBundleID', 1)[0]
+cover_sheet_entry = tweak.split('static void PXCoverSheetWillAppear(', 1)[1].split('static void PXSetCoverSheetPresented(', 1)[0]
+cover_sheet_entered = tweak.split('static void PXCoverSheetDidAppear(', 1)[1].split('static void PXCoverSheetWillDisappear(', 1)[0]
+assert cover_sheet_entry.index('PXSetCoverSheetEntering(YES)') < cover_sheet_entry.index('PXSetCoverSheetVisible(YES)')
+assert cover_sheet_entered.index('PXSetCoverSheetPresented(YES)') < cover_sheet_entered.index('PXSetCoverSheetEntering(NO)')
 assert 'PXSetCoverSheetPresented(NO)' not in cover_sheet_exit
 assert cover_sheet_exit.index('PXUpdateCoverSheetWindowLevel(controller)') < cover_sheet_exit.index('PXSetCoverSheetExiting(YES)')
 assert cover_sheet_exit.index('PXSetCoverSheetVisible(YES)') < cover_sheet_exit.index('PXSetCoverSheetExiting(YES)')
 assert cover_sheet_done.index('PXSetCoverSheetPresented(NO)') < cover_sheet_done.index('PXSetCoverSheetVisible(NO)')
 assert cover_sheet_done.index('PXSetCoverSheetVisible(NO)') < cover_sheet_done.index('PXSetCoverSheetExiting(NO)')
+assert cover_sheet_done.index('PXSetCoverSheetExiting(NO)') < cover_sheet_done.index('PXSetCoverSheetEntering(NO)')
+for visible, presented, entering, should_clear in (
+    (True, False, True, False), (True, True, False, False),
+    (True, False, False, True), (False, False, False, False),
+):
+    assert (visible and not presented and not entering) == should_clear
 for locked, presented, exiting, expected_hidden in (
     (False, True, False, True), (False, True, True, False),
     (True, True, True, True), (False, False, False, False),

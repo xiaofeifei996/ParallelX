@@ -1028,6 +1028,7 @@ public final class PXPanelEntry: NSObject {
     private var deviceLocked = false
     private var coverSheetVisible = false
     private var coverSheetPresented = false
+    private var coverSheetEntering = false
     private var coverSheetExiting = false
     private var coverSheetWindowLevel: UIWindow.Level?
     private var panelDragProgress: CGFloat = 0
@@ -1100,8 +1101,9 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc public static func frontDisplayChanged(_ bundleID: String?) {
+        // The first app activation can arrive while Cover Sheet is still sliding in.
         if bundleID != nil, bundleID != "com.apple.springboard",
-           shared.coverSheetVisible, !shared.coverSheetPresented {
+           shared.coverSheetVisible, !shared.coverSheetPresented, !shared.coverSheetEntering {
             shared.coverSheetVisible = false
             shared.updateHandleVisibility()
         }
@@ -1469,6 +1471,10 @@ public final class PXPanelEntry: NSObject {
     @objc public static func setCoverSheetPresented(_ presented: Bool) {
         shared.coverSheetPresented = presented
         shared.updateHandleVisibility()
+    }
+
+    @objc public static func setCoverSheetEntering(_ entering: Bool) {
+        shared.coverSheetEntering = entering
     }
 
     @objc public static func setCoverSheetExiting(_ exiting: Bool) {

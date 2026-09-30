@@ -78,8 +78,17 @@ static void PXSetCoverSheetExiting(BOOL exiting)
         ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, exiting);
 }
 
+static void PXSetCoverSheetEntering(BOOL entering)
+{
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL setter = NSSelectorFromString(@"setCoverSheetEntering:");
+    if ([entry respondsToSelector:setter])
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, entering);
+}
+
 static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
 {
+    PXSetCoverSheetEntering(YES);
     PXSetCoverSheetExiting(NO);
     PXUpdateCoverSheetWindowLevel(controller);
     PXSetCoverSheetVisible(YES);
@@ -98,6 +107,7 @@ static void PXCoverSheetDidAppear(id controller, SEL selector, BOOL animated)
 {
     PXOriginalCoverSheetDidAppear(controller, selector, animated);
     PXSetCoverSheetPresented(YES);
+    PXSetCoverSheetEntering(NO);
 }
 
 static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated)
@@ -125,6 +135,7 @@ static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
     PXSetCoverSheetPresented(NO);
     PXSetCoverSheetVisible(NO);
     PXSetCoverSheetExiting(NO);
+    PXSetCoverSheetEntering(NO);
 }
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
