@@ -1587,9 +1587,14 @@ public final class PXPanelEntry: NSObject {
                 } else {
                     let action = bundleID == "px.action.screenshot" && fullscreen ? "px.action.screenshot.copy" : bundleID
                     if action == "px.action.window" {
-                        hidePanel()
-                        if fullscreen { performWindowHold() }
-                        else { performShortcut(action) }
+                        if fullscreen {
+                            // A swap can rotate SpringBoard before the close animation finishes.
+                            hidePanel(animated: false)
+                            performWindowHold()
+                        } else {
+                            hidePanel()
+                            performShortcut(action)
+                        }
                     } else { hidePanel { [weak self] in self?.performShortcut(action) } }
                 }
             } else { hidePanel() }
@@ -1601,20 +1606,26 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
-    private func hidePanel(_ completion: (() -> Void)? = nil) {
+    private func hidePanel(animated: Bool = true, _ completion: (() -> Void)? = nil) {
         guard let window = panelWindow, let controller = panel else {
             completion?()
             return
         }
         window.isUserInteractionEnabled = false
-        controller.animateClosed { [weak self] in
+        let finish = { [weak self] in
             guard let self = self, self.panelWindow === window else { return }
             window.isHidden = true
             window.rootViewController = nil
             self.panelWindow = nil
             self.panel = nil
+            self.setHandlePanelProgress(0)
             self.handleWindow?.isHidden = false
             completion?()
+        }
+        if animated { controller.animateClosed(completion: finish) }
+        else {
+            controller.cancelSelectionFeedback()
+            finish()
         }
     }
 

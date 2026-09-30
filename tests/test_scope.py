@@ -112,7 +112,10 @@ reset_gesture = panel.split('if gesture.state == .ended, translation.y > 35,', 1
 assert reset_gesture.index('card.transform = CGAffineTransform(scaleX: scale') < reset_gesture.index('card.frame = target')
 assert reset_gesture.index('UIView.performWithoutAnimation {') < reset_gesture.index('card.frame = target')
 assert reset_gesture.index('card.layer.cornerRadius = radius / scale') < reset_gesture.index('card.layer.cornerRadius = radius\n')
-assert 'if fullscreen { performWindowHold() }' in panel
+window_action = panel.split('if action == "px.action.window" {', 1)[1].split('} else { hidePanel {', 1)[0]
+assert window_action.index('hidePanel(animated: false)') < window_action.index('performWindowHold()')
+panel_close = panel.split('private func hidePanel(animated: Bool = true', 1)[1].split('private func openHost', 1)[0]
+assert panel_close.index('self.setHandlePanelProgress(0)') < panel_close.rindex('completion?()')
 assert 'guard let fullID = fullID else { parkMain(side: defaultDockSide); return }' in panel
 assert 'else if dockedHosts.isEmpty, let fullID = fullID' in panel
 assert 'pendingSwap = (splitID, fullID)' in panel
