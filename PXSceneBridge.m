@@ -357,8 +357,21 @@ static int PXApplicationPID(NSString *bundleID)
 
 - (void)updateAppearanceForStyle:(UIUserInterfaceStyle)style
 {
-    if (!self.presentationContext || style == UIUserInterfaceStyleUnspecified ||
-        self.appearanceStyle == style) return;
+    if (style == UIUserInterfaceStyleUnspecified) return;
+    // The hostManager path has no presentationContext. Deliver the system
+    // style to the application scene itself for both hosting paths.
+    id settings = PXCall(self.scene, @"settings");
+    SEL getter = NSSelectorFromString(@"userInterfaceStyle");
+    if ([settings respondsToSelector:getter] &&
+        ((NSInteger (*)(id, SEL))objc_msgSend)(settings, getter) != style) {
+        id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
+        SEL setter = NSSelectorFromString(@"setUserInterfaceStyle:");
+        if ([mutable respondsToSelector:setter]) {
+            ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setter, style);
+            PXUpdateScene(self.scene, mutable);
+        }
+    }
+    if (!self.presentationContext || self.appearanceStyle == style) return;
     SEL selector = NSSelectorFromString(@"setAppearanceStyle:");
     if (![self.presentationContext respondsToSelector:selector]) return;
     ((void (*)(id, SEL, NSInteger))objc_msgSend)(self.presentationContext, selector, style);
@@ -1264,7 +1277,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                             UIView *host = view;
                             host.userInteractionEnabled = !strongSelf.suppressSelection;
                             strongSelf.presentationContext = context;
-                            [strongSelf updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle];
                             ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
                             strongSelf.hostView = host;
                             [strongSelf.canvas addSubview:host];
@@ -1272,6 +1284,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                         }
                     }
                 }
+                [strongSelf updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle];
                 if (layers.count && strongSelf.hostView) {
                     [strongSelf.hostView layoutIfNeeded];
                     [strongSelf relocateExistingKeyboard:strongSelf.hostView];

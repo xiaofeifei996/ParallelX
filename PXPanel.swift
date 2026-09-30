@@ -1288,6 +1288,7 @@ public final class PXPanelEntry: NSObject {
         window.rootViewController = root
         window.applySystemOrientation()
         root.onLayout = { [weak self] in self?.screenGeometryChanged() }
+        root.onAppearance = { [weak self] in self?.refreshHostedAppearance() }
         let pill = UIView(frame: .zero)
         pill.backgroundColor = .secondarySystemBackground
         pill.layer.cornerCurve = .continuous
@@ -1912,7 +1913,7 @@ public final class PXPanelEntry: NSObject {
             self?.layoutHostControls()
         }
         root.onAppearance = { [weak self] in
-            self?.layoutHostControls()
+            self?.refreshHostedAppearance()
         }
         // Keep the native full-screen surface visible until its hosted surface
         // is mounted; showing an empty backing here produces a bright frame.
@@ -2158,6 +2159,14 @@ public final class PXPanelEntry: NSObject {
 
     private var defaultDockSide: Int {
         UserDefaults(suiteName: preferenceDomain)?.integer(forKey: "dockSide") == -1 ? -1 : 1
+    }
+
+    private func refreshHostedAppearance() {
+        layoutHostControls()
+        for dock in dockedHosts {
+            dock.bridge.updateAppearance(for: dock.card.traitCollection.userInterfaceStyle)
+            updateCardShadow(dock.card)
+        }
     }
 
     private func layoutHostControls() {
