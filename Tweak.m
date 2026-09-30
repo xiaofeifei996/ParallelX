@@ -77,10 +77,13 @@ static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated
     id manager = [lockManager respondsToSelector:shared]
         ? ((id (*)(id, SEL))objc_msgSend)(lockManager, shared) : nil;
     SEL locked = NSSelectorFromString(@"isUILocked");
-    if ([manager respondsToSelector:locked]) {
-        PXDeviceLocked = ((BOOL (*)(id, SEL))objc_msgSend)(manager, locked);
+    // Cover Sheet also backs Notification Center. Its transitional locked state
+    // must not clear hosted windows; only the lockstate notification can lock.
+    if ([manager respondsToSelector:locked] &&
+        !((BOOL (*)(id, SEL))objc_msgSend)(manager, locked)) {
+        PXDeviceLocked = NO;
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
-            object:nil userInfo:@{@"locked": @(PXDeviceLocked)}];
+            object:nil userInfo:@{@"locked": @NO}];
     }
 }
 
