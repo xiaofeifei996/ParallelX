@@ -1029,7 +1029,6 @@ public final class PXPanelEntry: NSObject {
     private var coverSheetVisible = false
     private var coverSheetPresented = false
     private var coverSheetEntering = false
-    private var coverSheetExiting = false
     private var coverSheetWindowLevel: UIWindow.Level?
     private var panelDragProgress: CGFloat = 0
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
@@ -1475,11 +1474,6 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func setCoverSheetEntering(_ entering: Bool) {
         shared.coverSheetEntering = entering
-    }
-
-    @objc public static func setCoverSheetExiting(_ exiting: Bool) {
-        shared.coverSheetExiting = exiting
-        shared.updateHandleVisibility()
     }
 
     private var handlePositionKey: String {

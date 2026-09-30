@@ -70,14 +70,6 @@ static void PXSetCoverSheetVisible(BOOL visible)
         ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, visible);
 }
 
-static void PXSetCoverSheetExiting(BOOL exiting)
-{
-    Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL setter = NSSelectorFromString(@"setCoverSheetExiting:");
-    if ([entry respondsToSelector:setter])
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, exiting);
-}
-
 static void PXSetCoverSheetEntering(BOOL entering)
 {
     Class entry = NSClassFromString(@"PXPanelEntry");
@@ -89,7 +81,6 @@ static void PXSetCoverSheetEntering(BOOL entering)
 static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
 {
     PXSetCoverSheetEntering(YES);
-    PXSetCoverSheetExiting(NO);
     PXUpdateCoverSheetWindowLevel(controller);
     PXSetCoverSheetVisible(YES);
     PXOriginalCoverSheetWillAppear(controller, selector, animated);
@@ -114,7 +105,6 @@ static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated
 {
     PXUpdateCoverSheetWindowLevel(controller);
     PXSetCoverSheetVisible(YES);
-    PXSetCoverSheetExiting(YES);
     PXOriginalCoverSheetWillDisappear(controller, selector, animated);
     Class lockManager = NSClassFromString(@"SBLockScreenManager");
     SEL shared = NSSelectorFromString(@"sharedInstance");
@@ -134,7 +124,6 @@ static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
     PXOriginalCoverSheetDidDisappear(controller, selector, animated);
     PXSetCoverSheetPresented(NO);
     PXSetCoverSheetVisible(NO);
-    PXSetCoverSheetExiting(NO);
     PXSetCoverSheetEntering(NO);
 }
 static NSString *PXRecentExternalBundleID;
