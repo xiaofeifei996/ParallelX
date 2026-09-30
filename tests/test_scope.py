@@ -720,7 +720,8 @@ assert 'row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, co
 assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6)' in panel
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .alert + 51' in panel
-assert 'handle?.isHidden = deviceLocked' in panel
+assert 'handle.isHidden != deviceLocked { handle.isHidden = deviceLocked }' in panel
+assert 'window.windowLevel != level { window.windowLevel = level }' in panel
 assert 'coverSheetWindowLevel ?? UIWindow.Level(rawValue: 1035)' in panel
 assert 'UIWindow.Level(rawValue: min(CGFloat(level) - 0.5, 1035))' in panel
 assert 'coverSheetVisible ? .normal' not in panel
@@ -729,6 +730,7 @@ assert 'shared.coverSheetVisible = visible' in panel
 assert 'coverSheetExiting' not in panel and 'PXSetCoverSheetExiting' not in tweak
 assert 'PXSetCoverSheetPresented(YES)' in tweak
 assert 'PXSetCoverSheetPresented(NO)' in tweak
+assert 'shared.updateHandleVisibility()' not in panel.split('func setCoverSheetPresented(', 1)[1].split('func setCoverSheetEntering(', 1)[0]
 assert 'PXSetCoverSheetEntering(YES)' in tweak and 'PXSetCoverSheetEntering(NO)' in tweak
 assert 'handleProbeState' not in panel and 'PXHandleProbe' not in tweak
 assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
