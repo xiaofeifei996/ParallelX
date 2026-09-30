@@ -32,6 +32,13 @@ static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
     PXOriginalSetStyleMode(mode, selector, value);
 }
 static BOOL PXDeviceLocked;
+static void PXPublishLockState(BOOL locked)
+{
+    if (PXDeviceLocked == locked) return;
+    PXDeviceLocked = locked;
+    [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
+        object:nil userInfo:@{@"locked": @(locked)}];
+}
 static void (*PXOriginalCoverSheetWillAppear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetDidDisappear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetWillDisappear)(id, SEL, BOOL);
@@ -78,12 +85,10 @@ static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated
         ? ((id (*)(id, SEL))objc_msgSend)(lockManager, shared) : nil;
     SEL locked = NSSelectorFromString(@"isUILocked");
     // Cover Sheet also backs Notification Center. Its transitional locked state
-    // must not clear hosted windows; only the lockstate notification can lock.
+    // must not clear hosted windows; require a blanked screen to confirm locking.
     if ([manager respondsToSelector:locked] &&
         !((BOOL (*)(id, SEL))objc_msgSend)(manager, locked)) {
-        PXDeviceLocked = NO;
-        [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
-            object:nil userInfo:@{@"locked": @NO}];
+        PXPublishLockState(NO);
     }
 }
 
@@ -571,6 +576,7 @@ __attribute__((constructor)) static void PXInitialize(void)
             MSHookMessageEx(keyboard, @selector(layoutSubviews), (IMP)PXKeyboardLayout,
                             (IMP *)&PXOriginalKeyboardLayout);
         static int lockToken;
+        static int blankToken;
         Class coverSheet = NSClassFromString(@"CSCoverSheetViewController");
         if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewWillAppear:)))
             MSHookMessageEx(coverSheet, @selector(viewWillAppear:), (IMP)PXCoverSheetWillAppear,
@@ -584,13 +590,23 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewDidLayoutSubviews)))
             MSHookMessageEx(coverSheet, @selector(viewDidLayoutSubviews), (IMP)PXCoverSheetLayout,
                             (IMP *)&PXOriginalCoverSheetLayout);
+        notify_register_dispatch("com.apple.springboard.hasBlankedScreen", &blankToken,
+            dispatch_get_main_queue(), ^(int token) {
+                uint64_t blanked = 0, locked = 0;
+                if (notify_get_state(token, &blanked) == NOTIFY_STATUS_OK && blanked != 0 &&
+                    notify_get_state(lockToken, &locked) == NOTIFY_STATUS_OK && locked != 0)
+                    PXPublishLockState(YES);
+            });
         notify_register_dispatch("com.apple.springboard.lockstate", &lockToken,
             dispatch_get_main_queue(), ^(int token) {
                 uint64_t state = 0;
                 if (notify_get_state(token, &state) == NOTIFY_STATUS_OK) {
-                    PXDeviceLocked = state != 0;
-                    [[NSNotificationCenter defaultCenter] postNotificationName:@"PXLockStateChanged"
-                        object:nil userInfo:@{@"locked": @(state != 0)}];
+                    if (state == 0) PXPublishLockState(NO);
+                    else {
+                        uint64_t blanked = 0;
+                        if (notify_get_state(blankToken, &blanked) == NOTIFY_STATUS_OK && blanked != 0)
+                            PXPublishLockState(YES);
+                    }
                 }
             });
         uint64_t initialLockState = 0;

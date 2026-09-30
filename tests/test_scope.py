@@ -328,6 +328,10 @@ assert 'forKey: "dockSide"' in dock_prefs
 assert 'parkMain(side: defaultDockSide)' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
 assert 'parkMain(side: sender.tag)' not in panel
 assert 'com.apple.springboard.lockstate' in entry
+assert 'com.apple.springboard.hasBlankedScreen' in tweak
+lock_callback = tweak.split('notify_register_dispatch("com.apple.springboard.lockstate"', 1)[1].split('uint64_t initialLockState', 1)[0]
+assert 'state == 0' in lock_callback and 'blanked != 0' in lock_callback
+assert 'PXPublishLockState(YES)' in lock_callback
 assert 'guard !deviceLocked, needsHostRefresh' in panel
 assert 'bool(forKey: "clearOnLock")' in panel
 assert 'for dock in Array(dockedHosts) { removeDock(dock) }' in panel
@@ -689,7 +693,7 @@ assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
 assert 'PXCoverSheetWillDisappear' in tweak and 'NSSelectorFromString(@"isUILocked")' in tweak
 cover_sheet_exit = tweak.split('static void PXCoverSheetWillDisappear(', 1)[1].split('static void PXCoverSheetDidDisappear(', 1)[0]
-assert 'PXDeviceLocked = NO;' in cover_sheet_exit and '@"locked": @NO' in cover_sheet_exit
+assert 'PXPublishLockState(NO);' in cover_sheet_exit
 assert 'PXDeviceLocked = YES;' not in cover_sheet_exit and '@"locked": @(PXDeviceLocked)' not in cover_sheet_exit
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel
 assert '!keyboardHideInFlight, !keyboardDismissSuppressed, activeBridge.isHostedKeyboardVisible()' in panel
