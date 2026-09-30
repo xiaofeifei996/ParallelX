@@ -93,6 +93,13 @@ static BOOL PXSetBool(id object, NSString *name, BOOL value)
     return YES;
 }
 
+static void PXSetSceneAppearance(id settings, UIUserInterfaceStyle style)
+{
+    SEL setter = NSSelectorFromString(@"setUserInterfaceStyle:");
+    if (style != UIUserInterfaceStyleUnspecified && [settings respondsToSelector:setter])
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(settings, setter, style);
+}
+
 static CGRect PXRect(id object, NSString *name)
 {
     SEL selector = NSSelectorFromString(name);
@@ -367,7 +374,7 @@ static int PXApplicationPID(NSString *bundleID)
         id mutable = [settings respondsToSelector:@selector(mutableCopy)] ? [settings mutableCopy] : nil;
         SEL setter = NSSelectorFromString(@"setUserInterfaceStyle:");
         if ([mutable respondsToSelector:setter]) {
-            ((void (*)(id, SEL, NSInteger))objc_msgSend)(mutable, setter, style);
+            PXSetSceneAppearance(mutable, style);
             PXUpdateScene(self.scene, mutable);
         }
     }
@@ -874,6 +881,9 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     PXSetBool(mutable, @"setForeground:", YES);
     PXSetBool(mutable, @"setAllowsSelection:", !self.suppressSelection);
     UIInterfaceOrientation orientation = PXPreferredHostedOrientation(self.bundleID, PXCall(scene, @"clientSettings"));
+    // Resume with the target appearance in the same update as foregrounding,
+    // not a second update after the old background surface is already mounted.
+    PXSetSceneAppearance(mutable, self.canvas.traitCollection.userInterfaceStyle);
     // Converting the visible fullscreen scene is not a fresh launch. Preserve
     // its active content direction, including a video player's fullscreen mode.
     UIInterfaceOrientation current = PXSceneOrientation(settings);
@@ -1242,6 +1252,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                 preparedScene = scene;
             [strongSelf keepHostedProcessAlive];
             if (scene && scene == preparedScene) {
+                [strongSelf updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle];
                 NSArray *layers = [strongSelf mainLayersForScene:scene];
                 id manager = PXCall(scene, @"hostManager");
                 SEL enable = NSSelectorFromString(@"enableHostingForRequester:orderFront:");
@@ -1277,6 +1288,7 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                             UIView *host = view;
                             host.userInteractionEnabled = !strongSelf.suppressSelection;
                             strongSelf.presentationContext = context;
+                            [strongSelf updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle];
                             ((void (*)(id, SEL, id))objc_msgSend)(host, bindContext, context);
                             strongSelf.hostView = host;
                             [strongSelf.canvas addSubview:host];
@@ -1284,7 +1296,6 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
                         }
                     }
                 }
-                [strongSelf updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle];
                 if (layers.count && strongSelf.hostView) {
                     [strongSelf.hostView layoutIfNeeded];
                     [strongSelf relocateExistingKeyboard:strongSelf.hostView];

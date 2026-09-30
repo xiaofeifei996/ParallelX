@@ -595,6 +595,11 @@ assert root_plist.count('detail = PXPageHostController') == 4
 for name in ('AppPicker', 'Launcher', 'CornerRadius', 'Dock', 'GestureArea'):
     assert ': UIViewController' in (root / 'prefs' / f'PX{name}Controller.swift').read_text(encoding='utf-8')
 assert 'canvas.traitCollection.userInterfaceStyle' in bridge
+foreground = bridge.split('- (BOOL)foregroundScene:(id)scene', 1)[1].split('- (void)keepHostedProcessAlive', 1)[0]
+assert foreground.index('PXSetSceneAppearance(mutable,') < foreground.index('PXUpdateScene(scene, mutable)')
+mount = bridge.split('- (void)openApplication:(NSString *)bundleID', 1)[1]
+assert mount.index('updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle') < mount.index('enable, requester, YES')
+assert mount.index('strongSelf.presentationContext = context;') < mount.index('updateAppearanceForStyle:canvas.traitCollection.userInterfaceStyle', mount.index('strongSelf.presentationContext = context;')) < mount.index('host, bindContext, context')
 assert 'activeBridge.updateAppearance(for: card.traitCollection.userInterfaceStyle)' in panel
 assert 'button.contentHorizontalAlignment = .left' in panel
 import plistlib
