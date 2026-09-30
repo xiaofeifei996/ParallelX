@@ -115,10 +115,11 @@ private final class PXDockedHost {
     let topGrip: UIView?
     let moveGrip: UIView?
     let overlay: UIView
+    var loading: Bool
 
     init(window: UIWindow, card: UIView, canvas: UIView, bridge: PXSceneBridge,
          bundleID: String, side: Int, corners: [UIView], topCorners: [UIView],
-         topGrip: UIView?, moveGrip: UIView?, overlay: UIView) {
+         topGrip: UIView?, moveGrip: UIView?, overlay: UIView, loading: Bool) {
         self.window = window
         self.card = card
         self.canvas = canvas
@@ -131,6 +132,7 @@ private final class PXDockedHost {
         self.topGrip = topGrip
         self.moveGrip = moveGrip
         self.overlay = overlay
+        self.loading = loading
     }
 }
 
@@ -1165,6 +1167,7 @@ public final class PXPanelEntry: NSObject {
                                             keyboardOverlay: controls) { [weak self, weak dock] success in
                     guard let dock = dock, self?.dockedHosts.contains(where: { $0 === dock }) == true else { return }
                     if success {
+                        dock.loading = false
                         dock.window.isHidden = false
                         dock.overlay.isHidden = false
                         dock.bridge.layoutHost()
@@ -1934,10 +1937,13 @@ public final class PXPanelEntry: NSObject {
         }
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
-            guard let self = self, self.hostWindow === window else { return }
+            guard let self = self else { return }
+            let dock = self.dockedHosts.first { $0.window === window }
+            guard self.hostWindow === window || dock != nil else { return }
             guard success else {
                 if self.dockAfterOpenBundleID == bundleID { self.dockAfterOpenBundleID = nil }
-                self.closeHost(animated: false)
+                if let dock = dock { self.removeDock(dock) }
+                else { self.closeHost(animated: false) }
                 self.externalOpenFailed(bundleID)
                 return
             }
@@ -1945,6 +1951,17 @@ public final class PXPanelEntry: NSObject {
                 PXMotion.ease(0.15, animations: { preview.alpha = 0 }) { _ in
                     preview.removeFromSuperview()
                 }
+            }
+            if let dock = dock {
+                dock.loading = false
+                if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
+                let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+                dock.card.layer.cornerRadius = self.configuredCornerRadius(in: screen,
+                                                                          source: dock.bridge.hostedSourceSize())
+                dock.card.subviews.first?.layer.cornerRadius = dock.card.layer.cornerRadius
+                dock.window.isHidden = false
+                self.layoutDocks(animated: false)
+                return
             }
             self.matchHostAspect()
             let frame = card.frame
@@ -1961,11 +1978,20 @@ public final class PXPanelEntry: NSObject {
             }
             window?.isHidden = false
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
-                guard let self = self, self.hostWindow === window else { return }
+                guard let self = self else { return }
+                let dock = self.dockedHosts.first { $0.window === window }
+                guard self.hostWindow === window || dock != nil else { return }
                 guard ready else {
                     if self.dockAfterOpenBundleID == bundleID { self.dockAfterOpenBundleID = nil }
-                    self.closeHost(animated: false)
+                    if let dock = dock { self.removeDock(dock) }
+                    else { self.closeHost(animated: false) }
                     self.externalOpenFailed(bundleID)
+                    return
+                }
+                if let dock = dock {
+                    dock.loading = false
+                    if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
+                    self.layoutDocks(animated: false)
                     return
                 }
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
@@ -2196,11 +2222,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
-        if hostCanvas?.isUserInteractionEnabled == false {
-            dockAfterOpenBundleID = hostedBundleID
-            fullscreenAfterOpenBundleID = nil
-            return
-        }
         parkMain(side: defaultDockSide)
     }
 
@@ -2209,10 +2230,7 @@ public final class PXPanelEntry: NSObject {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
               let root = window.rootViewController?.view else { return false }
-        guard canvas.isUserInteractionEnabled else {
-            closeHost(animated: false)
-            return false
-        }
+        let loading = !canvas.isUserInteractionEnabled
         let limit = min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockCount") as? Int ?? 2))
         while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }
@@ -2233,8 +2251,11 @@ public final class PXPanelEntry: NSObject {
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
-                                topGrip: hostTopGrip, moveGrip: hostMoveGrip, overlay: overlay)
+                                topGrip: hostTopGrip, moveGrip: hostMoveGrip, overlay: overlay,
+                                loading: loading)
         dockedHosts.append(dock)
+        if dockAfterOpenBundleID == bundleID { dockAfterOpenBundleID = nil }
+        if fullscreenAfterOpenBundleID == bundleID { fullscreenAfterOpenBundleID = nil }
         (hostCorners + hostTopCorners + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
         hostWindow = nil
         hostCard = nil
@@ -2254,9 +2275,15 @@ public final class PXPanelEntry: NSObject {
         let screen = handleWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let landscape = screen.width > screen.height
         let top: CGFloat = landscape ? 16 : max(50, handleWindow?.rootViewController?.view.safeAreaInsets.top ?? 50) + 12
-        for (index, dock) in dockedHosts.enumerated() {
+        let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
+        let fallback = CGSize(width: min(natural.width, natural.height),
+                              height: max(natural.width, natural.height))
+        let sourceForDock: (PXDockedHost) -> CGSize = { dock in
             let source = dock.bridge.hostedSourceSize()
-            guard source.width > 0, source.height > 0 else { continue }
+            return source.width > 0 && source.height > 0 ? source : fallback
+        }
+        for (index, dock) in dockedHosts.enumerated() {
+            let source = sourceForDock(dock)
             let requested = dockWidth(for: source, in: screen)
             let baseSize = initialCardSize(in: screen, source: source)
             let count = max(1, dockedHosts.filter { $0.side == dock.side }.count)
@@ -2265,7 +2292,7 @@ public final class PXPanelEntry: NSObject {
             let width = max(35, min(requested, available / CGFloat(count) / max(1, ratio)))
             let height = width * ratio
             let preceding = dockedHosts.prefix(index).filter { $0.side == dock.side }.reduce(CGFloat.zero) { sum, item in
-                let itemSource = item.bridge.hostedSourceSize()
+                let itemSource = sourceForDock(item)
                 let r = itemSource.height / max(1, itemSource.width)
                 let itemWidth = dockWidth(for: itemSource, in: screen)
                 return sum + max(35, min(itemWidth, available / CGFloat(count) / max(1, r))) * r + 12
@@ -2323,8 +2350,8 @@ public final class PXPanelEntry: NSObject {
         dock.overlay.removeFromSuperview()
         dock.window.windowLevel = .statusBar + 0.3
         dock.window.isUserInteractionEnabled = true
-        dock.canvas.isUserInteractionEnabled = true
-        dock.bridge.setHostedInteractionEnabled(true)
+        dock.canvas.isUserInteractionEnabled = !dock.loading
+        dock.bridge.setHostedInteractionEnabled(!dock.loading)
         activeBridge = dock.bridge
         hostWindow = dock.window
         hostCard = dock.card
@@ -2336,8 +2363,13 @@ public final class PXPanelEntry: NSObject {
         hostedBundleID = dock.bundleID
         (hostCorners + hostTopCorners + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
         let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-        let frame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: dock.bridge.hostedSourceSize()))
-        dock.card.layer.cornerRadius = configuredCornerRadius(in: screen, source: dock.bridge.hostedSourceSize())
+        let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
+        let source = dock.bridge.hostedSourceSize()
+        let fallback = CGSize(width: min(natural.width, natural.height),
+                              height: max(natural.width, natural.height))
+        let resolved = source.width > 0 && source.height > 0 ? source : fallback
+        let frame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: resolved))
+        dock.card.layer.cornerRadius = configuredCornerRadius(in: screen, source: resolved)
         PXMotion.spring(0.32, animations: {
             dock.card.transform = .identity
             dock.card.frame = frame
@@ -2512,19 +2544,18 @@ public final class PXPanelEntry: NSObject {
         }
         guard let start = moveStartFrame else { return }
         let translation = gesture.translation(in: window.rootViewController?.view)
+        let loading = hostCanvas?.isUserInteractionEnabled == false
+        let velocity = gesture.velocity(in: window.rootViewController?.view).y
         if gesture.state == .ended, translation.y < -35,
            -translation.y > abs(translation.x) * 1.2,
-           gesture.velocity(in: window.rootViewController?.view).y < -500 {
+           velocity < -500 || (loading && translation.y < -70) {
             moveStartFrame = nil
-            if hostCanvas?.isUserInteractionEnabled == false {
-                dockAfterOpenBundleID = hostedBundleID
-                fullscreenAfterOpenBundleID = nil
-            } else { parkMain(side: defaultDockSide) }
+            parkMain(side: defaultDockSide)
             return
         }
         if gesture.state == .ended, translation.y > 35,
            translation.y > abs(translation.x) * 1.2,
-           gesture.velocity(in: window.rootViewController?.view).y > 500 {
+           velocity > 500 || (loading && translation.y > 70) {
             moveStartFrame = nil
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let source = activeBridge.hostedSourceSize()

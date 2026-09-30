@@ -317,7 +317,7 @@ assert 'dock.overlay.frame = frame' in panel
 assert 'dock.window.windowLevel = .statusBar + 0.3' in panel
 assert 'dock.window.isUserInteractionEnabled = true' in panel
 assert 'activeBridge.setHostedInteractionEnabled(false)' in panel
-assert 'dock.bridge.setHostedInteractionEnabled(true)' in panel
+assert 'dock.bridge.setHostedInteractionEnabled(!dock.loading)' in panel
 assert bridge.count('setAllowsSelection:", !self.suppressSelection') == 2
 assert 'host.userInteractionEnabled = !strongSelf.suppressSelection' in bridge
 assert 'shared.removeDock(dock, fullscreenHandoff: true)' in panel
@@ -331,9 +331,12 @@ dock_prefs = (root / 'prefs' / 'PXDockController.swift').read_text(encoding='utf
 assert 'UISegmentedControl(items: ["左侧", "右侧"])' in dock_prefs
 assert 'forKey: "dockSide"' in dock_prefs
 assert 'parkMain(side: defaultDockSide)' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
-assert 'dockAfterOpenBundleID = hostedBundleID' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
 park_main = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
-assert park_main.index('guard canvas.isUserInteractionEnabled else {\n            closeHost(animated: false)') < park_main.index('dockedHosts.append(dock)')
+assert 'let loading = !canvas.isUserInteractionEnabled' in park_main
+assert 'loading: loading' in park_main and 'dockedHosts.append(dock)' in park_main
+assert 'guard canvas.isUserInteractionEnabled else {' not in park_main
+assert 'let source = sourceForDock(dock)' in panel.split('private func layoutDocks(', 1)[1].split('private func restoreDockTapped', 1)[0]
+assert 'let dock = self.dockedHosts.first { $0.window === window }' in handoff
 assert 'parkMain(side: sender.tag)' not in panel
 assert 'com.apple.springboard.lockstate' in entry
 assert 'com.apple.springboard.hasBlankedScreen' in tweak
@@ -402,7 +405,7 @@ assert 'excludedRects' not in panel
 assert 'if (visible == self.keyboardWasVisible) return;' in bridge
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
 assert 'removeKeyboardDismissLayer()' in close_host
-assert 'gesture.velocity(in: window.rootViewController?.view).y < -500' in panel
+assert 'velocity < -500 || (loading && translation.y < -70)' in panel
 assert 'if hostWindow != nil, hostedBundleID != bundleID {' in panel
 assert 'object(forKey: "autoParkOnNewSplit") as? Bool ?? true' in panel
 assert 'forKey: "autoParkOnNewSplit"' in dock_prefs
@@ -460,11 +463,11 @@ for screen_width, card_width, right_inset in ((926, 332, 0), (926, 332, 40), (39
     assert screen_width - (screen_width - card_width - inset + card_width) == right_inset
 move_host = panel.split('@objc private func moveHost(_ gesture: UIPanGestureRecognizer)', 1)[1].split('private func closeHost(', 1)[0]
 assert 'translation.y < -35' in move_host and 'parkMain(side: defaultDockSide)' in move_host
-assert 'translation.y > 35' in move_host and 'velocity(in: window.rootViewController?.view).y > 500' in move_host
+assert 'translation.y > 35' in move_host and 'velocity > 500 || (loading && translation.y > 70)' in move_host
 assert 'initialCardSize(in: screen, source: source.width > 0 && source.height > 0 ? source :' in move_host
 assert 'initialCardFrame(in: screen, size: size)' in move_host
 assert 'card.frame = target' in move_host and 'self.activeBridge.layoutHost()' in move_host
-assert 'dockAfterOpenBundleID = hostedBundleID' in move_host
+assert move_host.index('translation.y < -35') < move_host.index('parkMain(side: defaultDockSide)')
 assert 'launchWidthScale = nil' in move_host
 assert move_host.index('launchMovedCenter = nil') < move_host.index('PXMotion.ease(0.24')
 assert move_host.index('dockAfterOpenBundleID = nil') < move_host.index('PXMotion.ease(0.24')
