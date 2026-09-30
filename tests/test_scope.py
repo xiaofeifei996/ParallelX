@@ -726,21 +726,25 @@ assert 'UIWindow.Level(rawValue: CGFloat(level) - 0.5)' in panel
 assert 'coverSheetVisible ? .normal' not in panel
 assert 'PXUpdateCoverSheetWindowLevel(controller)' in tweak
 assert 'shared.coverSheetVisible = visible' in panel
-assert 'handle?.isHidden = deviceLocked || coverSheetPresented' in panel
+assert 'handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)' in panel
 assert 'PXSetCoverSheetPresented(YES)' in tweak
 assert 'PXSetCoverSheetPresented(NO)' in tweak
-assert 'handleProbeState() -> String' in panel
-assert 'com.moxuan.parallelx.handle.log' in tweak and 'if (++samples > 400) return;' in tweak
-assert 'PXHandleProbe(@"sheet-will-appear", controller)' in tweak
-assert 'PXHandleProbe(@"sheet-did-disappear", controller)' in tweak
-assert 'PXHandleProbe([@"front-before " stringByAppendingString:bundleID ?: @"nil"], nil)' in tweak
+assert 'handleProbeState' not in panel and 'PXHandleProbe' not in tweak
 assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
 assert 'PXCoverSheetWillDisappear' in tweak and 'NSSelectorFromString(@"isUILocked")' in tweak
 cover_sheet_exit = tweak.split('static void PXCoverSheetWillDisappear(', 1)[1].split('static void PXCoverSheetDidDisappear(', 1)[0]
 cover_sheet_done = tweak.split('static void PXCoverSheetDidDisappear(', 1)[1].split('static NSString *PXRecentExternalBundleID', 1)[0]
 assert 'PXSetCoverSheetPresented(NO)' not in cover_sheet_exit
+assert cover_sheet_exit.index('PXUpdateCoverSheetWindowLevel(controller)') < cover_sheet_exit.index('PXSetCoverSheetExiting(YES)')
+assert cover_sheet_exit.index('PXSetCoverSheetVisible(YES)') < cover_sheet_exit.index('PXSetCoverSheetExiting(YES)')
 assert cover_sheet_done.index('PXSetCoverSheetPresented(NO)') < cover_sheet_done.index('PXSetCoverSheetVisible(NO)')
+assert cover_sheet_done.index('PXSetCoverSheetVisible(NO)') < cover_sheet_done.index('PXSetCoverSheetExiting(NO)')
+for locked, presented, exiting, expected_hidden in (
+    (False, True, False, True), (False, True, True, False),
+    (True, True, True, True), (False, False, False, False),
+):
+    assert (locked or (presented and not exiting)) == expected_hidden
 assert 'PXPublishLockState(NO);' in cover_sheet_exit
 assert 'PXDeviceLocked = YES;' not in cover_sheet_exit and '@"locked": @(PXDeviceLocked)' not in cover_sheet_exit
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel

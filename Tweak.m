@@ -23,39 +23,6 @@ static char PXHomeHandoffRequestKey;
 static void (*PXOriginalSetStyleMode)(id, SEL, NSInteger);
 static CFAbsoluteTime PXAppearanceChangeUntil;
 
-static void PXHandleProbe(NSString *event, id controller)
-{
-    static NSUInteger samples;
-    static dispatch_queue_t queue;
-    static dispatch_once_t once;
-    if (++samples > 400) return;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.moxuan.parallelx.handle-probe", DISPATCH_QUEUE_SERIAL); });
-    UIViewController *sheet = [controller isKindOfClass:UIViewController.class] ? controller : nil;
-    UIWindow *window = sheet.viewIfLoaded.window ?: sheet.parentViewController.viewIfLoaded.window;
-    Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL selector = NSSelectorFromString(@"handleProbeState");
-    NSString *state = [entry respondsToSelector:selector]
-        ? ((id (*)(id, SEL))objc_msgSend)(entry, selector) : @"state-unavailable";
-    NSString *line = [NSString stringWithFormat:@"%.3f %@ sheet=%@ attached=%d hidden=%d level=%.1f %@\n",
-        CFAbsoluteTimeGetCurrent(), event, sheet ? NSStringFromClass(sheet.class) : @"nil",
-        window != nil, window.hidden, window.windowLevel, state];
-    dispatch_async(queue, ^{
-        @try {
-            NSString *path = @"/var/mobile/Library/Logs/com.moxuan.parallelx.handle.log";
-            NSFileManager *files = NSFileManager.defaultManager;
-            [files createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                withIntermediateDirectories:YES attributes:nil error:nil];
-            if (![files fileExistsAtPath:path] ||
-                [[files attributesOfItemAtPath:path error:nil] fileSize] > 512 * 1024)
-                [files createFileAtPath:path contents:nil attributes:nil];
-            NSFileHandle *file = [NSFileHandle fileHandleForWritingAtPath:path];
-            [file seekToEndOfFile];
-            [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-            [file closeFile];
-        } @catch (__unused NSException *exception) { }
-    });
-}
-
 static void PXSetStyleMode(id mode, SEL selector, NSInteger value)
 {
     Class entry = NSClassFromString(@"PXPanelEntry");
@@ -71,7 +38,6 @@ static void PXPublishLockState(BOOL locked)
     PXDeviceLocked = locked;
     [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
         object:nil userInfo:@{@"locked": @(locked)}];
-    PXHandleProbe(locked ? @"lock" : @"unlock", nil);
 }
 static void (*PXOriginalCoverSheetWillAppear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetDidAppear)(id, SEL, BOOL);
@@ -88,13 +54,6 @@ static void PXUpdateCoverSheetWindowLevel(id controller)
     SEL setter = NSSelectorFromString(@"setCoverSheetWindowLevel:");
     if (window && [entry respondsToSelector:setter])
         ((void (*)(id, SEL, double))objc_msgSend)(entry, setter, window.windowLevel);
-    static uintptr_t lastWindow;
-    static CGFloat lastLevel;
-    if (window && ((uintptr_t)(__bridge void *)window != lastWindow || window.windowLevel != lastLevel)) {
-        lastWindow = (uintptr_t)(__bridge void *)window;
-        lastLevel = window.windowLevel;
-        PXHandleProbe(@"sheet-window", controller);
-    }
 }
 
 static void PXCoverSheetLayout(id controller, SEL selector)
@@ -111,12 +70,20 @@ static void PXSetCoverSheetVisible(BOOL visible)
         ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, visible);
 }
 
+static void PXSetCoverSheetExiting(BOOL exiting)
+{
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL setter = NSSelectorFromString(@"setCoverSheetExiting:");
+    if ([entry respondsToSelector:setter])
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, exiting);
+}
+
 static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
 {
+    PXSetCoverSheetExiting(NO);
     PXUpdateCoverSheetWindowLevel(controller);
     PXSetCoverSheetVisible(YES);
     PXOriginalCoverSheetWillAppear(controller, selector, animated);
-    PXHandleProbe(@"sheet-will-appear", controller);
 }
 
 static void PXSetCoverSheetPresented(BOOL presented)
@@ -131,13 +98,14 @@ static void PXCoverSheetDidAppear(id controller, SEL selector, BOOL animated)
 {
     PXOriginalCoverSheetDidAppear(controller, selector, animated);
     PXSetCoverSheetPresented(YES);
-    PXHandleProbe(@"sheet-did-appear", controller);
 }
 
 static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated)
 {
+    PXUpdateCoverSheetWindowLevel(controller);
+    PXSetCoverSheetVisible(YES);
+    PXSetCoverSheetExiting(YES);
     PXOriginalCoverSheetWillDisappear(controller, selector, animated);
-    PXHandleProbe(@"sheet-will-disappear", controller);
     Class lockManager = NSClassFromString(@"SBLockScreenManager");
     SEL shared = NSSelectorFromString(@"sharedInstance");
     id manager = [lockManager respondsToSelector:shared]
@@ -156,7 +124,7 @@ static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
     PXOriginalCoverSheetDidDisappear(controller, selector, animated);
     PXSetCoverSheetPresented(NO);
     PXSetCoverSheetVisible(NO);
-    PXHandleProbe(@"sheet-did-disappear", controller);
+    PXSetCoverSheetExiting(NO);
 }
 static NSString *PXRecentExternalBundleID;
 static CFAbsoluteTime PXRecentExternalTime;
@@ -458,12 +426,10 @@ static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application
 {
     NSString *bundleID = PXBundleID(application);
     PXOriginalFrontDisplayDidChange(springBoard, selector, application);
-    PXHandleProbe([@"front-before " stringByAppendingString:bundleID ?: @"nil"], nil);
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL changed = NSSelectorFromString(@"frontDisplayChanged:");
     if ([entry respondsToSelector:changed])
         ((void (*)(id, SEL, id))objc_msgSend)(entry, changed, bundleID);
-    PXHandleProbe([@"front-after " stringByAppendingString:bundleID ?: @"nil"], nil);
 }
 
 static void PXKillSwitcherContainer(id switcher, SEL selector, id container, NSInteger reason)
@@ -489,7 +455,6 @@ static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation
 {
     PXOriginalOrientationChanged(manager, selector, orientation, duration, mirrored, force, message);
     [PXSceneBridge noteSystemOrientation:(UIInterfaceOrientation)orientation];
-    PXHandleProbe([NSString stringWithFormat:@"rotation %ld", (long)orientation], nil);
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
     });
@@ -502,7 +467,6 @@ static void PXActiveOrientationChanged(id application, SEL selector, BOOL animat
         SEL active = NSSelectorFromString(@"activeInterfaceOrientation");
         if ([application respondsToSelector:active])
             [PXSceneBridge noteSystemOrientation:((NSInteger (*)(id, SEL))objc_msgSend)(application, active)];
-        PXHandleProbe(@"rotation-active", nil);
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXScreenGeometryChanged" object:nil];
     });
 }
@@ -694,6 +658,5 @@ __attribute__((constructor)) static void PXInitialize(void)
             ((void (*)(id, SEL))objc_msgSend)(entry, start);
         [NSNotificationCenter.defaultCenter postNotificationName:@"PXLockStateChanged"
             object:nil userInfo:@{@"locked": @(PXDeviceLocked)}];
-        PXHandleProbe(@"start", nil);
     });
 }

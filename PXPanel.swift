@@ -1028,6 +1028,7 @@ public final class PXPanelEntry: NSObject {
     private var deviceLocked = false
     private var coverSheetVisible = false
     private var coverSheetPresented = false
+    private var coverSheetExiting = false
     private var coverSheetWindowLevel: UIWindow.Level?
     private var panelDragProgress: CGFloat = 0
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
@@ -1045,15 +1046,6 @@ public final class PXPanelEntry: NSObject {
     private var keyboardFocusBase: CGRect?
     private var keyboardFocusFrame = CGRect.null
     private var keyboardFocusRadius: CGFloat = 20
-
-    @objc public static func handleProbeState() -> String {
-        let window = shared.handleWindow
-        return "locked=\(shared.deviceLocked) sheet=\(shared.coverSheetVisible) presented=\(shared.coverSheetPresented) " +
-            "handleHidden=\(shared.handle?.isHidden ?? true) windowHidden=\(window?.isHidden ?? true) " +
-            "handleLevel=\(window?.windowLevel.rawValue ?? -1) sheetLevel=\(shared.coverSheetWindowLevel?.rawValue ?? -1) " +
-            "orientation=\(PXSceneBridge.systemOrientation().rawValue) host=\(shared.hostWindow?.isHidden == false) " +
-            "docks=\(shared.dockedHosts.filter { !$0.window.isHidden }.count)"
-    }
 
     @objc public static func hasVisibleHost() -> Bool {
         shared.hostWindow?.isHidden == false || shared.dockedHosts.contains { !$0.window.isHidden }
@@ -1457,7 +1449,7 @@ public final class PXPanelEntry: NSObject {
 
     private func updateHandleVisibility() {
         // Let the interactive sheet cover the handle; hide only once fully presented.
-        handle?.isHidden = deviceLocked || coverSheetPresented
+        handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)
         handleWindow?.windowLevel = coverSheetVisible
             ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
     }
@@ -1476,6 +1468,11 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func setCoverSheetPresented(_ presented: Bool) {
         shared.coverSheetPresented = presented
+        shared.updateHandleVisibility()
+    }
+
+    @objc public static func setCoverSheetExiting(_ exiting: Bool) {
+        shared.coverSheetExiting = exiting
         shared.updateHandleVisibility()
     }
 
