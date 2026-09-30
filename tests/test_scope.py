@@ -217,6 +217,8 @@ assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < hand
 assert 'window.isHidden = wasFullscreen' in handoff
 assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
 assert handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
+assert handoff.index('let dockWhenReady = self.dockAfterOpenBundleID == bundleID') < handoff.index('card.layer.cornerRadius = 0')
+assert 'if wasFullscreen && !dockWhenReady, frame.width > 0, frame.height > 0 {' in handoff
 assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if wasFullscreen && !dockWhenReady {\n                PXMotion.spring(0.4')
 assert 'let scale = min(screen.width / frame.width, screen.height / frame.height)' in handoff
 assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')

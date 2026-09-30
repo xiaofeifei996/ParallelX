@@ -1922,7 +1922,8 @@ public final class PXPanelEntry: NSObject {
             self.matchHostAspect()
             let frame = card.frame
             let radius = card.layer.cornerRadius
-            if wasFullscreen, frame.width > 0, frame.height > 0 {
+            let dockWhenReady = self.dockAfterOpenBundleID == bundleID
+            if wasFullscreen && !dockWhenReady, frame.width > 0, frame.height > 0 {
                 let screen = window?.rootViewController?.view.bounds ?? UIScreen.main.bounds
                 let scale = min(screen.width / frame.width, screen.height / frame.height)
                 card.transform = CGAffineTransform(scaleX: scale, y: scale)
@@ -1931,7 +1932,6 @@ public final class PXPanelEntry: NSObject {
                 card.subviews.first?.layer.cornerRadius = 0
             }
             window?.isHidden = false
-            let dockWhenReady = self.dockAfterOpenBundleID == bundleID
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else {
