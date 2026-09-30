@@ -1019,6 +1019,7 @@ public final class PXPanelEntry: NSObject {
     private var resizeStartRadius: CGFloat = 0
     private var resizePreview: (scale: CGFloat, x: CGFloat, y: CGFloat)?
     private var moveStartFrame: CGRect?
+    private var launchMovedCenter: CGPoint?
     private var needsHostRefresh = false
     private var deviceLocked = false
     private var coverSheetVisible = false
@@ -1198,6 +1199,7 @@ public final class PXPanelEntry: NSObject {
         }
         if fullscreenToWindowInProgress { return }
         needsHostRefresh = false
+        canvas.isUserInteractionEnabled = false
         activeBridge.openApplication(bundleID, in: canvas,
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
@@ -1205,6 +1207,7 @@ public final class PXPanelEntry: NSObject {
                 self.activeBridge.layoutHost()
                 self.hostCard?.alpha = 1
                 self.hostCard?.transform = .identity
+                canvas.isUserInteractionEnabled = true
                 window?.isUserInteractionEnabled = true
                 window?.isHidden = false
             }
@@ -1781,6 +1784,7 @@ public final class PXPanelEntry: NSObject {
         else { closeHost(animated: false) }
         fullscreenToWindowInProgress = wasFullscreen
         hostedBundleID = bundleID
+        launchMovedCenter = nil
         let screen = controls.bounds
         let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
         let size = initialCardSize(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
@@ -1910,7 +1914,8 @@ public final class PXPanelEntry: NSObject {
         hostWindow = window
         hostCard = card
         layoutHostControls()
-        window.isUserInteractionEnabled = false
+        window.isUserInteractionEnabled = true
+        canvas.isUserInteractionEnabled = false
         if !wasFullscreen {
             card.transform = CGAffineTransform(scaleX: 0.84, y: 0.84)
             PXMotion.spring(0.4) { card.transform = .identity }
@@ -1960,6 +1965,7 @@ public final class PXPanelEntry: NSObject {
                     return
                 }
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
+                canvas.isUserInteractionEnabled = true
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
                 if self.dockAfterOpenBundleID == bundleID {
@@ -1991,6 +1997,11 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
         card.transform = .identity
         card.frame = initialCardFrame(in: screen, size: size)
+        if let center = launchMovedCenter {
+            card.center = CGPoint(x: min(max(center.x, screen.minX + size.width / 2), screen.maxX - size.width / 2),
+                                  y: min(max(center.y, screen.minY + size.height / 2), screen.maxY - size.height / 2))
+        }
+        launchMovedCenter = nil
         card.layer.cornerRadius = configuredCornerRadius(in: screen, source: source)
         card.layoutIfNeeded()
         layoutHostControls()
@@ -2169,6 +2180,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
+        guard hostCanvas?.isUserInteractionEnabled == true else { return }
         parkMain(side: defaultDockSide)
     }
 
@@ -2177,7 +2189,7 @@ public final class PXPanelEntry: NSObject {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
               let root = window.rootViewController?.view else { return false }
-        guard window.isUserInteractionEnabled else {
+        guard canvas.isUserInteractionEnabled else {
             closeHost(animated: false)
             return false
         }
@@ -2322,6 +2334,7 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func fullscreenTapped() {
         restoreKeyboardFocus()
+        guard hostCanvas?.isUserInteractionEnabled == true else { return }
         guard let bundleID = hostedBundleID, let window = hostWindow,
               let card = hostCard, let scene = window.windowScene else { return }
         let cardFrame = card.frame
@@ -2382,6 +2395,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func resizeHost(_ gesture: UIPanGestureRecognizer) {
+        guard hostCanvas?.isUserInteractionEnabled == true else { return }
         guard let window = hostWindow, let card = hostCard else { return }
         if gesture.state == .began {
             restoreKeyboardFocus()
@@ -2464,6 +2478,7 @@ public final class PXPanelEntry: NSObject {
         guard let start = moveStartFrame else { return }
         let translation = gesture.translation(in: window.rootViewController?.view)
         if gesture.state == .ended, translation.y < -35,
+           hostCanvas?.isUserInteractionEnabled == true,
            -translation.y > abs(translation.x) * 1.2,
            gesture.velocity(in: window.rootViewController?.view).y < -500 {
             moveStartFrame = nil
@@ -2471,6 +2486,7 @@ public final class PXPanelEntry: NSObject {
             return
         }
         if gesture.state == .ended, translation.y > 35,
+           hostCanvas?.isUserInteractionEnabled == true,
            translation.y > abs(translation.x) * 1.2,
            gesture.velocity(in: window.rootViewController?.view).y > 500 {
             moveStartFrame = nil
@@ -2500,6 +2516,7 @@ public final class PXPanelEntry: NSObject {
         }
         if gesture.state == .changed || gesture.state == .ended {
             card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
+            if hostCanvas?.isUserInteractionEnabled == false { launchMovedCenter = card.center }
             layoutHostControls()
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
@@ -2529,6 +2546,7 @@ public final class PXPanelEntry: NSObject {
         hostMoveGrip = nil
         hostTopGrip = nil
         hostedBundleID = nil
+        launchMovedCenter = nil
         resizeStartFrame = nil
         moveStartFrame = nil
         needsHostRefresh = false

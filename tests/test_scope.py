@@ -227,6 +227,9 @@ assert 'card.viewWithTag(0x50584c)' in handoff
 assert 'preview.layer.cornerRadius' not in handoff
 assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < handoff.index('self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen)')
 assert 'window.isHidden = wasFullscreen' in handoff
+assert handoff.index('window.isUserInteractionEnabled = true\n        canvas.isUserInteractionEnabled = false') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
+assert 'canvas.isUserInteractionEnabled = true\n                window?.isUserInteractionEnabled = true' in handoff
+assert 'launchMovedCenter = nil' in handoff
 assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
 assert handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
 assert handoff.index('let dockWhenReady = self.dockAfterOpenBundleID == bundleID') < handoff.index('card.layer.cornerRadius = 0')
@@ -327,7 +330,7 @@ assert 'UISegmentedControl(items: ["左侧", "右侧"])' in dock_prefs
 assert 'forKey: "dockSide"' in dock_prefs
 assert 'parkMain(side: defaultDockSide)' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
 park_main = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
-assert park_main.index('guard window.isUserInteractionEnabled else {\n            closeHost(animated: false)') < park_main.index('dockedHosts.append(dock)')
+assert park_main.index('guard canvas.isUserInteractionEnabled else {\n            closeHost(animated: false)') < park_main.index('dockedHosts.append(dock)')
 assert 'parkMain(side: sender.tag)' not in panel
 assert 'com.apple.springboard.lockstate' in entry
 assert 'com.apple.springboard.hasBlankedScreen' in tweak
@@ -458,6 +461,9 @@ assert 'translation.y > 35' in move_host and 'velocity(in: window.rootViewContro
 assert 'initialCardSize(in: screen, source: activeBridge.hostedSourceSize())' in move_host
 assert 'initialCardFrame(in: screen, size: size)' in move_host
 assert 'card.frame = target' in move_host and 'self.activeBridge.layoutHost()' in move_host
+assert move_host.count('hostCanvas?.isUserInteractionEnabled == true') >= 2
+assert 'launchMovedCenter = card.center' in move_host
+assert 'if let center = launchMovedCenter' in panel.split('private func matchHostAspect()', 1)[1].split('private func initialCardFrame(', 1)[0]
 radius_settings = (root / 'prefs/PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")' in radius_settings
 assert '(landscapeRightInsetLabel, landscapeRightInset)' in radius_settings
