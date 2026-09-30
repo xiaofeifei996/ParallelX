@@ -1441,7 +1441,8 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func updateHandleVisibility() {
-        handle?.isHidden = deviceLocked
+        // Notification Center shares Cover Sheet, but must never invoke lock cleanup.
+        handle?.isHidden = deviceLocked || coverSheetVisible
         handleWindow?.windowLevel = coverSheetVisible
             ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
     }

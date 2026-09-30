@@ -716,6 +716,7 @@ assert 'UIWindow.Level(rawValue: CGFloat(level) - 0.5)' in panel
 assert 'coverSheetVisible ? .normal' not in panel
 assert 'PXUpdateCoverSheetWindowLevel(controller)' in tweak
 assert 'shared.coverSheetVisible = visible' in panel
+assert 'handle?.isHidden = deviceLocked || coverSheetVisible' in panel
 assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
 assert 'PXCoverSheetWillDisappear' in tweak and 'NSSelectorFromString(@"isUILocked")' in tweak
