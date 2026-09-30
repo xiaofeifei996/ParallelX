@@ -91,10 +91,12 @@
 {
     PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
     BOOL horizontal = [[specifier propertyForKey:@"key"] isEqual:@"externalKeyboardHorizontalPercent"];
-    if (horizontal || [[specifier propertyForKey:@"key"] isEqual:@"keyboardDimOpacity"]) {
-        NSString *title = horizontal ? @"横屏外置键盘位置" : @"键盘关闭遮罩深度";
-        int maximum = horizontal ? 100 : 60;
-        CGFloat multiplier = horizontal ? 1 : 100;
+    BOOL focus = [[specifier propertyForKey:@"key"] isEqual:@"internalKeyboardZoomPercent"];
+    if (horizontal || focus || [[specifier propertyForKey:@"key"] isEqual:@"keyboardDimOpacity"]) {
+        NSString *title = focus ? @"内置键盘放大倍数" : horizontal ? @"横屏外置键盘位置" : @"键盘关闭遮罩深度";
+        int minimum = focus ? 100 : 0;
+        int maximum = focus ? 200 : horizontal ? 100 : 60;
+        CGFloat multiplier = horizontal || focus ? 1 : 100;
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
@@ -103,7 +105,7 @@
         label.translatesAutoresizingMaskIntoConstraints = NO;
         UISlider *slider = [UISlider new];
         slider.translatesAutoresizingMaskIntoConstraints = NO;
-        slider.minimumValue = 0;
+        slider.minimumValue = minimum;
         slider.maximumValue = maximum;
         slider.value = [[self readPreferenceValue:specifier] floatValue] * multiplier;
         label.text = [NSString stringWithFormat:@"%@：%.0f%%", title, slider.value];
@@ -121,7 +123,7 @@
         __weak UISlider *weakSlider = slider;
         [button addAction:[UIAction actionWithHandler:^(__kindof UIAction *action) {
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
-                message:[NSString stringWithFormat:@"输入 0–%d（%%）", maximum] preferredStyle:UIAlertControllerStyleAlert];
+                message:[NSString stringWithFormat:@"输入 %d–%d（%%）", minimum, maximum] preferredStyle:UIAlertControllerStyleAlert];
             [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
                 field.keyboardType = UIKeyboardTypeNumberPad;
                 field.text = [NSString stringWithFormat:@"%.0f", weakSlider.value];
@@ -131,7 +133,7 @@
             [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
                 NSScanner *scanner = [NSScanner scannerWithString:weakAlert.textFields.firstObject.text ?: @""];
                 int value;
-                if (![scanner scanInt:&value] || !scanner.isAtEnd || value < 0 || value > maximum) return;
+                if (![scanner scanInt:&value] || !scanner.isAtEnd || value < minimum || value > maximum) return;
                 weakSlider.value = value;
                 [weakSlider sendActionsForControlEvents:UIControlEventValueChanged];
             }]];
@@ -162,7 +164,8 @@
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     NSString *key = [[self specifierAtIndexPath:indexPath] propertyForKey:@"key"];
-    if ([key isEqual:@"keyboardDimOpacity"] || [key isEqual:@"externalKeyboardHorizontalPercent"]) return 82;
+    if ([key isEqual:@"keyboardDimOpacity"] || [key isEqual:@"externalKeyboardHorizontalPercent"] ||
+        [key isEqual:@"internalKeyboardZoomPercent"]) return 82;
     return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 

@@ -15,8 +15,13 @@ assert len(keys) == len(set(keys))
 assert set(keys) == {
     "showSplitAppIdentity", "portraitExternalKeyboard", "landscapeExternalKeyboard",
     "externalKeyboardHorizontalPercent", "closeOutsideWithKeyboard", "keyboardDimOpacity",
+    "internalKeyboardZoomPercent",
     "notificationSplitEnabled", "urlSplitEnabled", "clearOnLock", "hideForScreenshot",
 }
+panel = (root / "PXPanel.swift").read_text(encoding="utf-8")
+assert 'forKey: "internalKeyboardZoomPercent"' in panel
+assert 'min(requestedZoom, room)' in panel
+assert 'key = "internalKeyboardZoomPercent"; default = 160; min = 100; max = 200;' in pages["Keyboard"]
 
 backup = (root / "prefs/PXBackupController.swift").read_text(encoding="utf-8")
 assert all(text in backup for text in (

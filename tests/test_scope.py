@@ -270,7 +270,7 @@ assert 'key = "externalKeyboardHorizontalPercent"; default = 0; min = 0; max = 1
 preferences_page = (root / 'prefs/PXRootListController.m').read_text(encoding='utf-8')
 assert 'BOOL horizontal = [[specifier propertyForKey:@"key"] isEqual:@"externalKeyboardHorizontalPercent"]' in preferences_page
 assert 'horizontal ? @"横屏外置键盘位置" : @"键盘关闭遮罩深度"' in preferences_page
-assert 'int maximum = horizontal ? 100 : 60' in preferences_page
+assert 'int maximum = focus ? 200 : horizontal ? 100 : 60' in preferences_page
 assert '[weakSelf setPreferenceValue:@(control.value / multiplier) specifier:specifier]' in preferences_page
 for screen, keyboard in (((926, 428), (428, 600)), ((926, 428), (428, 360))):
     width, height = min(keyboard[0], screen[0]), min(keyboard[1], screen[1])
@@ -615,7 +615,7 @@ for name in ('CornerRadius', 'Dock', 'GestureArea'):
     page = (root / 'prefs' / f'PX{name}Controller.swift').read_text(encoding='utf-8')
     assert 'inputButtons' in page and 'PXSettingsStyle.inputButton' in page
 assert 'label.text = [NSString stringWithFormat:@"%@：%.0f%%", title, control.value]' in prefs_host
-assert 'CGFloat multiplier = horizontal ? 1 : 100' in prefs_host
+assert 'CGFloat multiplier = horizontal || focus ? 1 : 100' in prefs_host
 assert 'PXScreenGeometryChanged' in panel and 'PXHostedGeometryChanged' in bridge
 assert 'handleCenterLandscapeFraction' in panel
 assert 'sourceOrientation = orientation' in bridge

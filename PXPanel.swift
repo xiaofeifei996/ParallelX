@@ -2108,7 +2108,9 @@ public final class PXPanelEntry: NSObject {
         // input field and keyboard anchored at the bottom rather than flying in.
         let room = root.bounds.width > root.bounds.height ? (base.maxX - 12) / base.width :
             min((base.maxX - 12) / base.width, (base.maxY - 12) / base.height)
-        let zoom = focused ? max(1, min(1.6, room)) : 1
+        let savedZoom = (UserDefaults(suiteName: preferenceDomain)?.object(forKey: "internalKeyboardZoomPercent") as? NSNumber)?.doubleValue ?? 160
+        let requestedZoom = CGFloat(min(200, max(100, savedZoom.isFinite ? savedZoom : 160))) / 100
+        let zoom = focused ? max(1, min(requestedZoom, room)) : 1
         let target = CGRect(x: base.maxX - base.width * zoom, y: base.maxY - base.height * zoom,
                             width: base.width * zoom, height: base.height * zoom)
         guard target != keyboardFocusFrame else { return }
