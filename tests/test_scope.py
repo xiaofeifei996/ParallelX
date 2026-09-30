@@ -720,13 +720,12 @@ assert 'row.leadingAnchor.constraint(equalTo: cell.contentView.leadingAnchor, co
 assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, constant: -6)' in panel
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .alert + 51' in panel
-assert 'handle?.isHidden = (deviceLocked && !handleUnlockConfirmed)' in panel
+assert 'handle?.isHidden = deviceLocked && !handleUnlockConfirmed' in panel
 assert 'coverSheetWindowLevel ?? .alert + 51' in panel
 assert 'UIWindow.Level(rawValue: CGFloat(level) - 0.5)' in panel
 assert 'coverSheetVisible ? .normal' not in panel
 assert 'PXUpdateCoverSheetWindowLevel(controller)' in tweak
 assert 'shared.coverSheetVisible = visible' in panel
-assert 'handle?.isHidden = (deviceLocked && !handleUnlockConfirmed) || (coverSheetPresented && !coverSheetExiting)' in panel
 assert 'handleUnlockConfirmed = !locked' in panel
 assert 'shared.handleUnlockConfirmed = true' in panel
 assert 'hasBeenDismissedSinceKeybagLock' in tweak
@@ -756,18 +755,14 @@ for visible, presented, entering, should_clear in (
     (True, False, False, True), (False, False, False, False),
 ):
     assert (visible and not presented and not entering) == should_clear
-for locked, presented, exiting, expected_hidden in (
-    (False, True, False, True), (False, True, True, False),
-    (True, True, True, True), (False, False, False, False),
-):
-    assert (locked or (presented and not exiting)) == expected_hidden
 for locked, confirmed, presented, exiting, expected_hidden in (
     (True, False, False, False, True),
     (True, True, False, False, False),
-    (True, True, True, False, True),
+    (True, True, True, False, False),
+    (False, True, True, False, False),
     (False, True, True, True, False),
 ):
-    assert ((locked and not confirmed) or (presented and not exiting)) == expected_hidden
+    assert (locked and not confirmed) == expected_hidden
 assert 'PXPublishLockState(NO);' in cover_sheet_exit
 assert 'PXDeviceLocked = YES;' not in cover_sheet_exit and '@"locked": @(PXDeviceLocked)' not in cover_sheet_exit
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel

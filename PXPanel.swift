@@ -1452,8 +1452,8 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func updateHandleVisibility() {
-        // Let the interactive sheet cover the handle; hide only once fully presented.
-        handle?.isHidden = (deviceLocked && !handleUnlockConfirmed) || (coverSheetPresented && !coverSheetExiting)
+        // The Cover Sheet stays above the handle throughout its gesture; only a real lock hides it.
+        handle?.isHidden = deviceLocked && !handleUnlockConfirmed
         handleWindow?.windowLevel = coverSheetVisible
             ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
     }
