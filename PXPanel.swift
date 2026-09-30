@@ -1046,6 +1046,15 @@ public final class PXPanelEntry: NSObject {
     private var keyboardFocusFrame = CGRect.null
     private var keyboardFocusRadius: CGFloat = 20
 
+    @objc public static func handleProbeState() -> String {
+        let window = shared.handleWindow
+        return "locked=\(shared.deviceLocked) sheet=\(shared.coverSheetVisible) presented=\(shared.coverSheetPresented) " +
+            "handleHidden=\(shared.handle?.isHidden ?? true) windowHidden=\(window?.isHidden ?? true) " +
+            "handleLevel=\(window?.windowLevel.rawValue ?? -1) sheetLevel=\(shared.coverSheetWindowLevel?.rawValue ?? -1) " +
+            "orientation=\(PXSceneBridge.systemOrientation().rawValue) host=\(shared.hostWindow?.isHidden == false) " +
+            "docks=\(shared.dockedHosts.filter { !$0.window.isHidden }.count)"
+    }
+
     @objc public static func hasVisibleHost() -> Bool {
         shared.hostWindow?.isHidden == false || shared.dockedHosts.contains { !$0.window.isHidden }
     }
