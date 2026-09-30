@@ -208,6 +208,7 @@ assert 'if previousTraitCollection?.userInterfaceStyle != traitCollection.userIn
 assert 'root.onAppearance = { [weak self] in' in panel
 assert 'if expectedSize == layoutScreenBounds.size && orientation == layoutOrientation { return }' in panel
 assert 'shared.hostWindow?.isHidden == false' in panel
+assert 'shared.dockedHosts.contains { !$0.window.isHidden }' in panel.split('func hasVisibleHost()', 1)[1].split('@objc public static func start()', 1)[0]
 assert 'PXHostedAppearanceContext(context, protected != nil)' in tweak
 assert 'settingsWithDuration:' in tweak and 'setAnimationSettings:' in tweak
 assert '_animateUserInterfaceStyleChangeInScene:transitionContext:applyChangesBlock:' not in tweak
