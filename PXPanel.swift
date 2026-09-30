@@ -1099,6 +1099,11 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc public static func frontDisplayChanged(_ bundleID: String?) {
+        if bundleID != nil, bundleID != "com.apple.springboard",
+           shared.coverSheetVisible, !shared.coverSheetPresented {
+            shared.coverSheetVisible = false
+            shared.updateHandleVisibility()
+        }
         if shared.fullscreenToWindowInProgress && bundleID != shared.hostedBundleID {
             shared.fullscreenToWindowInProgress = false
             shared.layoutHostControls()

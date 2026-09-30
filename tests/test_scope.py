@@ -74,6 +74,9 @@ assert 'PXRuntimeHostedOrientation(client)' in bridge.split('static UIInterfaceO
 assert '- (BOOL)hasHostedSurface;' in bridge_header
 assert 'if activeBridge.hasHostedSurface(), !window.isHidden {' in panel
 assert 'frontDisplayChanged:' in tweak and 'frontDisplayChanged(_ bundleID: String?)' in panel
+front_display = panel.split('@objc public static func frontDisplayChanged(_ bundleID: String?)', 1)[1].split('@objc public static func', 1)[0]
+assert 'shared.coverSheetVisible, !shared.coverSheetPresented' in front_display
+assert front_display.index('shared.coverSheetVisible = false') < front_display.index('shared.updateHandleVisibility()')
 switcher_cleanup = panel.split('@objc public static func switcherRemovedApplication', 1)[1].split('@objc public static func externalOpenApplication', 1)[0]
 assert 'shared.hostedBundleID == bundleID' in switcher_cleanup and 'shared.closeHost(animated: false)' in switcher_cleanup
 assert 'dock.bundleID == bundleID' in switcher_cleanup and 'shared.removeDock(dock)' in switcher_cleanup
