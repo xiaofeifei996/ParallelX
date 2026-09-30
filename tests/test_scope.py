@@ -326,6 +326,8 @@ dock_prefs = (root / 'prefs' / 'PXDockController.swift').read_text(encoding='utf
 assert 'UISegmentedControl(items: ["左侧", "右侧"])' in dock_prefs
 assert 'forKey: "dockSide"' in dock_prefs
 assert 'parkMain(side: defaultDockSide)' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
+park_main = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
+assert park_main.index('guard window.isUserInteractionEnabled else {\n            closeHost(animated: false)') < park_main.index('dockedHosts.append(dock)')
 assert 'parkMain(side: sender.tag)' not in panel
 assert 'com.apple.springboard.lockstate' in entry
 assert 'com.apple.springboard.hasBlankedScreen' in tweak

@@ -2177,6 +2177,10 @@ public final class PXPanelEntry: NSObject {
         guard let window = hostWindow, let card = hostCard, let canvas = hostCanvas,
               let bundleID = hostedBundleID,
               let root = window.rootViewController?.view else { return false }
+        guard window.isUserInteractionEnabled else {
+            closeHost(animated: false)
+            return false
+        }
         let limit = min(4, max(1, UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockCount") as? Int ?? 2))
         while dockedHosts.count >= limit, let oldest = dockedHosts.first { removeDock(oldest) }
