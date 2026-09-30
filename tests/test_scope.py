@@ -406,7 +406,7 @@ assert 'excludedRects' not in panel
 assert 'if (visible == self.keyboardWasVisible) return;' in bridge
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
 assert 'removeKeyboardDismissLayer()' in close_host
-assert 'velocity < -500 {' in panel
+assert 'velocity.y < -500 {' in panel
 assert 'if hostWindow != nil, hostedBundleID != bundleID {' in panel
 assert 'object(forKey: "autoParkOnNewSplit") as? Bool ?? true' in panel
 assert 'forKey: "autoParkOnNewSplit"' in dock_prefs
@@ -464,7 +464,12 @@ for screen_width, card_width, right_inset in ((926, 332, 0), (926, 332, 40), (39
     assert screen_width - (screen_width - card_width - inset + card_width) == right_inset
 move_host = panel.split('@objc private func moveHost(_ gesture: UIPanGestureRecognizer)', 1)[1].split('private func closeHost(', 1)[0]
 assert 'translation.y < -35' in move_host and 'parkMain(side: defaultDockSide)' in move_host
-assert 'translation.y > 35' in move_host and 'velocity > 500 {' in move_host
+assert 'translation.y > 35' in move_host and 'velocity.y > 500 {' in move_host
+assert 'dockSwipeEnabled, gesture.view === hostMoveGrip' in move_host
+assert 'abs(translation.x) > abs(translation.y) * 1.2' in move_host
+assert 'translation.x * velocity.x > 0' in move_host
+assert 'parkMain(side: translation.x < 0 ? -1 : 1)' in move_host
+assert 'if dockSwipeEnabled, gesture.state == .ended, translation.y < -35' in move_host
 assert 'loading && translation' not in move_host
 assert 'initialCardSize(in: screen, source: source.width > 0 && source.height > 0 ? source :' in move_host
 assert 'initialCardFrame(in: screen, size: size)' in move_host
@@ -477,6 +482,8 @@ assert 'launchMovedCenter = card.center' in move_host
 assert 'if let center = launchMovedCenter' in panel.split('private func matchHostAspect()', 1)[1].split('private func initialCardFrame(', 1)[0]
 assert 'if self.fullscreenAfterOpenBundleID == bundleID' in handoff
 assert 'fullscreenAfterOpenBundleID = hostedBundleID' in panel.split('private func fullscreenTapped()', 1)[1].split('private func moveGripHeld(', 1)[0]
+assert 'card.layer.cornerRadius = 0' not in panel.split('private func fullscreenTapped()', 1)[1].split('private func moveGripHeld(', 1)[0]
+assert 'forKey: "dockSwipeEnabled"' in (root / 'prefs/PXGestureAreaController.swift').read_text(encoding='utf-8')
 assert 'launchWidthScale = size.width / max(1, base.width)' in panel.split('private func resizeHost(', 1)[1].split('private func applyResizePreview()', 1)[0]
 radius_settings = (root / 'prefs/PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")' in radius_settings

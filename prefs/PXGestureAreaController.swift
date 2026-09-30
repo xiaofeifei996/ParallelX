@@ -13,6 +13,8 @@ public final class PXGestureAreaController: UIViewController {
     private let sliders = (0..<6).map { _ in UISlider() }
     private let debugLabel = UILabel()
     private let debugSwitch = UISwitch()
+    private let dockSwipeLabel = UILabel()
+    private let dockSwipeSwitch = UISwitch()
     private let hint = UILabel()
     private let gestureCard = UIView()
     private let topCard = UIView()
@@ -70,10 +72,16 @@ public final class PXGestureAreaController: UIViewController {
         debugLabel.text = "显示手势触发区域"
         debugLabel.font = .preferredFont(forTextStyle: .body)
         scroll.addSubview(debugLabel)
+        dockSwipeLabel.text = "上滑及左右快滑停靠小窗"
+        dockSwipeLabel.font = .preferredFont(forTextStyle: .body)
+        scroll.addSubview(dockSwipeLabel)
+        dockSwipeSwitch.isOn = defaults?.object(forKey: "dockSwipeEnabled") as? Bool ?? true
+        dockSwipeSwitch.addTarget(self, action: #selector(dockSwipeChanged), for: .valueChanged)
+        scroll.addSubview(dockSwipeSwitch)
         debugSwitch.isOn = defaults?.bool(forKey: "gestureDebug") ?? false
         debugSwitch.addTarget(self, action: #selector(debugChanged), for: .valueChanged)
         scroll.addSubview(debugSwitch)
-        hint.text = "顶部和底部透明区域分别设置；双击关闭、长按全屏、拖动移动、上滑变小窗、下滑恢复初始位置与大小。更改在下次打开窗口时生效。"
+        hint.text = "顶部和底部透明区域分别设置；双击关闭、长按全屏、拖动移动、下滑恢复初始位置与大小。底部快滑向左或向右，可停靠到对应的上角。区域尺寸更改在下次打开窗口时生效。"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
         hint.numberOfLines = 0
@@ -85,11 +93,13 @@ public final class PXGestureAreaController: UIViewController {
         let width = view.bounds.width
         let top: CGFloat = 20
         gestureHeading.frame = CGRect(x: 32, y: top, width: width - 64, height: 22)
-        gestureCard.frame = CGRect(x: 16, y: top + 30, width: width - 32, height: 234)
-        topHeading.frame = CGRect(x: 32, y: top + 292, width: width - 64, height: 22)
-        topCard.frame = CGRect(x: 16, y: top + 322, width: width - 32, height: 234)
+        gestureCard.frame = CGRect(x: 16, y: top + 30, width: width - 32, height: 320)
+        dockSwipeLabel.frame = CGRect(x: 32, y: top + 292, width: width - 130, height: 36)
+        dockSwipeSwitch.frame.origin = CGPoint(x: width - 32 - dockSwipeSwitch.bounds.width, y: top + 291)
+        topHeading.frame = CGRect(x: 32, y: top + 378, width: width - 64, height: 22)
+        topCard.frame = CGRect(x: 16, y: top + 408, width: width - 32, height: 234)
         for index in keys.indices {
-            let y = top + 30 + CGFloat(index / 3) * 292 + CGFloat(index % 3) * 78
+            let y = top + 30 + CGFloat(index / 3) * 378 + CGFloat(index % 3) * 78
             labels[index].frame = CGRect(x: 32, y: y + 8, width: width - 64, height: 28)
             sliders[index].frame = CGRect(x: 32, y: y + 38, width: width - 112, height: 34)
             inputButtons[index].frame = CGRect(x: width - 70, y: y + 36, width: 38, height: 38)
@@ -98,7 +108,7 @@ public final class PXGestureAreaController: UIViewController {
                                             width: width - 64, height: 0.5)
             }
         }
-        let row = top + 584
+        let row = top + 670
         debugHeading.frame = CGRect(x: 32, y: row, width: width - 64, height: 22)
         debugCard.frame = CGRect(x: 16, y: row + 30, width: width - 32, height: 62)
         debugLabel.frame = CGRect(x: 32, y: row + 43, width: width - 130, height: 36)
@@ -121,5 +131,9 @@ public final class PXGestureAreaController: UIViewController {
 
     @objc private func debugChanged() {
         defaults?.set(debugSwitch.isOn, forKey: "gestureDebug")
+    }
+
+    @objc private func dockSwipeChanged() {
+        defaults?.set(dockSwipeSwitch.isOn, forKey: "dockSwipeEnabled")
     }
 }

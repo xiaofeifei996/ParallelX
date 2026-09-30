@@ -2422,11 +2422,12 @@ public final class PXPanelEntry: NSObject {
         card.frame = oldFrame
         PXMotion.spring(0.40, animations: {
             let screen = window.rootViewController?.view.bounds ?? scene.coordinateSpace.bounds
-            card.transform = CGAffineTransform(scaleX: screen.width / oldFrame.width,
-                                                y: screen.height / oldFrame.height)
+            let scaleX = screen.width / oldFrame.width
+            let scaleY = screen.height / oldFrame.height
+            card.transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
             card.center = CGPoint(x: screen.midX, y: screen.midY)
-            card.layer.cornerRadius = 0
-            card.subviews.first?.layer.cornerRadius = 0
+            card.layer.cornerRadius = cornerRadius / min(scaleX, scaleY)
+            card.subviews.first?.layer.cornerRadius = card.layer.cornerRadius
             card.layer.shadowOpacity = 0
         }, completion: { [weak self, weak window] _ in
             guard let self = self, let window = window, self.hostWindow === window else { return }
@@ -2562,17 +2563,27 @@ public final class PXPanelEntry: NSObject {
         }
         guard let start = moveStartFrame else { return }
         let translation = gesture.translation(in: window.rootViewController?.view)
-        let velocity = gesture.velocity(in: window.rootViewController?.view).y
-        if gesture.state == .ended, translation.y < -35,
+        let velocity = gesture.velocity(in: window.rootViewController?.view)
+        let dockSwipeEnabled = UserDefaults(suiteName: preferenceDomain)?
+            .object(forKey: "dockSwipeEnabled") as? Bool ?? true
+        if dockSwipeEnabled, gesture.view === hostMoveGrip,
+           gesture.state == .ended, abs(translation.x) > 35,
+           abs(translation.x) > abs(translation.y) * 1.2,
+           abs(velocity.x) > 500, translation.x * velocity.x > 0 {
+            moveStartFrame = nil
+            parkMain(side: translation.x < 0 ? -1 : 1)
+            return
+        }
+        if dockSwipeEnabled, gesture.state == .ended, translation.y < -35,
            -translation.y > abs(translation.x) * 1.2,
-           velocity < -500 {
+           velocity.y < -500 {
             moveStartFrame = nil
             parkMain(side: defaultDockSide)
             return
         }
         if gesture.state == .ended, translation.y > 35,
            translation.y > abs(translation.x) * 1.2,
-           velocity > 500 {
+           velocity.y > 500 {
             moveStartFrame = nil
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let source = activeBridge.hostedSourceSize()
