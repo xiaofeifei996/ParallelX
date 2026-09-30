@@ -2544,18 +2544,17 @@ public final class PXPanelEntry: NSObject {
         }
         guard let start = moveStartFrame else { return }
         let translation = gesture.translation(in: window.rootViewController?.view)
-        let loading = hostCanvas?.isUserInteractionEnabled == false
         let velocity = gesture.velocity(in: window.rootViewController?.view).y
         if gesture.state == .ended, translation.y < -35,
            -translation.y > abs(translation.x) * 1.2,
-           velocity < -500 || (loading && translation.y < -70) {
+           velocity < -500 {
             moveStartFrame = nil
             parkMain(side: defaultDockSide)
             return
         }
         if gesture.state == .ended, translation.y > 35,
            translation.y > abs(translation.x) * 1.2,
-           velocity > 500 || (loading && translation.y > 70) {
+           velocity > 500 {
             moveStartFrame = nil
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let source = activeBridge.hostedSourceSize()
@@ -2564,19 +2563,10 @@ public final class PXPanelEntry: NSObject {
                 CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
             let target = initialCardFrame(in: screen, size: size)
             guard target.width > 0, target.height > 0 else { return }
-            if hostCanvas?.isUserInteractionEnabled == false {
-                dockAfterOpenBundleID = nil
-                fullscreenAfterOpenBundleID = nil
-                launchMovedCenter = nil
-                launchWidthScale = nil
-                UIView.performWithoutAnimation {
-                    card.transform = .identity
-                    card.frame = target
-                    card.layoutIfNeeded()
-                    layoutHostControls()
-                }
-                return
-            }
+            dockAfterOpenBundleID = nil
+            fullscreenAfterOpenBundleID = nil
+            launchMovedCenter = nil
+            launchWidthScale = nil
             let radius = card.layer.cornerRadius
             let scale = target.width / max(1, card.bounds.width)
             PXMotion.ease(0.24, animations: {
@@ -2586,10 +2576,12 @@ public final class PXPanelEntry: NSObject {
                 card.layer.cornerRadius = radius / scale
                 self.layoutHostControls()
             }, completion: { _ in
+                guard self.hostWindow === window else { return }
                 UIView.performWithoutAnimation {
                     card.transform = .identity
                     card.frame = target
                     card.layer.cornerRadius = radius
+                    if self.activeBridge.hostedSourceSize() != source { self.matchHostAspect() }
                     card.layoutIfNeeded()
                     self.activeBridge.layoutHost()
                     self.layoutHostControls()

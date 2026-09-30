@@ -405,7 +405,7 @@ assert 'excludedRects' not in panel
 assert 'if (visible == self.keyboardWasVisible) return;' in bridge
 assert 'name: Notification.Name("PXKeyboardStateChanged")' in panel
 assert 'removeKeyboardDismissLayer()' in close_host
-assert 'velocity < -500 || (loading && translation.y < -70)' in panel
+assert 'velocity < -500 {' in panel
 assert 'if hostWindow != nil, hostedBundleID != bundleID {' in panel
 assert 'object(forKey: "autoParkOnNewSplit") as? Bool ?? true' in panel
 assert 'forKey: "autoParkOnNewSplit"' in dock_prefs
@@ -463,7 +463,8 @@ for screen_width, card_width, right_inset in ((926, 332, 0), (926, 332, 40), (39
     assert screen_width - (screen_width - card_width - inset + card_width) == right_inset
 move_host = panel.split('@objc private func moveHost(_ gesture: UIPanGestureRecognizer)', 1)[1].split('private func closeHost(', 1)[0]
 assert 'translation.y < -35' in move_host and 'parkMain(side: defaultDockSide)' in move_host
-assert 'translation.y > 35' in move_host and 'velocity > 500 || (loading && translation.y > 70)' in move_host
+assert 'translation.y > 35' in move_host and 'velocity > 500 {' in move_host
+assert 'loading && translation' not in move_host
 assert 'initialCardSize(in: screen, source: source.width > 0 && source.height > 0 ? source :' in move_host
 assert 'initialCardFrame(in: screen, size: size)' in move_host
 assert 'card.frame = target' in move_host and 'self.activeBridge.layoutHost()' in move_host
