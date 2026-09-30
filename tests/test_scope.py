@@ -733,6 +733,9 @@ assert 'NSClassFromString(@"CSCoverSheetViewController")' in tweak
 assert 'PXSetCoverSheetVisible(YES)' in tweak and 'PXSetCoverSheetVisible(NO)' in tweak
 assert 'PXCoverSheetWillDisappear' in tweak and 'NSSelectorFromString(@"isUILocked")' in tweak
 cover_sheet_exit = tweak.split('static void PXCoverSheetWillDisappear(', 1)[1].split('static void PXCoverSheetDidDisappear(', 1)[0]
+cover_sheet_done = tweak.split('static void PXCoverSheetDidDisappear(', 1)[1].split('static NSString *PXRecentExternalBundleID', 1)[0]
+assert 'PXSetCoverSheetPresented(NO)' not in cover_sheet_exit
+assert cover_sheet_done.index('PXSetCoverSheetPresented(NO)') < cover_sheet_done.index('PXSetCoverSheetVisible(NO)')
 assert 'PXPublishLockState(NO);' in cover_sheet_exit
 assert 'PXDeviceLocked = YES;' not in cover_sheet_exit and '@"locked": @(PXDeviceLocked)' not in cover_sheet_exit
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel

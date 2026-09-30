@@ -93,8 +93,6 @@ static void PXCoverSheetDidAppear(id controller, SEL selector, BOOL animated)
 
 static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated)
 {
-    // Restore behind the departing sheet, not after its exit animation.
-    PXSetCoverSheetPresented(NO);
     PXOriginalCoverSheetWillDisappear(controller, selector, animated);
     Class lockManager = NSClassFromString(@"SBLockScreenManager");
     SEL shared = NSSelectorFromString(@"sharedInstance");
