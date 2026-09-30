@@ -13,7 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check alpha scope
-        run: python3 tests/test_scope.py
+        run: |
+          python3 tests/test_scope.py
+          python3 tests/test_settings_menu.py
       - name: Check app alphabet index
         run: |
           swiftc PXAppIndex.swift tests/app_index/main.swift -o "$RUNNER_TEMP/app-index-check"
