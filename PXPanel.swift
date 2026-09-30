@@ -1027,6 +1027,7 @@ public final class PXPanelEntry: NSObject {
     private var needsHostRefresh = false
     private var deviceLocked = false
     private var coverSheetVisible = false
+    private var coverSheetPresented = false
     private var coverSheetWindowLevel: UIWindow.Level?
     private var panelDragProgress: CGFloat = 0
     private var handleDragMode = 0 // 0 undecided, 1 panel, 2 vertical placement
@@ -1441,8 +1442,8 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func updateHandleVisibility() {
-        // Notification Center shares Cover Sheet, but must never invoke lock cleanup.
-        handle?.isHidden = deviceLocked || coverSheetVisible
+        // Let the interactive sheet cover the handle; hide only once fully presented.
+        handle?.isHidden = deviceLocked || coverSheetPresented
         handleWindow?.windowLevel = coverSheetVisible
             ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
     }
@@ -1456,6 +1457,11 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func setCoverSheetWindowLevel(_ level: Double) {
         shared.coverSheetWindowLevel = UIWindow.Level(rawValue: CGFloat(level) - 0.5)
+        shared.updateHandleVisibility()
+    }
+
+    @objc public static func setCoverSheetPresented(_ presented: Bool) {
+        shared.coverSheetPresented = presented
         shared.updateHandleVisibility()
     }
 

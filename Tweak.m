@@ -40,6 +40,7 @@ static void PXPublishLockState(BOOL locked)
         object:nil userInfo:@{@"locked": @(locked)}];
 }
 static void (*PXOriginalCoverSheetWillAppear)(id, SEL, BOOL);
+static void (*PXOriginalCoverSheetDidAppear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetDidDisappear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetWillDisappear)(id, SEL, BOOL);
 static void (*PXOriginalCoverSheetLayout)(id, SEL);
@@ -76,8 +77,24 @@ static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
     PXOriginalCoverSheetWillAppear(controller, selector, animated);
 }
 
+static void PXSetCoverSheetPresented(BOOL presented)
+{
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL setter = NSSelectorFromString(@"setCoverSheetPresented:");
+    if ([entry respondsToSelector:setter])
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, presented);
+}
+
+static void PXCoverSheetDidAppear(id controller, SEL selector, BOOL animated)
+{
+    PXOriginalCoverSheetDidAppear(controller, selector, animated);
+    PXSetCoverSheetPresented(YES);
+}
+
 static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated)
 {
+    // Restore behind the departing sheet, not after its exit animation.
+    PXSetCoverSheetPresented(NO);
     PXOriginalCoverSheetWillDisappear(controller, selector, animated);
     Class lockManager = NSClassFromString(@"SBLockScreenManager");
     SEL shared = NSSelectorFromString(@"sharedInstance");
@@ -95,6 +112,7 @@ static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated
 static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
 {
     PXOriginalCoverSheetDidDisappear(controller, selector, animated);
+    PXSetCoverSheetPresented(NO);
     PXSetCoverSheetVisible(NO);
 }
 static NSString *PXRecentExternalBundleID;
@@ -581,6 +599,9 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewWillAppear:)))
             MSHookMessageEx(coverSheet, @selector(viewWillAppear:), (IMP)PXCoverSheetWillAppear,
                             (IMP *)&PXOriginalCoverSheetWillAppear);
+        if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewDidAppear:)))
+            MSHookMessageEx(coverSheet, @selector(viewDidAppear:), (IMP)PXCoverSheetDidAppear,
+                            (IMP *)&PXOriginalCoverSheetDidAppear);
         if (coverSheet && class_getInstanceMethod(coverSheet, @selector(viewDidDisappear:)))
             MSHookMessageEx(coverSheet, @selector(viewDidDisappear:), (IMP)PXCoverSheetDidDisappear,
                             (IMP *)&PXOriginalCoverSheetDidDisappear);
