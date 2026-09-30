@@ -86,8 +86,24 @@ static void PXSetCoverSheetEntering(BOOL entering)
         ((void (*)(id, SEL, BOOL))objc_msgSend)(entry, setter, entering);
 }
 
+static void PXConfirmHandleUnlockedIfDismissed(void)
+{
+    Class presentation = NSClassFromString(@"SBCoverSheetPresentationManager");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    id manager = [presentation respondsToSelector:shared]
+        ? ((id (*)(id, SEL))objc_msgSend)(presentation, shared) : nil;
+    SEL dismissed = NSSelectorFromString(@"hasBeenDismissedSinceKeybagLock");
+    if (![manager respondsToSelector:dismissed] ||
+        !((BOOL (*)(id, SEL))objc_msgSend)(manager, dismissed)) return;
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL confirm = NSSelectorFromString(@"confirmHandleUnlocked");
+    if ([entry respondsToSelector:confirm])
+        ((void (*)(id, SEL))objc_msgSend)(entry, confirm);
+}
+
 static void PXCoverSheetWillAppear(id controller, SEL selector, BOOL animated)
 {
+    PXConfirmHandleUnlockedIfDismissed();
     PXSetCoverSheetEntering(YES);
     PXSetCoverSheetExiting(NO);
     PXUpdateCoverSheetWindowLevel(controller);
@@ -132,6 +148,7 @@ static void PXCoverSheetWillDisappear(id controller, SEL selector, BOOL animated
 static void PXCoverSheetDidDisappear(id controller, SEL selector, BOOL animated)
 {
     PXOriginalCoverSheetDidDisappear(controller, selector, animated);
+    PXConfirmHandleUnlockedIfDismissed();
     PXSetCoverSheetPresented(NO);
     PXSetCoverSheetVisible(NO);
     PXSetCoverSheetExiting(NO);

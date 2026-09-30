@@ -1026,6 +1026,7 @@ public final class PXPanelEntry: NSObject {
     private var launchWidthScale: CGFloat?
     private var needsHostRefresh = false
     private var deviceLocked = false
+    private var handleUnlockConfirmed = false
     private var coverSheetVisible = false
     private var coverSheetPresented = false
     private var coverSheetEntering = false
@@ -1151,6 +1152,7 @@ public final class PXPanelEntry: NSObject {
         let locked = notification.userInfo?["locked"] as? Bool ?? false
         guard locked != deviceLocked else { return }
         deviceLocked = locked
+        handleUnlockConfirmed = !locked
         updateHandleVisibility()
         if locked {
             if UserDefaults(suiteName: preferenceDomain)?.bool(forKey: "clearOnLock") == true {
@@ -1451,7 +1453,7 @@ public final class PXPanelEntry: NSObject {
 
     private func updateHandleVisibility() {
         // Let the interactive sheet cover the handle; hide only once fully presented.
-        handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)
+        handle?.isHidden = (deviceLocked && !handleUnlockConfirmed) || (coverSheetPresented && !coverSheetExiting)
         handleWindow?.windowLevel = coverSheetVisible
             ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
     }
@@ -1475,6 +1477,11 @@ public final class PXPanelEntry: NSObject {
 
     @objc public static func setCoverSheetEntering(_ entering: Bool) {
         shared.coverSheetEntering = entering
+    }
+
+    @objc public static func confirmHandleUnlocked() {
+        shared.handleUnlockConfirmed = true
+        shared.updateHandleVisibility()
     }
 
     @objc public static func setCoverSheetExiting(_ exiting: Bool) {
