@@ -114,8 +114,9 @@ assert 'holdFeedbackTask?.cancel()' in panel
 assert 'self.selectedIndex == next' in panel
 assert 'selectedDuration >= controller.holdDuration' in panel
 reset_gesture = panel.split('if gesture.state == .ended, translation.y > 35,', 1)[1].split('if gesture.state == .changed || gesture.state == .ended', 1)[0]
-assert reset_gesture.index('card.transform = CGAffineTransform(scaleX: scale') < reset_gesture.index('card.frame = target')
-assert reset_gesture.index('UIView.performWithoutAnimation {') < reset_gesture.index('card.frame = target')
+animated_reset = reset_gesture.split('PXMotion.ease(0.24', 1)[1]
+assert animated_reset.index('card.transform = CGAffineTransform(scaleX: scale') < animated_reset.index('card.frame = target')
+assert animated_reset.index('UIView.performWithoutAnimation {') < animated_reset.index('card.frame = target')
 assert reset_gesture.index('card.layer.cornerRadius = radius / scale') < reset_gesture.index('card.layer.cornerRadius = radius\n')
 window_action = panel.split('if action == "px.action.window" {', 1)[1].split('} else { hidePanel {', 1)[0]
 assert window_action.index('hidePanel(animated: false)') < window_action.index('performWindowHold()')
@@ -125,7 +126,7 @@ assert 'guard let fullID = fullID else { parkMain(side: defaultDockSide); return
 assert 'else if dockedHosts.isEmpty, let fullID = fullID' in panel
 assert 'pendingSwap = (splitID, fullID)' in panel
 assert 'if self.dockAfterOpenBundleID == bundleID {' in panel
-assert 'if wasFullscreen && !dockWhenReady {' in panel
+assert 'if wasFullscreen && !skipHandoffAnimation {' in panel
 assert 'handleCenterFraction' in panel and 'handleDragMode == 2' in panel
 assert 'buttonRings.append(ringIndex)' in panel and 'controller.animateClosed' in panel
 assert 'selectionPreview.layer.cornerRadius = 26' in panel
@@ -232,9 +233,10 @@ assert 'canvas.isUserInteractionEnabled = true\n                window?.isUserIn
 assert 'launchMovedCenter = nil' in handoff
 assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
 assert handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
-assert handoff.index('let dockWhenReady = self.dockAfterOpenBundleID == bundleID') < handoff.index('card.layer.cornerRadius = 0')
-assert 'if wasFullscreen && !dockWhenReady, frame.width > 0, frame.height > 0 {' in handoff
-assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if wasFullscreen && !dockWhenReady {\n                PXMotion.spring(0.4')
+assert handoff.index('let skipHandoffAnimation = self.dockAfterOpenBundleID == bundleID ||') < handoff.index('card.layer.cornerRadius = 0')
+assert 'self.fullscreenAfterOpenBundleID == bundleID' in handoff
+assert 'if wasFullscreen && !skipHandoffAnimation, frame.width > 0, frame.height > 0 {' in handoff
+assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if wasFullscreen && !skipHandoffAnimation {\n                PXMotion.spring(0.4')
 assert 'let scale = min(screen.width / frame.width, screen.height / frame.height)' in handoff
 assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
 assert 'UIActivityIndicatorView' not in handoff and 'spinner' not in handoff
@@ -329,6 +331,7 @@ dock_prefs = (root / 'prefs' / 'PXDockController.swift').read_text(encoding='utf
 assert 'UISegmentedControl(items: ["左侧", "右侧"])' in dock_prefs
 assert 'forKey: "dockSide"' in dock_prefs
 assert 'parkMain(side: defaultDockSide)' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
+assert 'dockAfterOpenBundleID = hostedBundleID' in panel.split('private func dockTapped', 1)[1].split('private func parkMain', 1)[0]
 park_main = panel.split('private func parkMain(side: Int)', 1)[1].split('private func layoutDocks(', 1)[0]
 assert park_main.index('guard canvas.isUserInteractionEnabled else {\n            closeHost(animated: false)') < park_main.index('dockedHosts.append(dock)')
 assert 'parkMain(side: sender.tag)' not in panel
@@ -458,12 +461,18 @@ for screen_width, card_width, right_inset in ((926, 332, 0), (926, 332, 40), (39
 move_host = panel.split('@objc private func moveHost(_ gesture: UIPanGestureRecognizer)', 1)[1].split('private func closeHost(', 1)[0]
 assert 'translation.y < -35' in move_host and 'parkMain(side: defaultDockSide)' in move_host
 assert 'translation.y > 35' in move_host and 'velocity(in: window.rootViewController?.view).y > 500' in move_host
-assert 'initialCardSize(in: screen, source: activeBridge.hostedSourceSize())' in move_host
+assert 'initialCardSize(in: screen, source: source.width > 0 && source.height > 0 ? source :' in move_host
 assert 'initialCardFrame(in: screen, size: size)' in move_host
 assert 'card.frame = target' in move_host and 'self.activeBridge.layoutHost()' in move_host
-assert move_host.count('hostCanvas?.isUserInteractionEnabled == true') >= 2
+assert 'dockAfterOpenBundleID = hostedBundleID' in move_host
+assert 'launchWidthScale = nil' in move_host
+assert move_host.index('launchMovedCenter = nil') < move_host.index('PXMotion.ease(0.24')
+assert move_host.index('dockAfterOpenBundleID = nil') < move_host.index('PXMotion.ease(0.24')
 assert 'launchMovedCenter = card.center' in move_host
 assert 'if let center = launchMovedCenter' in panel.split('private func matchHostAspect()', 1)[1].split('private func initialCardFrame(', 1)[0]
+assert 'if self.fullscreenAfterOpenBundleID == bundleID' in handoff
+assert 'fullscreenAfterOpenBundleID = hostedBundleID' in panel.split('private func fullscreenTapped()', 1)[1].split('private func moveGripHeld(', 1)[0]
+assert 'launchWidthScale = size.width / max(1, base.width)' in panel.split('private func resizeHost(', 1)[1].split('private func applyResizePreview()', 1)[0]
 radius_settings = (root / 'prefs/PXCornerRadiusController.swift').read_text(encoding='utf-8')
 assert 'defaults?.set(Int(landscapeRightInset.value), forKey: "landscapeInitialRightInset")' in radius_settings
 assert '(landscapeRightInsetLabel, landscapeRightInset)' in radius_settings

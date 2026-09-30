@@ -1014,12 +1014,14 @@ public final class PXPanelEntry: NSObject {
     private var externalPendingBundleID: String?
     private var panelFrontmostBundleID: String?
     private var dockAfterOpenBundleID: String?
+    private var fullscreenAfterOpenBundleID: String?
     private var pendingSwap: (foreground: String, host: String)?
     private var resizeStartFrame: CGRect?
     private var resizeStartRadius: CGFloat = 0
     private var resizePreview: (scale: CGFloat, x: CGFloat, y: CGFloat)?
     private var moveStartFrame: CGRect?
     private var launchMovedCenter: CGPoint?
+    private var launchWidthScale: CGFloat?
     private var needsHostRefresh = false
     private var deviceLocked = false
     private var coverSheetVisible = false
@@ -1785,6 +1787,7 @@ public final class PXPanelEntry: NSObject {
         fullscreenToWindowInProgress = wasFullscreen
         hostedBundleID = bundleID
         launchMovedCenter = nil
+        launchWidthScale = nil
         let screen = controls.bounds
         let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
         let size = initialCardSize(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
@@ -1946,8 +1949,9 @@ public final class PXPanelEntry: NSObject {
             self.matchHostAspect()
             let frame = card.frame
             let radius = card.layer.cornerRadius
-            let dockWhenReady = self.dockAfterOpenBundleID == bundleID
-            if wasFullscreen && !dockWhenReady, frame.width > 0, frame.height > 0 {
+            let skipHandoffAnimation = self.dockAfterOpenBundleID == bundleID ||
+                self.fullscreenAfterOpenBundleID == bundleID
+            if wasFullscreen && !skipHandoffAnimation, frame.width > 0, frame.height > 0 {
                 let screen = window?.rootViewController?.view.bounds ?? UIScreen.main.bounds
                 let scale = min(screen.width / frame.width, screen.height / frame.height)
                 card.transform = CGAffineTransform(scaleX: scale, y: scale)
@@ -1968,12 +1972,17 @@ public final class PXPanelEntry: NSObject {
                 canvas.isUserInteractionEnabled = true
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
+                if self.fullscreenAfterOpenBundleID == bundleID {
+                    self.fullscreenAfterOpenBundleID = nil
+                    self.fullscreenTapped()
+                    return
+                }
                 if self.dockAfterOpenBundleID == bundleID {
                     self.dockAfterOpenBundleID = nil
                     self.parkMain(side: self.defaultDockSide)
                 }
             }
-            if wasFullscreen && !dockWhenReady {
+            if wasFullscreen && !skipHandoffAnimation {
                 PXMotion.spring(0.4, animations: {
                     card.transform = .identity
                     card.center = CGPoint(x: frame.midX, y: frame.midY)
@@ -1992,7 +2001,13 @@ public final class PXPanelEntry: NSObject {
         let source = activeBridge.hostedSourceSize()
         guard source.width > 0, source.height > 0 else { return }
         let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-        let size = initialCardSize(in: screen, source: source)
+        let initial = initialCardSize(in: screen, source: source)
+        var size = initial
+        if let requested = launchWidthScale {
+            let scale = min(requested, (screen.width - 24) / initial.width,
+                            (screen.height - 40) / initial.height)
+            size = CGSize(width: initial.width * scale, height: initial.height * scale)
+        }
         keyboardFocusBase = nil
         keyboardFocusFrame = .null
         card.transform = .identity
@@ -2002,6 +2017,7 @@ public final class PXPanelEntry: NSObject {
                                   y: min(max(center.y, screen.minY + size.height / 2), screen.maxY - size.height / 2))
         }
         launchMovedCenter = nil
+        launchWidthScale = nil
         card.layer.cornerRadius = configuredCornerRadius(in: screen, source: source)
         card.layoutIfNeeded()
         layoutHostControls()
@@ -2180,7 +2196,11 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func dockTapped(_ sender: UIControl) {
-        guard hostCanvas?.isUserInteractionEnabled == true else { return }
+        if hostCanvas?.isUserInteractionEnabled == false {
+            dockAfterOpenBundleID = hostedBundleID
+            fullscreenAfterOpenBundleID = nil
+            return
+        }
         parkMain(side: defaultDockSide)
     }
 
@@ -2334,7 +2354,11 @@ public final class PXPanelEntry: NSObject {
 
     @objc private func fullscreenTapped() {
         restoreKeyboardFocus()
-        guard hostCanvas?.isUserInteractionEnabled == true else { return }
+        if hostCanvas?.isUserInteractionEnabled == false {
+            fullscreenAfterOpenBundleID = hostedBundleID
+            dockAfterOpenBundleID = nil
+            return
+        }
         guard let bundleID = hostedBundleID, let window = hostWindow,
               let card = hostCard, let scene = window.windowScene else { return }
         let cardFrame = card.frame
@@ -2395,7 +2419,6 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc private func resizeHost(_ gesture: UIPanGestureRecognizer) {
-        guard hostCanvas?.isUserInteractionEnabled == true else { return }
         guard let window = hostWindow, let card = hostCard else { return }
         if gesture.state == .began {
             restoreKeyboardFocus()
@@ -2412,7 +2435,11 @@ public final class PXPanelEntry: NSObject {
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let horizontalRoom = gesture.view?.tag == -1 ?
                 start.maxX - screen.minX - 12 : screen.maxX - start.minX - 12
-            let base = initialCardSize(in: screen, source: activeBridge.hostedSourceSize())
+            let hosted = activeBridge.hostedSourceSize()
+            let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
+            let source = hosted.width > 0 && hosted.height > 0 ? hosted :
+                CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height))
+            let base = initialCardSize(in: screen, source: source)
             let limit = CGFloat(min(200, max(100, UserDefaults(suiteName: preferenceDomain)?
                 .object(forKey: "resizeMaxPercent") as? Int ?? 200))) / 100
             let maximum = min(horizontalRoom / start.width,
@@ -2424,6 +2451,10 @@ public final class PXPanelEntry: NSObject {
             let size = CGSize(width: start.width * scale, height: start.height * scale)
             let x = gesture.view?.tag == -1 ? start.maxX - size.width : start.minX
             if gesture.state == .changed {
+                if hostCanvas?.isUserInteractionEnabled == false {
+                    dockAfterOpenBundleID = nil
+                    fullscreenAfterOpenBundleID = nil
+                }
                 resizePreview = (scale, x, start.minY)
                 applyResizePreview()
             } else {
@@ -2439,6 +2470,10 @@ public final class PXPanelEntry: NSObject {
                     activeBridge.layoutHost()
                     layoutHostControls()
                     CATransaction.commit()
+                }
+                if hostCanvas?.isUserInteractionEnabled == false {
+                    launchWidthScale = size.width / max(1, base.width)
+                    launchMovedCenter = card.center
                 }
             }
         }
@@ -2478,22 +2513,39 @@ public final class PXPanelEntry: NSObject {
         guard let start = moveStartFrame else { return }
         let translation = gesture.translation(in: window.rootViewController?.view)
         if gesture.state == .ended, translation.y < -35,
-           hostCanvas?.isUserInteractionEnabled == true,
            -translation.y > abs(translation.x) * 1.2,
            gesture.velocity(in: window.rootViewController?.view).y < -500 {
             moveStartFrame = nil
-            parkMain(side: defaultDockSide)
+            if hostCanvas?.isUserInteractionEnabled == false {
+                dockAfterOpenBundleID = hostedBundleID
+                fullscreenAfterOpenBundleID = nil
+            } else { parkMain(side: defaultDockSide) }
             return
         }
         if gesture.state == .ended, translation.y > 35,
-           hostCanvas?.isUserInteractionEnabled == true,
            translation.y > abs(translation.x) * 1.2,
            gesture.velocity(in: window.rootViewController?.view).y > 500 {
             moveStartFrame = nil
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-            let size = initialCardSize(in: screen, source: activeBridge.hostedSourceSize())
+            let source = activeBridge.hostedSourceSize()
+            let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
+            let size = initialCardSize(in: screen, source: source.width > 0 && source.height > 0 ? source :
+                CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
             let target = initialCardFrame(in: screen, size: size)
             guard target.width > 0, target.height > 0 else { return }
+            if hostCanvas?.isUserInteractionEnabled == false {
+                dockAfterOpenBundleID = nil
+                fullscreenAfterOpenBundleID = nil
+                launchMovedCenter = nil
+                launchWidthScale = nil
+                UIView.performWithoutAnimation {
+                    card.transform = .identity
+                    card.frame = target
+                    card.layoutIfNeeded()
+                    layoutHostControls()
+                }
+                return
+            }
             let radius = card.layer.cornerRadius
             let scale = target.width / max(1, card.bounds.width)
             PXMotion.ease(0.24, animations: {
@@ -2515,6 +2567,10 @@ public final class PXPanelEntry: NSObject {
             return
         }
         if gesture.state == .changed || gesture.state == .ended {
+            if gesture.state == .changed, hostCanvas?.isUserInteractionEnabled == false {
+                dockAfterOpenBundleID = nil
+                fullscreenAfterOpenBundleID = nil
+            }
             card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
             if hostCanvas?.isUserInteractionEnabled == false { launchMovedCenter = card.center }
             layoutHostControls()
@@ -2547,6 +2603,9 @@ public final class PXPanelEntry: NSObject {
         hostTopGrip = nil
         hostedBundleID = nil
         launchMovedCenter = nil
+        launchWidthScale = nil
+        dockAfterOpenBundleID = nil
+        fullscreenAfterOpenBundleID = nil
         resizeStartFrame = nil
         moveStartFrame = nil
         needsHostRefresh = false
