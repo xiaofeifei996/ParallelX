@@ -1450,10 +1450,10 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func updateHandleVisibility() {
-        // Let the interactive sheet cover the handle; hide only once fully presented.
-        handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)
+        // Myrtle's lock-screen handle level is 1035, below the Cover Sheet chrome.
+        handle?.isHidden = deviceLocked
         handleWindow?.windowLevel = coverSheetVisible
-            ? coverSheetWindowLevel ?? .alert + 51 : .alert + 51
+            ? coverSheetWindowLevel ?? UIWindow.Level(rawValue: 1035) : .alert + 51
     }
 
     @objc public static func setCoverSheetVisible(_ visible: Bool) {
@@ -1464,7 +1464,7 @@ public final class PXPanelEntry: NSObject {
     }
 
     @objc public static func setCoverSheetWindowLevel(_ level: Double) {
-        shared.coverSheetWindowLevel = UIWindow.Level(rawValue: CGFloat(level) - 0.5)
+        shared.coverSheetWindowLevel = UIWindow.Level(rawValue: min(CGFloat(level) - 0.5, 1035))
         shared.updateHandleVisibility()
     }
 

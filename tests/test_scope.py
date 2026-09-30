@@ -721,12 +721,12 @@ assert 'row.trailingAnchor.constraint(equalTo: cell.contentView.trailingAnchor, 
 assert 'let edge: CGFloat = landscape ? 27 : 12' in panel
 assert 'window.windowLevel = .alert + 51' in panel
 assert 'handle?.isHidden = deviceLocked' in panel
-assert 'coverSheetWindowLevel ?? .alert + 51' in panel
-assert 'UIWindow.Level(rawValue: CGFloat(level) - 0.5)' in panel
+assert 'coverSheetWindowLevel ?? UIWindow.Level(rawValue: 1035)' in panel
+assert 'UIWindow.Level(rawValue: min(CGFloat(level) - 0.5, 1035))' in panel
 assert 'coverSheetVisible ? .normal' not in panel
 assert 'PXUpdateCoverSheetWindowLevel(controller)' in tweak
 assert 'shared.coverSheetVisible = visible' in panel
-assert 'handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)' in panel
+assert 'handle?.isHidden = deviceLocked || (coverSheetPresented && !coverSheetExiting)' not in panel
 assert 'PXSetCoverSheetPresented(YES)' in tweak
 assert 'PXSetCoverSheetPresented(NO)' in tweak
 assert 'PXSetCoverSheetEntering(YES)' in tweak and 'PXSetCoverSheetEntering(NO)' in tweak
@@ -752,10 +752,12 @@ for visible, presented, entering, should_clear in (
 ):
     assert (visible and not presented and not entering) == should_clear
 for locked, presented, exiting, expected_hidden in (
-    (False, True, False, True), (False, True, True, False),
+    (False, True, False, False), (False, True, True, False),
     (True, True, True, True), (False, False, False, False),
 ):
-    assert (locked or (presented and not exiting)) == expected_hidden
+    assert locked == expected_hidden
+for sheet_level, expected in ((1050, 1035), (1035, 1034.5), (1000, 999.5)):
+    assert min(sheet_level - 0.5, 1035) == expected
 assert 'PXPublishLockState(NO);' in cover_sheet_exit
 assert 'PXDeviceLocked = YES;' not in cover_sheet_exit and '@"locked": @(PXDeviceLocked)' not in cover_sheet_exit
 assert 'keyboardHideInFlight = true\n            keyboardDismissSuppressed = true' in panel
