@@ -29,13 +29,13 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.dark", "深色模式", "moon.fill"),
     ("px.action.record", "屏幕录制", "record.circle"),
     ("px.action.rotation", "方向锁定", "lock.rotation"),
-    ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
-    ("px.action.screenshot", "截屏", "camera.viewfinder"),
-    ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
+    ("px.action.window", "切换全屏/分屏（长按停靠小窗/交换窗口）", "rectangle.on.rectangle"),
+    ("px.action.screenshot", "截屏（长按仅复制）", "camera.viewfinder"),
+    ("px.action.recent", "最近打开的应用（长按全屏）", "clock.arrow.circlepath"),
     ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
-    ("px.action.brightness", "调节亮度", "sun.max.fill"),
+    ("px.action.brightness", "调节亮度（长按并上下拖动）", "sun.max.fill"),
     ("px.action.restart", "重新打开应用", "arrow.clockwise"),
-    ("px.action.search", "搜索", "magnifyingglass")
+    ("px.action.search", "搜索（长按选择应用）", "magnifyingglass")
 ]
 
 private func isShortcut(_ id: String) -> Bool {
@@ -385,13 +385,13 @@ private final class PXPanelViewController: UIViewController {
                 PXMotion.ease(0.13) { old.subviews.first?.transform = .identity }
             }
             selectedIndex = next
-            selectedSince = next.map { applicationID(apps[$0].id) != nil || apps[$0].id == "px.action.screenshot" } == true ? CACurrentMediaTime() : nil
+            selectedSince = next.map { applicationID(apps[$0].id) != nil || ["px.action.screenshot", "px.action.window"].contains(apps[$0].id) } == true ? CACurrentMediaTime() : nil
             if let hit = hit, let next = next {
                 selectionFeedback.selectionChanged()
                 selectionFeedback.prepare()
                 let id = apps[next].id
                 let group = configuredAction(id)
-                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" || id == "px.action.search" || group?["kind"] as? String == "group" {
+                if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" || id == "px.action.window" || id == "px.action.search" || group?["kind"] as? String == "group" {
                     holdFeedback.prepare()
                     let task = DispatchWorkItem { [weak self] in
                         guard let self = self, self.selectedIndex == next else { return }
@@ -1013,6 +1013,8 @@ public final class PXPanelEntry: NSObject {
     private var fullscreenLaunchInProgress = false
     private var externalPendingBundleID: String?
     private var panelFrontmostBundleID: String?
+    private var dockAfterOpenBundleID: String?
+    private var pendingSwap: (foreground: String, host: String)?
     private var resizeStartFrame: CGRect?
     private var resizeStartRadius: CGFloat = 0
     private var resizePreview: (scale: CGFloat, x: CGFloat, y: CGFloat)?
@@ -1096,6 +1098,11 @@ public final class PXPanelEntry: NSObject {
             shared.layoutHostControls()
         }
         if let bundleID = bundleID { applicationActivated(bundleID) }
+        if let swap = shared.pendingSwap, bundleID == swap.foreground {
+            shared.pendingSwap = nil
+            shared.panelFrontmostBundleID = nil
+            shared.openHost(swap.host)
+        }
     }
 
     @objc public static func externalOpenApplication(_ bundleID: String) {
@@ -1450,10 +1457,11 @@ public final class PXPanelEntry: NSObject {
                 return (1...count).map { rank in
                     let bundleID = PXSceneBridge.shared().recentApplicationSkipping(excluded, rank: rank)
                     return (id: bundleID.map { "px.recent.\(rank).\($0)" } ?? "px.recent.\(rank)",
-                            name: bundleID ?? "最近应用为空")
+                            name: bundleID.map { "\($0)（长按全屏）" } ?? "最近应用为空")
                 }
             }
-            return [(id: id, name: names[id] ?? shortcuts.first(where: { $0.id == id })?.name ?? id)]
+            let name = shortcuts.first(where: { $0.id == id })?.name ?? names[id] ?? id
+            return [(id: id, name: applicationID(id) != nil ? "\(name)（长按全屏）" : name)]
         }
     }
 
@@ -1580,7 +1588,8 @@ public final class PXPanelEntry: NSObject {
                     let action = bundleID == "px.action.screenshot" && fullscreen ? "px.action.screenshot.copy" : bundleID
                     if action == "px.action.window" {
                         hidePanel()
-                        performShortcut(action)
+                        if fullscreen { performWindowHold() }
+                        else { performShortcut(action) }
                     } else { hidePanel { [weak self] in self?.performShortcut(action) } }
                 }
             } else { hidePanel() }
@@ -1657,6 +1666,32 @@ public final class PXPanelEntry: NSObject {
             else if let frontmost = PXSceneBridge.shared().frontmostBundleID() { openHost(frontmost) }
         } else {
             _ = PXSceneBridge.shared().performShortcut(id)
+        }
+    }
+
+    private func performWindowHold() {
+        let frontmost = panelFrontmostBundleID ?? PXSceneBridge.shared().frontmostBundleID()
+        panelFrontmostBundleID = nil
+        let fullID = frontmost == "com.apple.springboard" || frontmost == hostedBundleID || frontmost?.isEmpty == true ? nil : frontmost
+        if let splitID = hostedBundleID {
+            guard let fullID = fullID else { parkMain(side: defaultDockSide); return }
+            // Promote the hosted scene before releasing it; attach the former
+            // foreground app only after SpringBoard reports the new foreground.
+            guard activeBridge.openFullscreenApplication(splitID) else { return }
+            closeHost(animated: false, fullscreenHandoff: true)
+            pendingSwap = (splitID, fullID)
+            if PXSceneBridge.shared().frontmostBundleID() == splitID {
+                pendingSwap = nil
+                openHost(fullID)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    if self?.pendingSwap?.foreground == splitID { self?.pendingSwap = nil }
+                }
+            }
+        } else if dockedHosts.isEmpty, let fullID = fullID {
+            dockAfterOpenBundleID = fullID
+            panelFrontmostBundleID = fullID
+            openHost(fullID)
         }
     }
 
@@ -1874,6 +1909,7 @@ public final class PXPanelEntry: NSObject {
                                                keyboardOverlay: controls) { [weak self, weak window] success in
             guard let self = self, self.hostWindow === window else { return }
             guard success else {
+                if self.dockAfterOpenBundleID == bundleID { self.dockAfterOpenBundleID = nil }
                 self.closeHost(animated: false)
                 self.externalOpenFailed(bundleID)
                 return
@@ -1895,9 +1931,11 @@ public final class PXPanelEntry: NSObject {
                 card.subviews.first?.layer.cornerRadius = 0
             }
             window?.isHidden = false
+            let dockWhenReady = self.dockAfterOpenBundleID == bundleID
             self.activeBridge.prepareWindow(for: bundleID, wasFullscreen: wasFullscreen) { [weak self, weak window] ready in
                 guard let self = self, self.hostWindow === window else { return }
                 guard ready else {
+                    if self.dockAfterOpenBundleID == bundleID { self.dockAfterOpenBundleID = nil }
                     self.closeHost(animated: false)
                     self.externalOpenFailed(bundleID)
                     return
@@ -1905,8 +1943,12 @@ public final class PXPanelEntry: NSObject {
                 if self.externalPendingBundleID == bundleID { self.externalPendingBundleID = nil }
                 window?.isUserInteractionEnabled = true
                 self.layoutHostControls()
+                if self.dockAfterOpenBundleID == bundleID {
+                    self.dockAfterOpenBundleID = nil
+                    self.parkMain(side: self.defaultDockSide)
+                }
             }
-            if wasFullscreen {
+            if wasFullscreen && !dockWhenReady {
                 PXMotion.spring(0.4, animations: {
                     card.transform = .identity
                     card.center = CGPoint(x: frame.midX, y: frame.midY)

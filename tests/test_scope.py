@@ -92,8 +92,8 @@ assert 'let centerX = view.bounds.maxX - size / 2 - edgeInset' in panel
 assert 'sheet = UIVisualEffectView' not in panel
 assert 'launcherDragDistance' in panel
 assert 'updateSelection(at: gesture.location(in: controller.view))' in panel
-assert 'selectedSince = next.map { applicationID(apps[$0].id) != nil || apps[$0].id == "px.action.screenshot" }' in panel
-assert 'if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot"' in panel
+assert 'selectedSince = next.map { applicationID(apps[$0].id) != nil || ["px.action.screenshot", "px.action.window"].contains(apps[$0].id) }' in panel
+assert 'if applicationID(id) != nil || id == "px.action.brightness" || id == "px.action.screenshot" || id == "px.action.window"' in panel
 assert 'recentApplicationSkipping(excluded, rank: rank)' in panel
 assert 'return (1...count).map { rank in' in panel
 assert 'id.hasPrefix("px.recent.")' in panel
@@ -108,6 +108,12 @@ assert 'UIImpactFeedbackGenerator(style: .medium)' in panel
 assert 'holdFeedbackTask?.cancel()' in panel
 assert 'self.selectedIndex == next' in panel
 assert 'selectedDuration >= controller.holdDuration' in panel
+assert 'if fullscreen { performWindowHold() }' in panel
+assert 'guard let fullID = fullID else { parkMain(side: defaultDockSide); return }' in panel
+assert 'else if dockedHosts.isEmpty, let fullID = fullID' in panel
+assert 'pendingSwap = (splitID, fullID)' in panel
+assert 'if self.dockAfterOpenBundleID == bundleID {' in panel
+assert 'if wasFullscreen && !dockWhenReady {' in panel
 assert 'handleCenterFraction' in panel and 'handleDragMode == 2' in panel
 assert 'buttonRings.append(ringIndex)' in panel and 'controller.animateClosed' in panel
 assert 'selectionPreview.layer.cornerRadius = 26' in panel
@@ -211,7 +217,7 @@ assert handoff.index('activeBridge.openApplication(bundleID, in: canvas') < hand
 assert 'window.isHidden = wasFullscreen' in handoff
 assert 'homeReady' not in handoff and 'finishWhenReady' not in handoff
 assert handoff.index('window?.isHidden = false') < handoff.index('self.activeBridge.prepareWindow(')
-assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if wasFullscreen {\n                PXMotion.spring(0.4')
+assert handoff.index('self.activeBridge.prepareWindow(') < handoff.index('if wasFullscreen && !dockWhenReady {\n                PXMotion.spring(0.4')
 assert 'let scale = min(screen.width / frame.width, screen.height / frame.height)' in handoff
 assert handoff.index('clip.insertSubview(preview, aboveSubview: canvas)') < handoff.index('activeBridge.openApplication(bundleID, in: canvas')
 assert 'UIActivityIndicatorView' not in handoff and 'spinner' not in handoff

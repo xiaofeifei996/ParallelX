@@ -22,13 +22,13 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         ("px.action.dark", "深色模式", "moon.fill"),
         ("px.action.record", "屏幕录制 · 再次选择停止", "record.circle"),
         ("px.action.rotation", "方向锁定", "lock.rotation"),
-        ("px.action.window", "切换全屏/分屏", "rectangle.on.rectangle"),
+        ("px.action.window", "切换全屏/分屏（长按停靠小窗/交换窗口）", "rectangle.on.rectangle"),
         ("px.action.screenshot", "截屏（长按仅复制）", "camera.viewfinder"),
-        ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
+        ("px.action.recent", "最近打开的应用（长按全屏）", "clock.arrow.circlepath"),
         ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
-        ("px.action.brightness", "调节亮度 · 选中后长按并上下拖动", "sun.max.fill"),
+        ("px.action.brightness", "调节亮度（长按并上下拖动）", "sun.max.fill"),
         ("px.action.restart", "重新打开应用", "arrow.clockwise"),
-        ("px.action.search", "搜索", "magnifyingglass"),
+        ("px.action.search", "搜索（长按选择应用）", "magnifyingglass"),
         ("px.add.workflow", "添加快捷指令 · 单个或集合", "square.stack.3d.up"),
         ("px.add.quick", "添加应用快捷方式", "app.badge")
     ]
@@ -116,7 +116,11 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                     ? (id: shortcuts[indexPath.row].id, name: shortcuts[indexPath.row].name)
                     : extraItems[indexPath.row - urlStart]
                 : available[indexPath.row]
-        cell.textLabel?.text = app.name
+        if !app.id.hasPrefix("px.") {
+            cell.textLabel?.text = app.name + "（长按全屏）"
+        } else if customActions.contains(where: { $0["id"] as? String == app.id && $0["kind"] as? String == "group" }) {
+            cell.textLabel?.text = app.name + "（长按展开）"
+        } else { cell.textLabel?.text = app.name }
         cell.detailTextLabel?.text = urls.first(where: { $0["id"] == app.id })?["url"] ?? app.id
         if let entry = customActions.first(where: { $0["id"] as? String == app.id }) {
             cell.detailTextLabel?.text = entry["kind"] as? String == "group" ? "长按展开集合，滑动选择，松手运行" : "松手运行"
