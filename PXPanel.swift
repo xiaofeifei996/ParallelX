@@ -2454,15 +2454,20 @@ public final class PXPanelEntry: NSObject {
             let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             let size = initialCardSize(in: screen, source: activeBridge.hostedSourceSize())
             let target = initialCardFrame(in: screen, size: size)
+            guard target.width > 0, target.height > 0 else { return }
+            let radius = card.layer.cornerRadius
+            let scale = target.width / max(1, card.bounds.width)
             PXMotion.ease(0.24, animations: {
-                card.transform = CGAffineTransform(scaleX: target.width / max(1, card.bounds.width),
+                card.transform = CGAffineTransform(scaleX: scale,
                                                    y: target.height / max(1, card.bounds.height))
                 card.center = CGPoint(x: target.midX, y: target.midY)
+                card.layer.cornerRadius = radius / scale
                 self.layoutHostControls()
             }, completion: { _ in
                 UIView.performWithoutAnimation {
                     card.transform = .identity
                     card.frame = target
+                    card.layer.cornerRadius = radius
                     card.layoutIfNeeded()
                     self.activeBridge.layoutHost()
                     self.layoutHostControls()

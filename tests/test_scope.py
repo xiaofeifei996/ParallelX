@@ -109,8 +109,9 @@ assert 'holdFeedbackTask?.cancel()' in panel
 assert 'self.selectedIndex == next' in panel
 assert 'selectedDuration >= controller.holdDuration' in panel
 reset_gesture = panel.split('if gesture.state == .ended, translation.y > 35,', 1)[1].split('if gesture.state == .changed || gesture.state == .ended', 1)[0]
-assert reset_gesture.index('card.transform = CGAffineTransform(scaleX: target.width') < reset_gesture.index('card.frame = target')
+assert reset_gesture.index('card.transform = CGAffineTransform(scaleX: scale') < reset_gesture.index('card.frame = target')
 assert reset_gesture.index('UIView.performWithoutAnimation {') < reset_gesture.index('card.frame = target')
+assert reset_gesture.index('card.layer.cornerRadius = radius / scale') < reset_gesture.index('card.layer.cornerRadius = radius\n')
 assert 'if fullscreen { performWindowHold() }' in panel
 assert 'guard let fullID = fullID else { parkMain(side: defaultDockSide); return }' in panel
 assert 'else if dockedHosts.isEmpty, let fullID = fullID' in panel
