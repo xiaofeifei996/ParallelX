@@ -74,6 +74,11 @@ assert 'PXRuntimeHostedOrientation(client)' in bridge.split('static UIInterfaceO
 assert '- (BOOL)hasHostedSurface;' in bridge_header
 assert 'if activeBridge.hasHostedSurface(), !window.isHidden {' in panel
 assert 'frontDisplayChanged:' in tweak and 'frontDisplayChanged(_ bundleID: String?)' in panel
+switcher_cleanup = panel.split('@objc public static func switcherRemovedApplication', 1)[1].split('@objc public static func externalOpenApplication', 1)[0]
+assert 'shared.hostedBundleID == bundleID' in switcher_cleanup and 'shared.closeHost(animated: false)' in switcher_cleanup
+assert 'dock.bundleID == bundleID' in switcher_cleanup and 'shared.removeDock(dock)' in switcher_cleanup
+assert 'killContainer:forReason:' in tweak and 'PXKillSwitcherContainer' in tweak
+assert tweak.index('switcherRemovedApplication:') < tweak.index('PXOriginalKillSwitcherContainer(switcher, selector, container, reason)')
 assert 'window.windowLevel = .alert + 52' in panel.split('private func beginPanel()', 1)[1].split('@objc private func dragHandle', 1)[0]
 
 assert "Package: com.moxuan.parallelx" in control

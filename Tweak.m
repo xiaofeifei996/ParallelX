@@ -12,6 +12,7 @@ static void (*PXOriginalKeyboardDidMove)(id, SEL);
 static void (*PXOriginalKeyboardLayout)(id, SEL);
 static void (*PXOriginalActivateApplication)(id, SEL, id, id, id, id, id);
 static void (*PXOriginalFrontDisplayDidChange)(id, SEL, id);
+static void (*PXOriginalKillSwitcherContainer)(id, SEL, id, NSInteger);
 static void (*PXOriginalOrientationChanged)(id, SEL, NSInteger, double, BOOL, BOOL, id);
 static void (*PXOriginalActiveOrientationChanged)(id, SEL, BOOL);
 static void (*PXOriginalHandleOpenRequest)(id, SEL, id, id, id);
@@ -394,6 +395,24 @@ static void PXFrontDisplayDidChange(id springBoard, SEL selector, id application
         ((void (*)(id, SEL, id))objc_msgSend)(entry, changed, bundleID);
 }
 
+static void PXKillSwitcherContainer(id switcher, SEL selector, id container, NSInteger reason)
+{
+    id layout = PXValue(container, @"appLayout");
+    id items = PXValue(layout, @"allItems");
+    NSMutableArray<NSString *> *bundleIDs = [NSMutableArray array];
+    if ([items isKindOfClass:NSArray.class])
+        for (id item in items) {
+            NSString *bundleID = PXBundleID(item);
+            if (bundleID.length) [bundleIDs addObject:bundleID];
+        }
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL removed = NSSelectorFromString(@"switcherRemovedApplication:");
+    if ([entry respondsToSelector:removed])
+        for (NSString *bundleID in bundleIDs)
+            ((void (*)(id, SEL, id))objc_msgSend)(entry, removed, bundleID);
+    PXOriginalKillSwitcherContainer(switcher, selector, container, reason);
+}
+
 static void PXOrientationChanged(id manager, SEL selector, NSInteger orientation,
                                  double duration, BOOL mirrored, BOOL force, id message)
 {
@@ -505,6 +524,16 @@ __attribute__((constructor)) static void PXInitialize(void)
         if (springBoard && class_getInstanceMethod(springBoard, frontDisplay))
             MSHookMessageEx(springBoard, frontDisplay, (IMP)PXFrontDisplayDidChange,
                             (IMP *)&PXOriginalFrontDisplayDidChange);
+        Class switcher = NSClassFromString(@"SBFluidSwitcherViewController");
+        SEL kill = NSSelectorFromString(@"killContainer:forReason:");
+        Method killMethod = class_getInstanceMethod(switcher, kill);
+        if (!killMethod) {
+            switcher = NSClassFromString(@"SBMainSwitcherViewController");
+            killMethod = class_getInstanceMethod(switcher, kill);
+        }
+        if (killMethod && method_getNumberOfArguments(killMethod) == 4)
+            MSHookMessageEx(switcher, kill, (IMP)PXKillSwitcherContainer,
+                            (IMP *)&PXOriginalKillSwitcherContainer);
         Class workspace = NSClassFromString(@"SBMainWorkspace");
         SEL execute = NSSelectorFromString(@"_executeApplicationTransitionRequest:");
         Method execution = class_getInstanceMethod(workspace, execute);

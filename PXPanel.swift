@@ -1105,6 +1105,14 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
+    @objc public static func switcherRemovedApplication(_ bundleID: String) {
+        guard !bundleID.isEmpty else { return }
+        if shared.hostedBundleID == bundleID { shared.closeHost(animated: false) }
+        for dock in Array(shared.dockedHosts) where dock.bundleID == bundleID {
+            shared.removeDock(dock)
+        }
+    }
+
     @objc public static func externalOpenApplication(_ bundleID: String) {
         guard !shared.deviceLocked, shared.activeScene() != nil else { return }
         shared.externalPendingBundleID = bundleID
