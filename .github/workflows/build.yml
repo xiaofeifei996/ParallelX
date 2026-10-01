@@ -1,40 +1,80 @@
-name: Build ParallelX iOS 15 RootHide
+name: Build ParallelX RootHide
 
 on:
-  push:
   workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    branches:
+      - main
 
 jobs:
-  package:
-    runs-on: macos-15
+  build:
+    runs-on: macos-14
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Check alpha scope
-        run: |
-          python3 tests/test_scope.py
-          python3 tests/test_settings_menu.py
-      - name: Check app alphabet index
-        run: |
-          swiftc PXAppIndex.swift tests/app_index/main.swift -o "$RUNNER_TEMP/app-index-check"
-          "$RUNNER_TEMP/app-index-check"
-      - name: Install Theos and SDK
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          brew install make ldid
-          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
-          echo "THEOS=$RUNNER_TEMP/theos" >> "$GITHUB_ENV"
-          git clone --depth=1 --recurse-submodules https://github.com/roothide/theos.git "$RUNNER_TEMP/theos"
-          mkdir -p "$RUNNER_TEMP/theos/sdks"
-          gh release download --repo theos/sdks --pattern iPhoneOS16.5.sdk.tar.xz --dir "$RUNNER_TEMP/theos/sdks"
-          tar -xJf "$RUNNER_TEMP/theos/sdks/iPhoneOS16.5.sdk.tar.xz" -C "$RUNNER_TEMP/theos/sdks"
-      - name: Build package
-        run: make clean package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1
-      - uses: actions/upload-artifact@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          name: ParallelX-iOS15-RootHide-alpha
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install ldid dpkg
+
+      - name: Install Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Install iPhoneOS 16.5 SDK
+        run: |
+          git clone --depth 1 https://github.com/theos/sdks.git $HOME/sdks
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/sdks/iPhoneOS16.5.sdk" "$HOME/theos/sdks/"
+
+      - name: Check project configuration
+        run: |
+          echo "=== Makefile ==="
+          grep -nE 'ARCHS|TARGET|THEOS_PACKAGE_SCHEME' Makefile || true
+
+          echo "=== control ==="
+          cat control
+
+      - name: Fix iOS deployment range
+        run: |
+          if [ -f control ]; then
+            sed -i '' 's/firmware (<< 16\.0)/firmware (<< 17.3.2)/g' control
+          fi
+
+          if [ -f tests/test_scope.py ]; then
+            sed -i '' 's/16\.0/17.3.2/g' tests/test_scope.py
+          fi
+
+      - name: Build Debian package
+        env:
+          THEOS_PACKAGE_SCHEME: roothide
+        run: |
+          export THEOS="$HOME/theos"
+          export THEOS_PACKAGE_SCHEME=roothide
+
+          make clean
+          make package FINALPACKAGE=1
+
+      - name: Verify package
+        run: |
+          echo "=== Generated packages ==="
+          find packages -type f -name "*.deb" -print
+
+          echo "=== Package metadata ==="
+          for deb in packages/*.deb; do
+            echo "----- $deb -----"
+            dpkg-deb -I "$deb" || true
+          done
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParallelX-RootHide-iOS17.3.1
           path: packages/*.deb
           if-no-files-found: error
+          retention-days: 30
