@@ -4,6 +4,146 @@
 #import <Preferences/PSViewController.h>
 #import <math.h>
 
+#pragma mark - PXPageHostController
+
+@interface PXPageHostController : PSViewController
+
+@property(nonatomic, strong) UIViewController *contentController;
+
+@end
+
+@implementation PXPageHostController
+
+- (instancetype)initForContentSize:(CGSize)contentSize
+{
+    self = [super initForContentSize:contentSize];
+
+    if (self) {
+        self.contentController = nil;
+    }
+
+    return self;
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+
+    [self installContentIfReady];
+}
+
+- (void)setSpecifier:(PSSpecifier *)specifier
+{
+    [super setSpecifier:specifier];
+
+    if (self.isViewLoaded) {
+        [self installContentIfReady];
+    }
+}
+
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+
+    [self installContentIfReady];
+}
+
+- (void)installContentIfReady
+{
+    if (self.contentController != nil) {
+        return;
+    }
+
+    PSSpecifier *specifier = self.specifier;
+
+    if (specifier == nil) {
+        return;
+    }
+
+    NSString *identifier =
+        [specifier propertyForKey:@"id"];
+
+    if (identifier.length == 0) {
+        return;
+    }
+
+    NSDictionary *pages = @{
+        @"picker"       : @"PXAppPickerController",
+        @"launcher"     : @"PXLauncherController",
+        @"radius"       : @"PXCornerRadiusController",
+        @"dock"         : @"PXDockController",
+        @"gestures"     : @"PXGestureAreaController",
+        @"urlBlacklist" : @"PXExternalBlacklistController",
+        @"backup"       : @"PXBackupController"
+    };
+
+    NSString *className = pages[identifier];
+
+    if (className.length == 0) {
+        return;
+    }
+
+    Class pageClass = NSClassFromString(className);
+
+    if (pageClass == Nil) {
+        NSLog(@"[ParallelXPrefs] Class not found: %@", className);
+        return;
+    }
+
+    if (![pageClass isSubclassOfClass:[UIViewController class]]) {
+        NSLog(@"[ParallelXPrefs] Invalid controller: %@", className);
+        return;
+    }
+
+    UIViewController *page =
+        [[pageClass alloc] init];
+
+    if (page == nil) {
+        return;
+    }
+
+    self.contentController = page;
+
+    [self addChildViewController:page];
+
+    UIView *pageView = page.view;
+
+    if (pageView == nil) {
+        [page didMoveToParentViewController:self];
+        return;
+    }
+
+    pageView.frame = self.view.bounds;
+
+    pageView.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
+
+    [self.view addSubview:pageView];
+
+    [page didMoveToParentViewController:self];
+
+    if (page.title.length > 0) {
+        self.title = page.title;
+    }
+    else if (specifier.name.length > 0) {
+        self.title = specifier.name;
+    }
+}
+
+- (void)viewWillDisappear:(BOOL)animated
+{
+    [super viewWillDisappear:animated];
+}
+
+- (BOOL)canBeShownFromSuspendedState
+{
+    return YES;
+}
+
+@end
+
+
 #pragma mark - PXSettingsListController
 
 @interface PXSettingsListController : PSListController
@@ -15,6 +155,11 @@
 {
     [super setSpecifier:specifier];
 
+    /*
+     * Important:
+     * Do not use @[] here.
+     * PSListController's _specifiers is NSMutableArray.
+     */
     _specifiers = nil;
 }
 
@@ -32,19 +177,26 @@
             @"system"   : @"System"
         };
 
-        NSString *plistName = pages[page];
+        NSString *plistName =
+            pages[page];
 
         /*
-         * Root controller has no id.
-         * Always load Root.plist for the main page.
+         * Root controller does not have an id.
+         *
+         * Therefore:
+         *
+         * PXRootListController
+         *        ↓
+         *     Root.plist
          */
         if (plistName.length == 0) {
             plistName = @"Root";
         }
 
         _specifiers =
-            [self loadSpecifiersFromPlistName:plistName
-                                       target:self];
+            [self loadSpecifiersFromPlistName:
+                plistName
+                target:self];
     }
 
     return _specifiers;
@@ -63,13 +215,16 @@
         [specifier propertyForKey:@"key"];
 
     BOOL horizontal =
-        [key isEqualToString:@"externalKeyboardHorizontalPercent"];
+        [key isEqualToString:
+            @"externalKeyboardHorizontalPercent"];
 
     BOOL focus =
-        [key isEqualToString:@"internalKeyboardZoomPercent"];
+        [key isEqualToString:
+            @"internalKeyboardZoomPercent"];
 
     BOOL keyboardDim =
-        [key isEqualToString:@"keyboardDimOpacity"];
+        [key isEqualToString:
+            @"keyboardDimOpacity"];
 
     if (horizontal || focus || keyboardDim) {
 
@@ -85,7 +240,8 @@
             title = @"键盘关闭遮罩深度";
         }
 
-        int minimum = focus ? 100 : 0;
+        int minimum =
+            focus ? 100 : 0;
 
         int maximum;
 
@@ -104,7 +260,8 @@
 
         UITableViewCell *cell =
             [[UITableViewCell alloc]
-                initWithStyle:UITableViewCellStyleDefault
+                initWithStyle:
+                    UITableViewCellStyleDefault
                 reuseIdentifier:nil];
 
         cell.selectionStyle =
@@ -129,14 +286,18 @@
 
         slider.translatesAutoresizingMaskIntoConstraints = NO;
 
-        slider.minimumValue = minimum;
-        slider.maximumValue = maximum;
+        slider.minimumValue =
+            minimum;
 
-        NSNumber *number =
+        slider.maximumValue =
+            maximum;
+
+        NSNumber *preferenceValue =
             [self readPreferenceValue:specifier];
 
         CGFloat value =
-            [number floatValue] * multiplier;
+            [preferenceValue floatValue] *
+            multiplier;
 
         if (value < minimum) {
             value = minimum;
@@ -161,12 +322,14 @@
         button.translatesAutoresizingMaskIntoConstraints = NO;
 
         if (@available(iOS 13.0, *)) {
+
             UIImage *image =
                 [UIImage systemImageNamed:@"keyboard"];
 
             if (image != nil) {
-                [button setImage:image
-                        forState:UIControlStateNormal];
+                [button setImage:
+                    image
+                    forState:UIControlStateNormal];
             }
         }
 
@@ -203,10 +366,12 @@
             }
 
         }]
-        forControlEvents:UIControlEventValueChanged];
+        forControlEvents:
+            UIControlEventValueChanged];
 
 
-        __weak UISlider *weakSlider = slider;
+        __weak UISlider *weakSlider =
+            slider;
 
         [button addAction:
             [UIAction actionWithHandler:
@@ -240,6 +405,7 @@
                     weakSlider;
 
                 if (currentSlider != nil) {
+
                     field.text =
                         [NSString stringWithFormat:
                             @"%.0f",
@@ -295,6 +461,7 @@
                     !scanner.isAtEnd ||
                     inputValue < minimum ||
                     inputValue > maximum) {
+
                     return;
                 }
 
@@ -309,12 +476,14 @@
 
 
             [strongSelf
-                presentViewController:alert
+                presentViewController:
+                    alert
                 animated:YES
                 completion:nil];
 
         }]
-        forControlEvents:UIControlEventTouchUpInside];
+        forControlEvents:
+            UIControlEventTouchUpInside];
 
 
         [cell.contentView addSubview:label];
@@ -392,6 +561,8 @@
 }
 
 
+#pragma mark - Cell Height
+
 - (CGFloat)tableView:(UITableView *)tableView
 heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -419,7 +590,7 @@ heightForRowAtIndexPath:indexPath];
 @end
 
 
-#pragma mark - Root Controller
+#pragma mark - PXRootListController
 
 @interface PXRootListController : PXSettingsListController
 @end
