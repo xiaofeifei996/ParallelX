@@ -488,7 +488,11 @@ assert '.filter { $0.id.hasPrefix("px.add.") || !selected.contains($0.id) }' in 
 assert 'indexPath.section == 1 ? addableShortcuts[indexPath.row] : available[indexPath.row]' in picker
 assert 'cell.textLabel?.font = .systemFont(ofSize: 14, weight: .regular)' in picker
 assert 'cell.textLabel?.text = app.name + "（长按全屏）"' not in picker
-assert 'cell.textLabel?.text = app.name' in picker and '最近打开的应用（长按全屏）' in picker
+assert 'cell.textLabel?.text = app.name' in picker
+assert '最近打开的应用（长按全屏）' not in picker + panel
+assert '("px.action.recent", "最近打开的应用",' in picker
+selected_apps = panel.split('private func selectedApps()', 1)[1].split('private func beginPanel()', 1)[0]
+assert '（长按全屏）' not in selected_apps
 candidate_ids = ['px.action.dark', 'px.action.search', 'px.add.workflow', 'px.add.quick', 'px.url.saved']
 selected_ids = {'px.action.dark', 'px.url.saved'}
 assert [item for item in candidate_ids if item.startswith('px.add.') or item not in selected_ids] == [

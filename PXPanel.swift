@@ -56,7 +56,7 @@ private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.rotation", "方向锁定", "lock.rotation"),
     ("px.action.window", "切换全屏/分屏（长按停靠小窗/交换窗口）", "rectangle.on.rectangle"),
     ("px.action.screenshot", "截屏（长按仅复制）", "camera.viewfinder"),
-    ("px.action.recent", "最近打开的应用（长按全屏）", "clock.arrow.circlepath"),
+    ("px.action.recent", "最近打开的应用", "clock.arrow.circlepath"),
     ("px.action.kayoko", "呼出 Kayoko", "doc.on.clipboard"),
     ("px.action.brightness", "调节亮度（长按并上下拖动）", "sun.max.fill"),
     ("px.action.restart", "重新打开应用", "arrow.clockwise"),
@@ -1527,11 +1527,11 @@ public final class PXPanelEntry: NSObject {
                 return (1...count).map { rank in
                     let bundleID = PXSceneBridge.shared().recentApplicationSkipping(excluded, rank: rank)
                     return (id: bundleID.map { "px.recent.\(rank).\($0)" } ?? "px.recent.\(rank)",
-                            name: bundleID.map { "\($0)（长按全屏）" } ?? "最近应用为空")
+                            name: bundleID ?? "最近应用为空")
                 }
             }
             let name = shortcuts.first(where: { $0.id == id })?.name ?? names[id] ?? id
-            return [(id: id, name: applicationID(id) != nil ? "\(name)（长按全屏）" : name)]
+            return [(id: id, name: name)]
         }
     }
 
