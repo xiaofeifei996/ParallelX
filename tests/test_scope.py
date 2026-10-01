@@ -487,6 +487,8 @@ assert 'style: .insetGrouped' in picker and 'viewForHeaderInSection section: Int
 assert '.filter { $0.id.hasPrefix("px.add.") || !selected.contains($0.id) }' in picker
 assert 'indexPath.section == 1 ? addableShortcuts[indexPath.row] : available[indexPath.row]' in picker
 assert 'cell.textLabel?.font = .systemFont(ofSize: 14, weight: .regular)' in picker
+assert 'cell.textLabel?.text = app.name + "（长按全屏）"' not in picker
+assert 'cell.textLabel?.text = app.name' in picker and '最近打开的应用（长按全屏）' in picker
 candidate_ids = ['px.action.dark', 'px.action.search', 'px.add.workflow', 'px.add.quick', 'px.url.saved']
 selected_ids = {'px.action.dark', 'px.url.saved'}
 assert [item for item in candidate_ids if item.startswith('px.add.') or item not in selected_ids] == [

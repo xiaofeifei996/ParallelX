@@ -127,7 +127,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                 extraItems.first(where: { $0.id == selected[indexPath.row] }) ?? (id: selected[indexPath.row], name: selected[indexPath.row])
             : indexPath.section == 1 ? addableShortcuts[indexPath.row] : available[indexPath.row]
         if !app.id.hasPrefix("px.") {
-            cell.textLabel?.text = app.name + "（长按全屏）"
+            cell.textLabel?.text = app.name
         } else if customActions.contains(where: { $0["id"] as? String == app.id && $0["kind"] as? String == "group" }) {
             cell.textLabel?.text = app.name + "（长按展开）"
         } else { cell.textLabel?.text = app.name }
