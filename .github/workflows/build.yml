@@ -21,60 +21,160 @@ jobs:
           brew update
           brew install ldid dpkg
 
-      - name: Install Theos
+      - name: Install RootHide Theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
       - name: Install iPhoneOS 16.5 SDK
         run: |
-          git clone --depth 1 https://github.com/theos/sdks.git $HOME/sdks
+          git clone --depth 1 https://github.com/theos/sdks.git "$HOME/theos-sdks"
+
           mkdir -p "$HOME/theos/sdks"
-          cp -R "$HOME/sdks/iPhoneOS16.5.sdk" "$HOME/theos/sdks/"
+
+          if [ ! -d "$HOME/theos-sdks/iPhoneOS16.5.sdk" ]; then
+            echo "iPhoneOS16.5.sdk not found"
+            exit 1
+          fi
+
+          cp -R "$HOME/theos-sdks/iPhoneOS16.5.sdk" "$HOME/theos/sdks/"
+
+      - name: Verify RootHide Theos
+        run: |
+          export THEOS="$HOME/theos"
+
+          echo "THEOS=$THEOS"
+
+          if [ ! -d "$THEOS/vendor/lib/iphone/roothide" ] && \
+             [ ! -d "$THEOS/lib/iphone/roothide" ]; then
+            echo "ERROR: RootHide package scheme was not installed."
+            echo "The installed Theos does not contain the roothide package scheme."
+            exit 1
+          fi
+
+          echo "RootHide package scheme detected."
 
       - name: Check project configuration
         run: |
-          echo "=== Makefile ==="
-          grep -nE 'ARCHS|TARGET|THEOS_PACKAGE_SCHEME' Makefile || true
+          echo "===== Makefile ====="
+          cat Makefile
 
-          echo "=== control ==="
-          cat control
+          echo
+          echo "===== control ====="
+
+          if [ -f control ]; then
+            cat control
+          else
+            echo "control file not found"
+            exit 1
+          fi
 
       - name: Fix iOS deployment range
         run: |
-          if [ -f control ]; then
-            sed -i '' 's/firmware (<< 16\.0)/firmware (<< 17.3.2)/g' control
-          fi
+          python3 <<'PY'
+          from pathlib import Path
 
-          if [ -f tests/test_scope.py ]; then
-            sed -i '' 's/16\.0/17.3.2/g' tests/test_scope.py
-          fi
+          path = Path("control")
+
+          if path.exists():
+              data = path.read_text()
+
+              data = data.replace(
+                  "firmware (<< 16.0)",
+                  "firmware (<< 17.3.2)"
+              )
+
+              path.write_text(data)
+
+              print("Updated control:")
+              print(path.read_text())
+
+          test_scope = Path("tests/test_scope.py")
+
+          if test_scope.exists():
+              data = test_scope.read_text()
+              data = data.replace("16.0", "17.3.2")
+              test_scope.write_text(data)
+
+              print("Updated tests/test_scope.py")
+          PY
+
+      - name: Verify package scheme
+        env:
+          THEOS_PACKAGE_SCHEME: roothide
+        run: |
+          export THEOS="$HOME/theos"
+
+          echo "THEOS=$THEOS"
+          echo "THEOS_PACKAGE_SCHEME=$THEOS_PACKAGE_SCHEME"
+
+          find "$THEOS" \
+            \( -path "*/roothide" -o -path "*/roothide/*" \) \
+            -print | head -50
 
       - name: Build Debian package
         env:
+          THEOS: ${{ github.workspace }}/../theos
           THEOS_PACKAGE_SCHEME: roothide
         run: |
           export THEOS="$HOME/theos"
           export THEOS_PACKAGE_SCHEME=roothide
 
+          echo "THEOS=$THEOS"
+          echo "THEOS_PACKAGE_SCHEME=$THEOS_PACKAGE_SCHEME"
+
           make clean
+
           make package FINALPACKAGE=1
 
-      - name: Verify package
+      - name: Verify generated DEB
         run: |
-          echo "=== Generated packages ==="
-          find packages -type f -name "*.deb" -print
+          echo "===== Generated files ====="
 
-          echo "=== Package metadata ==="
-          for deb in packages/*.deb; do
-            echo "----- $deb -----"
-            dpkg-deb -I "$deb" || true
+          find . -type f -name "*.deb" -print
+
+          if ! find . -type f -name "*.deb" | grep -q .; then
+            echo "ERROR: No .deb package was generated."
+            exit 1
+          fi
+
+          echo
+          echo "===== Package information ====="
+
+          for deb in $(find . -type f -name "*.deb"); do
+            echo
+            echo "----------------------------------------"
+            echo "$deb"
+            echo "----------------------------------------"
+
+            dpkg-deb -I "$deb"
           done
+
+      - name: Verify iOS version requirement
+        run: |
+          echo "===== Checking firmware dependency ====="
+
+          for deb in $(find . -type f -name "*.deb"); do
+            dpkg-deb -f "$deb" Depends
+          done
+
+      - name: Collect DEB
+        run: |
+          mkdir -p release
+
+          find . \
+            -type f \
+            -name "*.deb" \
+            -not -path "./release/*" \
+            -exec cp {} release/ \;
+
+          echo "===== Release files ====="
+          ls -lh release/
 
       - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
-          name: ParallelX-RootHide-iOS17.3.1
-          path: packages/*.deb
+          name: ParallelX-RootHide-iOS-15-to-17.3.1
+          path: release/*.deb
           if-no-files-found: error
           retention-days: 30
