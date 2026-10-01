@@ -55,10 +55,13 @@ assert 'UIView.performWithoutAnimation { matchHostAspect() }' in screen_geometry
 assert 'activeBridge.refreshHostedOrientationMap()' in screen_geometry
 assert 'let rotating = orientation != layoutOrientation && layoutOrientation != .unknown' in screen_geometry
 assert 'if rotating && !fullscreenToWindowInProgress {' in screen_geometry
-assert screen_geometry.index('layoutDocks(animated: false)') < screen_geometry.index('PXMotion.rotation(card, from: frame, in: oldBounds, to: screen)')
+assert screen_geometry.index('layoutDocks(animated: false)') < screen_geometry.index('PXMotion.rotation(card, from: frame, in: oldBounds, to: screen,')
 rotation_motion = panel.split('static func rotation(_ card: UIView', 1)[1].split('\n}', 1)[0]
 assert 'UIAccessibility.isReduceMotionEnabled' in rotation_motion and 'animation.duration = 0.32 / speed' in rotation_motion
 assert 'card.layer.add(animation, forKey: "pxScreenRotation")' in rotation_motion
+assert 'oldOrientation.isLandscape != newOrientation.isLandscape' in rotation_motion
+assert 'CATransform3DRotate(' in rotation_motion and 'sqrt(frame.width * frame.height /' in rotation_motion
+assert 'oldOrientation: oldOrientation, newOrientation: orientation' in screen_geometry
 for old_size, new_size, old_center in (((390, 844), (844, 390), (300, 422)),
                                        ((844, 390), (390, 844), (60, 70))):
     start = tuple(old_center[index] / old_size[index] * new_size[index] for index in (0, 1))

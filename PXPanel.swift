@@ -25,17 +25,23 @@ private enum PXMotion {
                        animations: animations, completion: completion)
     }
 
-    static func rotation(_ card: UIView, from frame: CGRect, in oldBounds: CGRect, to newBounds: CGRect) {
+    static func rotation(_ card: UIView, from frame: CGRect, in oldBounds: CGRect, to newBounds: CGRect,
+                         oldOrientation: UIInterfaceOrientation, newOrientation: UIInterfaceOrientation) {
         guard !UIAccessibility.isReduceMotionEnabled, oldBounds.width > 0, oldBounds.height > 0,
-              frame.width > 0, card.frame.width > 0, card.window?.isHidden == false else { return }
+              frame.width > 0, frame.height > 0, card.frame.width > 0, card.frame.height > 0,
+              card.window?.isHidden == false else { return }
         let start = CGPoint(x: newBounds.minX + (frame.midX - oldBounds.minX) / oldBounds.width * newBounds.width,
                             y: newBounds.minY + (frame.midY - oldBounds.minY) / oldBounds.height * newBounds.height)
-        let scale = min(1.4, max(0.7, frame.width / card.frame.width))
+        let scale = min(2, max(0.5, sqrt(frame.width * frame.height / (card.frame.width * card.frame.height))))
+        let landscape = oldOrientation.isLandscape ? oldOrientation : newOrientation
+        let turn: CGFloat = oldOrientation.isLandscape != newOrientation.isLandscape
+            ? (landscape == .landscapeLeft ? 1 : -1) * (oldOrientation.isLandscape ? 1 : -1) * .pi / 2 : 0
         let position = CABasicAnimation(keyPath: "position")
         position.fromValue = NSValue(cgPoint: start)
         position.toValue = NSValue(cgPoint: card.layer.position)
         let transform = CABasicAnimation(keyPath: "transform")
-        transform.fromValue = NSValue(caTransform3D: CATransform3DScale(card.layer.transform, scale, scale, 1))
+        transform.fromValue = NSValue(caTransform3D: CATransform3DRotate(
+            CATransform3DScale(card.layer.transform, scale, scale, 1), turn, 0, 0, 1))
         transform.toValue = NSValue(caTransform3D: card.layer.transform)
         let animation = CAAnimationGroup()
         animation.animations = [position, transform]
@@ -1267,6 +1273,7 @@ public final class PXPanelEntry: NSObject {
             : CGSize(width: min(physical.width, physical.height), height: max(physical.width, physical.height))
         if expectedSize == layoutScreenBounds.size && orientation == layoutOrientation { return }
         let oldBounds = layoutScreenBounds
+        let oldOrientation = layoutOrientation
         let rotating = orientation != layoutOrientation && layoutOrientation != .unknown
         let cards = ([hostCard].compactMap { $0 } + dockedHosts.map { $0.card }).map { ($0, $0.frame) }
         applyingScreenGeometry = true
@@ -1297,7 +1304,10 @@ public final class PXPanelEntry: NSObject {
         layoutDocks(animated: false)
         refreshKeyboardDismissLayer()
         if rotating && !fullscreenToWindowInProgress {
-            for (card, frame) in cards { PXMotion.rotation(card, from: frame, in: oldBounds, to: screen) }
+            for (card, frame) in cards {
+                PXMotion.rotation(card, from: frame, in: oldBounds, to: screen,
+                                  oldOrientation: oldOrientation, newOrientation: orientation)
+            }
         }
     }
 
