@@ -17,7 +17,7 @@
             <key>cell</key>
             <string>PSLinkCell</string>
             <key>detail</key>
-            <string>PXAppPickerController</string>
+            <string>PXPageHostController</string>
             <key>id</key>
             <string>picker</string>
             <key>label</key>
@@ -28,13 +28,12 @@
             <key>cell</key>
             <string>PSLinkCell</string>
             <key>detail</key>
-            <string>PXLauncherController</string>
+            <string>PXPageHostController</string>
             <key>id</key>
             <string>launcher</string>
             <key>label</key>
             <string>半圆面板与手柄</string>
         </dict>
-
 
         <dict>
             <key>cell</key>
@@ -58,7 +57,7 @@
             <key>cell</key>
             <string>PSLinkCell</string>
             <key>detail</key>
-            <string>PXGestureAreaController</string>
+            <string>PXPageHostController</string>
             <key>id</key>
             <string>gestures</string>
             <key>label</key>
@@ -75,7 +74,6 @@
             <key>label</key>
             <string>键盘</string>
         </dict>
-
 
         <dict>
             <key>cell</key>
@@ -106,7 +104,6 @@
             <string>锁屏、截图与录屏</string>
         </dict>
 
-
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
@@ -118,7 +115,7 @@
             <key>cell</key>
             <string>PSLinkCell</string>
             <key>detail</key>
-            <string>PXBackupController</string>
+            <string>PXPageHostController</string>
             <key>id</key>
             <string>backup</string>
             <key>label</key>
