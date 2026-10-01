@@ -261,6 +261,8 @@ static BOOL PXExternalTarget(id options, id target, id source, NSString **bundle
     NSDictionary *values = PXOptionsDictionary(options);
     NSString *bundleID = PXBundleID(target);
     if (!values || !bundleID.length || PXDeviceLocked || !PXSuspendedKey().length) return NO;
+    // Cover Sheet taps should keep the system's native fullscreen launch.
+    if ([values[@"__LaunchOrigin"] isEqualToString:@"BulletinDestinationCoverSheet"]) return NO;
     BOOL notification = PXIsNotificationOpen(values);
     id url = PXValue(options, @"url") ?: values[@"__PayloadURL"] ?: values[@"__PayloadOpenURL"];
     NSString *sourceID = PXSourceBundleID(source, values);

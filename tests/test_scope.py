@@ -8,6 +8,7 @@ panel = (root / "PXPanel.swift").read_text(encoding="utf-8")
 bridge = (root / "PXSceneBridge.m").read_text(encoding="utf-8")
 bridge_header = (root / "PXSceneBridge.h").read_text(encoding="utf-8")
 tweak = (root / "Tweak.m").read_text(encoding="utf-8")
+external_settings = (root / "prefs/Resources/External.plist").read_text(encoding="utf-8")
 app_picker = (root / "prefs/PXAppPickerController.swift").read_text(encoding="utf-8")
 action_picker = (root / "prefs/PXActionPickerController.swift").read_text(encoding="utf-8")
 blacklist = (root / "prefs/PXExternalBlacklistController.swift").read_text(encoding="utf-8")
@@ -17,6 +18,12 @@ assert 'style: .insetGrouped' in blacklist and 'let toggle = UISwitch()' in blac
 assert '.checkmark' not in blacklist and 'didSelectRowAt' not in blacklist
 assert 'if left != right { return left }' in blacklist
 assert 'for: .valueChanged' in blacklist and 'cell.accessoryView = toggle' in blacklist
+external_target = tweak.split('static BOOL PXExternalTarget(', 1)[1].split('static id PXOptionsWithSuspendedLaunch(', 1)[0]
+assert 'if ([values[@"__LaunchOrigin"] isEqualToString:@"BulletinDestinationCoverSheet"]) return NO;' in external_target
+assert external_target.index('BulletinDestinationCoverSheet') < external_target.index('BOOL notification = PXIsNotificationOpen(values)')
+assert 'BulletinDestinationBanner' in tweak and 'notificationSplitEnabled' in external_target
+assert 'BOOL candidate = PXExternalTarget(' in tweak and tweak.count('BOOL candidate = PXExternalTarget(') == 2
+assert '通知横幅跳转分屏' in external_settings and '通知中心点击仍按系统原方式全屏打开' in external_settings
 apps = [('c', 'C'), ('b', 'B'), ('a', 'A')]
 excluded = {'b'}
 assert sorted(apps, key=lambda app: (app[0] not in excluded, app[1])) == [('b', 'B'), ('a', 'A'), ('c', 'C')]
