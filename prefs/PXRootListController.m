@@ -131,11 +131,6 @@
     }
 }
 
-- (void)viewWillDisappear:(BOOL)animated
-{
-    [super viewWillDisappear:animated];
-}
-
 - (BOOL)canBeShownFromSuspendedState
 {
     return YES;
@@ -151,19 +146,13 @@
 
 @implementation PXSettingsListController
 
-- (void)setSpecifier:(PSSpecifier *)specifier
-{
-    [super setSpecifier:specifier];
+/*
+ * Do NOT override setSpecifier: here.
+ *
+ * PSListController already manages its specifier lifecycle.
+ */
 
-    /*
-     * Important:
-     * Do not use @[] here.
-     * PSListController's _specifiers is NSMutableArray.
-     */
-    _specifiers = nil;
-}
-
-- (NSArray *)specifiers
+- (NSMutableArray *)specifiers
 {
     if (_specifiers == nil) {
 
@@ -178,25 +167,18 @@
         };
 
         NSString *plistName =
-            pages[page];
+            pages[page ?: @""];
 
         /*
-         * Root controller does not have an id.
-         *
-         * Therefore:
-         *
-         * PXRootListController
-         *        ↓
-         *     Root.plist
+         * Safety fallback.
          */
         if (plistName.length == 0) {
             plistName = @"Root";
         }
 
         _specifiers =
-            [self loadSpecifiersFromPlistName:
-                plistName
-                target:self];
+            [self loadSpecifiersFromPlistName:plistName
+                                       target:self];
     }
 
     return _specifiers;
@@ -215,18 +197,18 @@
         [specifier propertyForKey:@"key"];
 
     BOOL horizontal =
-        [key isEqualToString:
-            @"externalKeyboardHorizontalPercent"];
+        [key isEqualToString:@"externalKeyboardHorizontalPercent"];
 
     BOOL focus =
-        [key isEqualToString:
-            @"internalKeyboardZoomPercent"];
+        [key isEqualToString:@"internalKeyboardZoomPercent"];
 
-    BOOL keyboardDim =
-        [key isEqualToString:
-            @"keyboardDimOpacity"];
+    BOOL dim =
+        [key isEqualToString:@"keyboardDimOpacity"];
 
-    if (horizontal || focus || keyboardDim) {
+    /*
+     * Only create the custom slider for these three settings.
+     */
+    if (horizontal || focus || dim) {
 
         NSString *title;
 
@@ -240,18 +222,19 @@
             title = @"键盘关闭遮罩深度";
         }
 
-        int minimum =
-            focus ? 100 : 0;
-
+        int minimum;
         int maximum;
 
         if (focus) {
+            minimum = 100;
             maximum = 200;
         }
         else if (horizontal) {
+            minimum = 0;
             maximum = 100;
         }
         else {
+            minimum = 0;
             maximum = 60;
         }
 
@@ -260,8 +243,7 @@
 
         UITableViewCell *cell =
             [[UITableViewCell alloc]
-                initWithStyle:
-                    UITableViewCellStyleDefault
+                initWithStyle:UITableViewCellStyleDefault
                 reuseIdentifier:nil];
 
         cell.selectionStyle =
@@ -272,14 +254,12 @@
                 UIColor.secondarySystemGroupedBackgroundColor;
         }
 
-        UILabel *label =
-            [[UILabel alloc] init];
-
-        label.translatesAutoresizingMaskIntoConstraints = NO;
+        UILabel *label = [[UILabel alloc] init];
 
         label.font =
-            [UIFont preferredFontForTextStyle:
-                UIFontTextStyleBody];
+            [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+
+        label.translatesAutoresizingMaskIntoConstraints = NO;
 
         UISlider *slider =
             [[UISlider alloc] init];
@@ -287,17 +267,17 @@
         slider.translatesAutoresizingMaskIntoConstraints = NO;
 
         slider.minimumValue =
-            minimum;
+            (float)minimum;
 
         slider.maximumValue =
-            maximum;
+            (float)maximum;
 
-        NSNumber *preferenceValue =
+        NSNumber *preference =
             [self readPreferenceValue:specifier];
 
         CGFloat value =
-            [preferenceValue floatValue] *
-            multiplier;
+            preference ? preference.floatValue * multiplier
+                       : minimum;
 
         if (value < minimum) {
             value = minimum;
@@ -307,29 +287,26 @@
             value = maximum;
         }
 
-        slider.value = value;
+        slider.value =
+            (float)value;
 
         label.text =
-            [NSString stringWithFormat:
-                @"%@：%.0f%%",
-                title,
-                slider.value];
+            [NSString stringWithFormat:@"%@：%.0f%%",
+                                       title,
+                                       slider.value];
 
         UIButton *button =
-            [UIButton buttonWithType:
-                UIButtonTypeSystem];
+            [UIButton buttonWithType:UIButtonTypeSystem];
 
         button.translatesAutoresizingMaskIntoConstraints = NO;
 
         if (@available(iOS 13.0, *)) {
-
             UIImage *image =
                 [UIImage systemImageNamed:@"keyboard"];
 
             if (image != nil) {
-                [button setImage:
-                    image
-                    forState:UIControlStateNormal];
+                [button setImage:image
+                        forState:UIControlStateNormal];
             }
         }
 
@@ -349,25 +326,23 @@
                 roundf(control.value);
 
             label.text =
-                [NSString stringWithFormat:
-                    @"%@：%.0f%%",
-                    title,
-                    control.value];
+                [NSString stringWithFormat:@"%@：%.0f%%",
+                                           title,
+                                           control.value];
 
             __strong typeof(weakSelf) strongSelf =
                 weakSelf;
 
-            if (strongSelf != nil) {
-
-                [strongSelf
-                    setPreferenceValue:
-                        @(control.value / multiplier)
-                    specifier:specifier];
+            if (strongSelf == nil) {
+                return;
             }
 
+            [strongSelf setPreferenceValue:
+                @(control.value / multiplier)
+                specifier:specifier];
+
         }]
-        forControlEvents:
-            UIControlEventValueChanged];
+        forControlEvents:UIControlEventValueChanged];
 
 
         __weak UISlider *weakSlider =
@@ -380,7 +355,11 @@
             __strong typeof(weakSelf) strongSelf =
                 weakSelf;
 
-            if (strongSelf == nil) {
+            UISlider *strongSlider =
+                weakSlider;
+
+            if (strongSelf == nil ||
+                strongSlider == nil) {
                 return;
             }
 
@@ -392,8 +371,7 @@
                             @"输入 %d–%d（%%）",
                             minimum,
                             maximum]
-                    preferredStyle:
-                        UIAlertControllerStyleAlert];
+                    preferredStyle:UIAlertControllerStyleAlert];
 
             [alert addTextFieldWithConfigurationHandler:
                 ^(UITextField *field) {
@@ -401,25 +379,18 @@
                 field.keyboardType =
                     UIKeyboardTypeNumberPad;
 
-                UISlider *currentSlider =
-                    weakSlider;
+                field.text =
+                    [NSString stringWithFormat:
+                        @"%.0f",
+                        strongSlider.value];
 
-                if (currentSlider != nil) {
-
-                    field.text =
-                        [NSString stringWithFormat:
-                            @"%.0f",
-                            currentSlider.value];
-                }
             }];
-
 
             [alert addAction:
                 [UIAlertAction
                     actionWithTitle:@"取消"
                     style:UIAlertActionStyleCancel
                     handler:nil]];
-
 
             __weak UIAlertController *weakAlert =
                 alert;
@@ -433,17 +404,12 @@
                 UIAlertController *strongAlert =
                     weakAlert;
 
-                UISlider *strongSlider =
-                    weakSlider;
-
-                if (strongAlert == nil ||
-                    strongSlider == nil) {
+                if (strongAlert == nil) {
                     return;
                 }
 
                 NSString *text =
-                    strongAlert.textFields
-                        .firstObject.text;
+                    strongAlert.textFields.firstObject.text;
 
                 if (text.length == 0) {
                     return;
@@ -454,14 +420,16 @@
 
                 int inputValue = 0;
 
-                BOOL success =
-                    [scanner scanInt:&inputValue];
+                if (![scanner scanInt:&inputValue]) {
+                    return;
+                }
 
-                if (!success ||
-                    !scanner.isAtEnd ||
-                    inputValue < minimum ||
+                if (!scanner.isAtEnd) {
+                    return;
+                }
+
+                if (inputValue < minimum ||
                     inputValue > maximum) {
-
                     return;
                 }
 
@@ -474,16 +442,13 @@
 
             }]];
 
-
             [strongSelf
-                presentViewController:
-                    alert
+                presentViewController:alert
                 animated:YES
                 completion:nil];
 
         }]
-        forControlEvents:
-            UIControlEventTouchUpInside];
+        forControlEvents:UIControlEventTouchUpInside];
 
 
         [cell.contentView addSubview:label];
@@ -536,6 +501,7 @@
 
             [button.heightAnchor
                 constraintEqualToConstant:38.0]
+
         ]];
 
         return cell;
@@ -544,8 +510,7 @@
 
     UITableViewCell *cell =
         [super tableView:tableView
-   cellForRowAtIndexPath:indexPath];
-
+             cellForRowAtIndexPath:indexPath];
 
     if ([cell isKindOfClass:
             NSClassFromString(@"PSLinkCell")]) {
@@ -561,8 +526,6 @@
 }
 
 
-#pragma mark - Cell Height
-
 - (CGFloat)tableView:(UITableView *)tableView
 heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -572,19 +535,16 @@ heightForRowAtIndexPath:(NSIndexPath *)indexPath
     NSString *key =
         [specifier propertyForKey:@"key"];
 
-    if ([key isEqualToString:
-            @"keyboardDimOpacity"] ||
-        [key isEqualToString:
-            @"externalKeyboardHorizontalPercent"] ||
-        [key isEqualToString:
-            @"internalKeyboardZoomPercent"]) {
+    if ([key isEqualToString:@"keyboardDimOpacity"] ||
+        [key isEqualToString:@"externalKeyboardHorizontalPercent"] ||
+        [key isEqualToString:@"internalKeyboardZoomPercent"]) {
 
         return 82.0;
     }
 
     return
         [super tableView:tableView
-heightForRowAtIndexPath:indexPath];
+            heightForRowAtIndexPath:indexPath];
 }
 
 @end
@@ -592,8 +552,31 @@ heightForRowAtIndexPath:indexPath];
 
 #pragma mark - PXRootListController
 
-@interface PXRootListController : PXSettingsListController
+/*
+ * IMPORTANT:
+ *
+ * PXRootListController no longer inherits from
+ * PXSettingsListController.
+ *
+ * This prevents the Root controller from inheriting
+ * the custom secondary-page specifier handling.
+ */
+
+@interface PXRootListController : PSListController
 @end
 
 @implementation PXRootListController
+
+- (NSMutableArray *)specifiers
+{
+    if (_specifiers == nil) {
+
+        _specifiers =
+            [self loadSpecifiersFromPlistName:@"Root"
+                                       target:self];
+    }
+
+    return _specifiers;
+}
+
 @end
