@@ -16,13 +16,7 @@
 
 - (instancetype)initForContentSize:(CGSize)contentSize
 {
-    self = [super initForContentSize:contentSize];
-
-    if (self) {
-        self.contentController = nil;
-    }
-
-    return self;
+    return [super initWithNibName:nil bundle:nil];
 }
 
 - (void)viewDidLoad
@@ -63,10 +57,6 @@
     NSString *identifier =
         [specifier propertyForKey:@"id"];
 
-    if (identifier.length == 0) {
-        return;
-    }
-
     NSDictionary *pages = @{
         @"picker"       : @"PXAppPickerController",
         @"launcher"     : @"PXLauncherController",
@@ -77,21 +67,21 @@
         @"backup"       : @"PXBackupController"
     };
 
-    NSString *className = pages[identifier];
+    NSString *className =
+        pages[identifier ?: @""];
 
     if (className.length == 0) {
         return;
     }
 
-    Class pageClass = NSClassFromString(className);
+    Class pageClass =
+        NSClassFromString(className);
 
     if (pageClass == Nil) {
-        NSLog(@"[ParallelXPrefs] Class not found: %@", className);
         return;
     }
 
     if (![pageClass isSubclassOfClass:[UIViewController class]]) {
-        NSLog(@"[ParallelXPrefs] Invalid controller: %@", className);
         return;
     }
 
@@ -106,28 +96,39 @@
 
     [self addChildViewController:page];
 
-    UIView *pageView = page.view;
+    UIView *contentView = page.view;
 
-    if (pageView == nil) {
-        [page didMoveToParentViewController:self];
+    if (contentView == nil) {
         return;
     }
 
-    pageView.frame = self.view.bounds;
+    contentView.frame = self.view.bounds;
 
-    pageView.autoresizingMask =
+    contentView.autoresizingMask =
         UIViewAutoresizingFlexibleWidth |
         UIViewAutoresizingFlexibleHeight;
 
-    [self.view addSubview:pageView];
+    [self.view addSubview:contentView];
 
     [page didMoveToParentViewController:self];
 
-    if (page.title.length > 0) {
-        self.title = page.title;
-    }
-    else if (specifier.name.length > 0) {
+    NSString *pageTitle = page.title;
+
+    if (pageTitle.length > 0) {
+        self.title = pageTitle;
+    } else {
         self.title = specifier.name;
+    }
+
+    self.navigationItem.rightBarButtonItem =
+        page.navigationItem.rightBarButtonItem;
+
+    if (@available(iOS 11.0, *)) {
+        self.navigationItem.searchController =
+            page.navigationItem.searchController;
+
+        self.navigationItem.hidesSearchBarWhenScrolling =
+            page.navigationItem.hidesSearchBarWhenScrolling;
     }
 }
 
@@ -142,15 +143,10 @@
 #pragma mark - PXSettingsListController
 
 @interface PXSettingsListController : PSListController
+
 @end
 
 @implementation PXSettingsListController
-
-/*
- * Do NOT override setSpecifier: here.
- *
- * PSListController already manages its specifier lifecycle.
- */
 
 - (NSMutableArray *)specifiers
 {
@@ -169,9 +165,6 @@
         NSString *plistName =
             pages[page ?: @""];
 
-        /*
-         * Safety fallback.
-         */
         if (plistName.length == 0) {
             plistName = @"Root";
         }
@@ -205,36 +198,28 @@
     BOOL dim =
         [key isEqualToString:@"keyboardDimOpacity"];
 
-    /*
-     * Only create the custom slider for these three settings.
-     */
     if (horizontal || focus || dim) {
 
         NSString *title;
 
         if (focus) {
             title = @"内置键盘放大倍数";
-        }
-        else if (horizontal) {
+        } else if (horizontal) {
             title = @"横屏外置键盘位置";
-        }
-        else {
+        } else {
             title = @"键盘关闭遮罩深度";
         }
 
-        int minimum;
+        int minimum =
+            focus ? 100 : 0;
+
         int maximum;
 
         if (focus) {
-            minimum = 100;
             maximum = 200;
-        }
-        else if (horizontal) {
-            minimum = 0;
+        } else if (horizontal) {
             maximum = 100;
-        }
-        else {
-            minimum = 0;
+        } else {
             maximum = 60;
         }
 
@@ -254,41 +239,44 @@
                 UIColor.secondarySystemGroupedBackgroundColor;
         }
 
-        UILabel *label = [[UILabel alloc] init];
+        UILabel *label =
+            [[UILabel alloc] init];
 
         label.font =
             [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
 
-        label.translatesAutoresizingMaskIntoConstraints = NO;
+        label.translatesAutoresizingMaskIntoConstraints =
+            NO;
 
         UISlider *slider =
             [[UISlider alloc] init];
 
-        slider.translatesAutoresizingMaskIntoConstraints = NO;
+        slider.translatesAutoresizingMaskIntoConstraints =
+            NO;
 
         slider.minimumValue =
-            (float)minimum;
+            minimum;
 
         slider.maximumValue =
-            (float)maximum;
+            maximum;
 
-        NSNumber *preference =
+        id preferenceValue =
             [self readPreferenceValue:specifier];
 
-        CGFloat value =
-            preference ? preference.floatValue * multiplier
-                       : minimum;
+        CGFloat currentValue =
+            [preferenceValue respondsToSelector:@selector(floatValue)]
+                ? [preferenceValue floatValue] * multiplier
+                : minimum;
 
-        if (value < minimum) {
-            value = minimum;
+        if (currentValue < minimum) {
+            currentValue = minimum;
         }
 
-        if (value > maximum) {
-            value = maximum;
+        if (currentValue > maximum) {
+            currentValue = maximum;
         }
 
-        slider.value =
-            (float)value;
+        slider.value = currentValue;
 
         label.text =
             [NSString stringWithFormat:@"%@：%.0f%%",
@@ -298,7 +286,8 @@
         UIButton *button =
             [UIButton buttonWithType:UIButtonTypeSystem];
 
-        button.translatesAutoresizingMaskIntoConstraints = NO;
+        button.translatesAutoresizingMaskIntoConstraints =
+            NO;
 
         if (@available(iOS 13.0, *)) {
             UIImage *image =
@@ -330,16 +319,16 @@
                                            title,
                                            control.value];
 
-            __strong typeof(weakSelf) strongSelf =
+            typeof(self) strongSelf =
                 weakSelf;
 
-            if (strongSelf == nil) {
-                return;
-            }
+            if (strongSelf != nil) {
 
-            [strongSelf setPreferenceValue:
-                @(control.value / multiplier)
-                specifier:specifier];
+                [strongSelf
+                    setPreferenceValue:
+                        @(control.value / multiplier)
+                    specifier:specifier];
+            }
 
         }]
         forControlEvents:UIControlEventValueChanged];
@@ -352,14 +341,10 @@
             [UIAction actionWithHandler:
                 ^(__kindof UIAction *action) {
 
-            __strong typeof(weakSelf) strongSelf =
-                weakSelf;
-
-            UISlider *strongSlider =
+            UISlider *currentSlider =
                 weakSlider;
 
-            if (strongSelf == nil ||
-                strongSlider == nil) {
+            if (currentSlider == nil) {
                 return;
             }
 
@@ -371,7 +356,8 @@
                             @"输入 %d–%d（%%）",
                             minimum,
                             maximum]
-                    preferredStyle:UIAlertControllerStyleAlert];
+                    preferredStyle:
+                        UIAlertControllerStyleAlert];
 
             [alert addTextFieldWithConfigurationHandler:
                 ^(UITextField *field) {
@@ -382,8 +368,7 @@
                 field.text =
                     [NSString stringWithFormat:
                         @"%.0f",
-                        strongSlider.value];
-
+                        currentSlider.value];
             }];
 
             [alert addAction:
@@ -411,16 +396,13 @@
                 NSString *text =
                     strongAlert.textFields.firstObject.text;
 
-                if (text.length == 0) {
-                    return;
-                }
-
                 NSScanner *scanner =
-                    [NSScanner scannerWithString:text];
+                    [NSScanner scannerWithString:
+                        text ?: @""];
 
-                int inputValue = 0;
+                int value = 0;
 
-                if (![scanner scanInt:&inputValue]) {
+                if (![scanner scanInt:&value]) {
                     return;
                 }
 
@@ -428,24 +410,28 @@
                     return;
                 }
 
-                if (inputValue < minimum ||
-                    inputValue > maximum) {
+                if (value < minimum ||
+                    value > maximum) {
                     return;
                 }
 
-                strongSlider.value =
-                    inputValue;
+                currentSlider.value =
+                    value;
 
-                [strongSlider
+                [currentSlider
                     sendActionsForControlEvents:
                         UIControlEventValueChanged];
-
             }]];
 
-            [strongSelf
-                presentViewController:alert
-                animated:YES
-                completion:nil];
+            typeof(self) strongSelf =
+                weakSelf;
+
+            if (strongSelf != nil) {
+                [strongSelf
+                    presentViewController:alert
+                    animated:YES
+                    completion:nil];
+            }
 
         }]
         forControlEvents:UIControlEventTouchUpInside];
@@ -461,17 +447,17 @@
             [label.leadingAnchor
                 constraintEqualToAnchor:
                     cell.contentView.leadingAnchor
-                    constant:16.0],
+                    constant:16],
 
             [label.trailingAnchor
                 constraintEqualToAnchor:
                     cell.contentView.trailingAnchor
-                    constant:-16.0],
+                    constant:-16],
 
             [label.topAnchor
                 constraintEqualToAnchor:
                     cell.contentView.topAnchor
-                    constant:10.0],
+                    constant:10],
 
             [slider.leadingAnchor
                 constraintEqualToAnchor:
@@ -480,27 +466,27 @@
             [slider.topAnchor
                 constraintEqualToAnchor:
                     label.bottomAnchor
-                    constant:5.0],
+                    constant:5],
 
             [slider.trailingAnchor
                 constraintEqualToAnchor:
                     button.leadingAnchor
-                    constant:-10.0],
+                    constant:-10],
 
             [button.trailingAnchor
                 constraintEqualToAnchor:
                     cell.contentView.trailingAnchor
-                    constant:-16.0],
+                    constant:-16],
 
             [button.centerYAnchor
                 constraintEqualToAnchor:
                     slider.centerYAnchor],
 
             [button.widthAnchor
-                constraintEqualToConstant:38.0],
+                constraintEqualToConstant:38],
 
             [button.heightAnchor
-                constraintEqualToConstant:38.0]
+                constraintEqualToConstant:38]
 
         ]];
 
@@ -510,7 +496,7 @@
 
     UITableViewCell *cell =
         [super tableView:tableView
-             cellForRowAtIndexPath:indexPath];
+            cellForRowAtIndexPath:indexPath];
 
     if ([cell isKindOfClass:
             NSClassFromString(@"PSLinkCell")]) {
@@ -536,15 +522,16 @@ heightForRowAtIndexPath:(NSIndexPath *)indexPath
         [specifier propertyForKey:@"key"];
 
     if ([key isEqualToString:@"keyboardDimOpacity"] ||
-        [key isEqualToString:@"externalKeyboardHorizontalPercent"] ||
-        [key isEqualToString:@"internalKeyboardZoomPercent"]) {
+        [key isEqualToString:
+            @"externalKeyboardHorizontalPercent"] ||
+        [key isEqualToString:
+            @"internalKeyboardZoomPercent"]) {
 
         return 82.0;
     }
 
-    return
-        [super tableView:tableView
-            heightForRowAtIndexPath:indexPath];
+    return [super tableView:tableView
+        heightForRowAtIndexPath:indexPath];
 }
 
 @end
@@ -552,17 +539,8 @@ heightForRowAtIndexPath:(NSIndexPath *)indexPath
 
 #pragma mark - PXRootListController
 
-/*
- * IMPORTANT:
- *
- * PXRootListController no longer inherits from
- * PXSettingsListController.
- *
- * This prevents the Root controller from inheriting
- * the custom secondary-page specifier handling.
- */
-
 @interface PXRootListController : PSListController
+
 @end
 
 @implementation PXRootListController
