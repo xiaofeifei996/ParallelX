@@ -35,7 +35,7 @@ private enum PXMotion {
         let scale = min(2, max(0.5, sqrt(frame.width * frame.height / (card.frame.width * card.frame.height))))
         let landscape = oldOrientation.isLandscape ? oldOrientation : newOrientation
         let turn: CGFloat = oldOrientation.isLandscape != newOrientation.isLandscape
-            ? (landscape == .landscapeLeft ? 1 : -1) * (oldOrientation.isLandscape ? 1 : -1) * .pi / 2 : 0
+            ? (landscape == .landscapeLeft ? -1 : 1) * (oldOrientation.isLandscape ? 1 : -1) * .pi / 2 : 0
         let position = CABasicAnimation(keyPath: "position")
         position.fromValue = NSValue(cgPoint: start)
         position.toValue = NSValue(cgPoint: card.layer.position)

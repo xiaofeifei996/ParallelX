@@ -60,6 +60,7 @@ rotation_motion = panel.split('static func rotation(_ card: UIView', 1)[1].split
 assert 'UIAccessibility.isReduceMotionEnabled' in rotation_motion and 'animation.duration = 0.32 / speed' in rotation_motion
 assert 'card.layer.add(animation, forKey: "pxScreenRotation")' in rotation_motion
 assert 'oldOrientation.isLandscape != newOrientation.isLandscape' in rotation_motion
+assert '(landscape == .landscapeLeft ? -1 : 1) * (oldOrientation.isLandscape ? 1 : -1)' in rotation_motion
 assert 'CATransform3DRotate(' in rotation_motion and 'sqrt(frame.width * frame.height /' in rotation_motion
 assert 'oldOrientation: oldOrientation, newOrientation: orientation' in screen_geometry
 for old_size, new_size, old_center in (((390, 844), (844, 390), (300, 422)),
