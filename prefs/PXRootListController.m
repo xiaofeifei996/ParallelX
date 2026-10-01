@@ -1,10 +1,7 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSViewController.h>
-#import <UIKit/UIKit.h>
 #import <math.h>
-
-#pragma mark - PXPageHostController
 
 @interface PXPageHostController : PSViewController
 
@@ -16,13 +13,21 @@
 
 - (instancetype)initForContentSize:(CGSize)contentSize
 {
-    self = [super initForContentSize:contentSize];
+    /*
+     * IMPORTANT:
+     * Preferences creates detail controllers through
+     * initForContentSize:.
+     *
+     * Do not use initWithNibName: here.
+     */
+    return [super initForContentSize:contentSize];
+}
 
-    if (self) {
-        self.preferredContentSize = contentSize;
-    }
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
 
-    return self;
+    [self installContentIfReady];
 }
 
 - (void)setSpecifier:(PSSpecifier *)specifier
@@ -32,13 +37,6 @@
     if (self.isViewLoaded) {
         [self installContentIfReady];
     }
-}
-
-- (void)viewDidLoad
-{
-    [super viewDidLoad];
-
-    [self installContentIfReady];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -51,7 +49,6 @@
 - (void)viewWillBecomeVisible:(PSSpecifier *)specifier
 {
     [self setSpecifier:specifier];
-    [self installContentIfReady];
 }
 
 - (void)installContentIfReady
@@ -73,7 +70,7 @@
         return;
     }
 
-    NSDictionary<NSString *, NSString *> *pages = @{
+    NSDictionary *pages = @{
         @"picker": @"PXAppPickerController",
         @"launcher": @"PXLauncherController",
         @"radius": @"PXCornerRadiusController",
@@ -96,7 +93,7 @@
         return;
     }
 
-    if (![pageClass isSubclassOfClass:[UIViewController class]]) {
+    if (![pageClass isSubclassOfClass:UIViewController.class]) {
         NSLog(@"[ParallelX] Invalid page class: %@", className);
         return;
     }
@@ -105,7 +102,6 @@
         [[pageClass alloc] init];
 
     if (page == nil) {
-        NSLog(@"[ParallelX] Failed to create page: %@", className);
         return;
     }
 
@@ -113,55 +109,31 @@
 
     [self addChildViewController:page];
 
-    UIView *pageView = page.view;
+    page.view.frame = self.view.bounds;
 
-    if (pageView == nil) {
-        [page didMoveToParentViewController:self];
-        return;
-    }
+    page.view.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
 
-    pageView.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [self.view addSubview:pageView];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [pageView.leadingAnchor
-            constraintEqualToAnchor:self.view.leadingAnchor],
-
-        [pageView.trailingAnchor
-            constraintEqualToAnchor:self.view.trailingAnchor],
-
-        [pageView.topAnchor
-            constraintEqualToAnchor:self.view.topAnchor],
-
-        [pageView.bottomAnchor
-            constraintEqualToAnchor:self.view.bottomAnchor]
-    ]];
+    [self.view addSubview:page.view];
 
     [page didMoveToParentViewController:self];
 
-    NSString *pageTitle = page.title;
+    self.title =
+        page.title.length > 0
+            ? page.title
+            : specifier.name;
 
-    if (pageTitle.length > 0) {
-        self.title = pageTitle;
-    }
-    else if (specifier.name.length > 0) {
-        self.title = specifier.name;
-    }
-
-    if (page.navigationItem.rightBarButtonItem != nil) {
-        self.navigationItem.rightBarButtonItem =
-            page.navigationItem.rightBarButtonItem;
-    }
+    self.navigationItem.rightBarButtonItem =
+        page.navigationItem.rightBarButtonItem;
 
     if (@available(iOS 11.0, *)) {
-        if (page.navigationItem.searchController != nil) {
-            self.navigationItem.searchController =
-                page.navigationItem.searchController;
 
-            self.navigationItem.hidesSearchBarWhenScrolling =
-                page.navigationItem.hidesSearchBarWhenScrolling;
-        }
+        self.navigationItem.searchController =
+            page.navigationItem.searchController;
+
+        self.navigationItem.hidesSearchBarWhenScrolling =
+            page.navigationItem.hidesSearchBarWhenScrolling;
     }
 }
 
@@ -172,8 +144,6 @@
 
 @end
 
-
-#pragma mark - PXSettingsListController
 
 @interface PXSettingsListController : PSListController
 
@@ -190,35 +160,32 @@
 
 - (NSArray *)specifiers
 {
-    if (_specifiers == nil) {
+    if (!_specifiers) {
 
         NSString *page =
             [self.specifier propertyForKey:@"id"];
 
-        NSDictionary<NSString *, NSString *> *pages = @{
+        NSDictionary *pages = @{
             @"window": @"Window",
             @"keyboard": @"Keyboard",
             @"external": @"External",
             @"system": @"System"
         };
 
-        NSString *plistName = pages[page];
+        NSString *plistName =
+            pages[page ?: @""];
 
         if (plistName.length > 0) {
-            _specifiers =
-                [self loadSpecifiersFromPlistName:plistName
-                                           target:self];
-        }
 
-        if (_specifiers == nil) {
-            _specifiers = [NSMutableArray array];
+            _specifiers =
+                [self loadSpecifiersFromPlistName:
+                    plistName
+                    target:self];
         }
     }
 
     return _specifiers;
 }
-
-#pragma mark - Custom Slider Cells
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
          cellForRowAtIndexPath:(NSIndexPath *)indexPath
@@ -226,55 +193,46 @@
     PSSpecifier *specifier =
         [self specifierAtIndexPath:indexPath];
 
-    NSString *key =
-        [specifier propertyForKey:@"key"];
+    BOOL horizontal =
+        [[specifier propertyForKey:@"key"]
+            isEqual:@"externalKeyboardHorizontalPercent"];
 
-    BOOL isHorizontal =
-        [key isEqualToString:
-            @"externalKeyboardHorizontalPercent"];
+    BOOL focus =
+        [[specifier propertyForKey:@"key"]
+            isEqual:@"internalKeyboardZoomPercent"];
 
-    BOOL isZoom =
-        [key isEqualToString:
-            @"internalKeyboardZoomPercent"];
+    BOOL dim =
+        [[specifier propertyForKey:@"key"]
+            isEqual:@"keyboardDimOpacity"];
 
-    BOOL isDim =
-        [key isEqualToString:
-            @"keyboardDimOpacity"];
+    if (horizontal || focus || dim) {
 
-    if (isHorizontal || isZoom || isDim) {
+        NSString *title;
 
-        NSString *title = nil;
+        int minimum;
+        int maximum;
 
-        int minimum = 0;
-        int maximum = 0;
+        CGFloat multiplier;
 
-        CGFloat multiplier = 1.0;
-
-        if (isZoom) {
+        if (focus) {
 
             title = @"内置键盘放大倍数";
-
             minimum = 100;
             maximum = 200;
-
             multiplier = 1.0;
-        }
-        else if (isHorizontal) {
+
+        } else if (horizontal) {
 
             title = @"横屏外置键盘位置";
-
             minimum = 0;
             maximum = 100;
-
             multiplier = 1.0;
-        }
-        else {
+
+        } else {
 
             title = @"键盘关闭遮罩深度";
-
             minimum = 0;
             maximum = 60;
-
             multiplier = 100.0;
         }
 
@@ -306,18 +264,17 @@
         slider.minimumValue = minimum;
         slider.maximumValue = maximum;
 
-        NSNumber *storedValue =
+        NSNumber *preference =
             [self readPreferenceValue:specifier];
 
-        CGFloat value =
-            storedValue != nil
-                ? storedValue.floatValue * multiplier
+        slider.value =
+            preference != nil
+                ? preference.floatValue * multiplier
                 : minimum;
 
-        value =
-            MAX(minimum, MIN(maximum, value));
-
-        slider.value = value;
+        slider.value =
+            MAX(minimum,
+                MIN(maximum, slider.value));
 
         label.text =
             [NSString stringWithFormat:
@@ -333,11 +290,9 @@
 
         if (@available(iOS 13.0, *)) {
 
-            UIImage *image =
-                [UIImage systemImageNamed:@"keyboard"];
-
-            [button setImage:image
-                   forState:UIControlStateNormal];
+            [button setImage:
+                [UIImage systemImageNamed:@"keyboard"]
+                forState:UIControlStateNormal];
         }
 
         button.accessibilityLabel =
@@ -365,15 +320,13 @@
             __strong typeof(weakSelf) strongSelf =
                 weakSelf;
 
-            if (strongSelf == nil) {
+            if (!strongSelf) {
                 return;
             }
 
-            CGFloat saveValue =
-                control.value / multiplier;
-
             [strongSelf
-                setPreferenceValue:@(saveValue)
+                setPreferenceValue:
+                    @(control.value / multiplier)
                 specifier:specifier];
 
         }]
@@ -390,7 +343,7 @@
             __strong UISlider *strongSlider =
                 weakSlider;
 
-            if (strongSlider == nil) {
+            if (!strongSlider) {
                 return;
             }
 
@@ -422,22 +375,17 @@
                 addAction:
                     [UIAlertAction
                         actionWithTitle:@"取消"
-                        style:
-                            UIAlertActionStyleCancel
+                        style:UIAlertActionStyleCancel
                         handler:nil]];
 
             __weak UIAlertController *weakAlert =
                 alert;
 
-            __weak typeof(weakSelf) weakController =
-                weakSelf;
-
             [alert
                 addAction:
                     [UIAlertAction
                         actionWithTitle:@"确定"
-                        style:
-                            UIAlertActionStyleDefault
+                        style:UIAlertActionStyleDefault
                         handler:
                             ^(UIAlertAction *action) {
 
@@ -447,12 +395,7 @@
                 __strong UISlider *slider =
                     weakSlider;
 
-                __strong typeof(weakController) controller =
-                    weakController;
-
-                if (strongAlert == nil ||
-                    slider == nil ||
-                    controller == nil) {
+                if (!strongAlert || !slider) {
                     return;
                 }
 
@@ -460,31 +403,25 @@
                     strongAlert.textFields
                         .firstObject.text;
 
-                if (text.length == 0) {
-                    return;
-                }
-
                 NSScanner *scanner =
-                    [NSScanner scannerWithString:text];
+                    [NSScanner scannerWithString:
+                        text ?: @""];
 
-                int inputValue = 0;
+                int value = 0;
 
-                BOOL valid =
-                    [scanner scanInt:&inputValue] &&
-                    scanner.isAtEnd &&
-                    inputValue >= minimum &&
-                    inputValue <= maximum;
+                if (![scanner scanInt:&value] ||
+                    !scanner.isAtEnd ||
+                    value < minimum ||
+                    value > maximum) {
 
-                if (!valid) {
                     return;
                 }
 
-                slider.value = inputValue;
+                slider.value = value;
 
                 [slider
                     sendActionsForControlEvents:
                         UIControlEventValueChanged];
-
             }]];
 
             [weakSelf
@@ -501,21 +438,20 @@
         [cell.contentView addSubview:button];
 
         [NSLayoutConstraint activateConstraints:@[
-
             [label.leadingAnchor
                 constraintEqualToAnchor:
                     cell.contentView.leadingAnchor
-                    constant:16.0],
+                    constant:16],
 
             [label.trailingAnchor
                 constraintEqualToAnchor:
                     cell.contentView.trailingAnchor
-                    constant:-16.0],
+                    constant:-16],
 
             [label.topAnchor
                 constraintEqualToAnchor:
                     cell.contentView.topAnchor
-                    constant:10.0],
+                    constant:10],
 
             [slider.leadingAnchor
                 constraintEqualToAnchor:
@@ -524,27 +460,27 @@
             [slider.topAnchor
                 constraintEqualToAnchor:
                     label.bottomAnchor
-                    constant:5.0],
+                    constant:5],
 
             [slider.trailingAnchor
                 constraintEqualToAnchor:
                     button.leadingAnchor
-                    constant:-10.0],
+                    constant:-10],
 
             [button.trailingAnchor
                 constraintEqualToAnchor:
                     cell.contentView.trailingAnchor
-                    constant:-16.0],
+                    constant:-16],
 
             [button.centerYAnchor
                 constraintEqualToAnchor:
                     slider.centerYAnchor],
 
             [button.widthAnchor
-                constraintEqualToConstant:38.0],
+                constraintEqualToConstant:38],
 
             [button.heightAnchor
-                constraintEqualToConstant:38.0]
+                constraintEqualToConstant:38]
         ]];
 
         return cell;
@@ -567,24 +503,18 @@
     return cell;
 }
 
-#pragma mark - Row Height
-
 - (CGFloat)tableView:(UITableView *)tableView
 heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    PSSpecifier *specifier =
-        [self specifierAtIndexPath:indexPath];
-
     NSString *key =
-        [specifier propertyForKey:@"key"];
+        [[self specifierAtIndexPath:indexPath]
+            propertyForKey:@"key"];
 
-    if ([key isEqualToString:@"keyboardDimOpacity"] ||
-        [key isEqualToString:
-            @"externalKeyboardHorizontalPercent"] ||
-        [key isEqualToString:
-            @"internalKeyboardZoomPercent"]) {
+    if ([key isEqual:@"keyboardDimOpacity"] ||
+        [key isEqual:@"externalKeyboardHorizontalPercent"] ||
+        [key isEqual:@"internalKeyboardZoomPercent"]) {
 
-        return 82.0;
+        return 82;
     }
 
     return
@@ -594,8 +524,6 @@ heightForRowAtIndexPath:(NSIndexPath *)indexPath
 
 @end
 
-
-#pragma mark - PXRootListController
 
 @interface PXRootListController : PXSettingsListController
 
