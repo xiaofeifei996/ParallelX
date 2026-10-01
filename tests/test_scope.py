@@ -482,7 +482,15 @@ assert 'if indexPath.section == 2 { return .insert }' in picker
 assert 'if editingStyle == .insert { addItem(at: indexPath); return }' in picker
 assert 'table.allowsSelectionDuringEditing = true' in picker
 assert 'table.setEditing(true, animated: false)' in picker and 'editButtonItem' not in picker
-assert 'table.rowHeight = 64' in picker and 'table.separatorColor = .quaternaryLabel' in picker
+assert 'table.rowHeight = 58' in picker and 'table.separatorColor = .quaternaryLabel' in picker
+assert 'style: .insetGrouped' in picker and 'viewForHeaderInSection section: Int' in picker
+assert '.filter { $0.id.hasPrefix("px.add.") || !selected.contains($0.id) }' in picker
+assert 'indexPath.section == 1 ? addableShortcuts[indexPath.row] : available[indexPath.row]' in picker
+assert 'cell.textLabel?.font = .systemFont(ofSize: 14, weight: .regular)' in picker
+candidate_ids = ['px.action.dark', 'px.action.search', 'px.add.workflow', 'px.add.quick', 'px.url.saved']
+selected_ids = {'px.action.dark', 'px.url.saved'}
+assert [item for item in candidate_ids if item.startswith('px.add.') or item not in selected_ids] == [
+    'px.action.search', 'px.add.workflow', 'px.add.quick']
 assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destinationIndexPath.row)' in picker
 assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
 assert 'px.action.window' in picker

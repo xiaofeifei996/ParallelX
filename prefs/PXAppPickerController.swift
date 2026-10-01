@@ -3,7 +3,7 @@ import UIKit
 @objc(PXAppPickerController)
 public final class PXAppPickerController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
     private let domain = "com.moxuan.parallelx"
-    private let table = UITableView(frame: .zero, style: .plain)
+    private let table = UITableView(frame: .zero, style: .insetGrouped)
     private let search = UISearchController(searchResultsController: nil)
     private var apps: [(id: String, name: String)] = []
     private var selected: [String] = []
@@ -15,6 +15,10 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
             guard let id = $0["id"] as? String, let title = $0["title"] as? String else { return nil }
             return (id, title)
         }
+    }
+    private var addableShortcuts: [(id: String, name: String)] {
+        (shortcuts.map { (id: $0.id, name: $0.name) } + extraItems)
+            .filter { $0.id.hasPrefix("px.add.") || !selected.contains($0.id) }
     }
     private var symbols: [String: String] = [:]
     private var icons: [String: UIImage] = [:]
@@ -51,10 +55,10 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         table.backgroundColor = .systemGroupedBackground
         table.dataSource = self
         table.delegate = self
-        table.rowHeight = 64
-        table.sectionHeaderHeight = 40
+        table.rowHeight = 58
+        table.sectionHeaderHeight = 44
         table.separatorColor = .quaternaryLabel
-        table.separatorInset = UIEdgeInsets(top: 0, left: 82, bottom: 0, right: 16)
+        table.separatorInset = UIEdgeInsets(top: 0, left: 72, bottom: 0, right: 16)
         table.allowsSelectionDuringEditing = true
         view.addSubview(table)
         table.setEditing(true, animated: false)
@@ -91,37 +95,37 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
 
     public func numberOfSections(in tableView: UITableView) -> Int { 3 }
 
-    public func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+    private func headerTitle(for section: Int) -> String? {
         if search.searchBar.text?.isEmpty == false && section < 2 { return nil }
         return section == 0 ? "已添加 · 拖动右侧排序" :
             section == 1 ? "快捷操作 · 长按可自定义图标与选项" : "可添加应用"
     }
 
-    public func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
-        guard let header = view as? UITableViewHeaderFooterView else { return }
-        header.textLabel?.font = .systemFont(ofSize: 12, weight: .semibold)
-        header.textLabel?.textColor = .secondaryLabel
-        header.contentView.backgroundColor = .systemGroupedBackground
+    public func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard let title = headerTitle(for: section) else { return nil }
+        let header = UIView()
+        let label = UILabel(frame: CGRect(x: 32, y: 12, width: tableView.bounds.width - 64, height: 24))
+        label.autoresizingMask = [.flexibleWidth]
+        label.text = title
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .secondaryLabel
+        header.addSubview(label)
+        return header
     }
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if search.searchBar.text?.isEmpty == false && section < 2 { return 0 }
-        return section == 0 ? selected.count : section == 1 ? shortcuts.count + extraItems.count + (urls.count < 10 ? 1 : 0) : available.count
+        return section == 0 ? selected.count : section == 1 ? addableShortcuts.count + (urls.count < 10 ? 1 : 0) : available.count
     }
 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "app") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "app")
-        let urlStart = shortcuts.count
-        let isAddURL = indexPath.section == 1 && indexPath.row == urlStart + extraItems.count
+        let isAddURL = indexPath.section == 1 && indexPath.row == addableShortcuts.count
         let app = isAddURL ? (id: "", name: "添加 URL · 最多 10 个") : indexPath.section == 0
             ? apps.first(where: { $0.id == selected[indexPath.row] }) ??
                 shortcuts.first(where: { $0.id == selected[indexPath.row] }).map { (id: $0.id, name: $0.name) } ??
                 extraItems.first(where: { $0.id == selected[indexPath.row] }) ?? (id: selected[indexPath.row], name: selected[indexPath.row])
-            : indexPath.section == 1
-                ? indexPath.row < urlStart
-                    ? (id: shortcuts[indexPath.row].id, name: shortcuts[indexPath.row].name)
-                    : extraItems[indexPath.row - urlStart]
-                : available[indexPath.row]
+            : indexPath.section == 1 ? addableShortcuts[indexPath.row] : available[indexPath.row]
         if !app.id.hasPrefix("px.") {
             cell.textLabel?.text = app.name + "（长按全屏）"
         } else if customActions.contains(where: { $0["id"] as? String == app.id && $0["kind"] as? String == "group" }) {
@@ -131,17 +135,17 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         if let entry = customActions.first(where: { $0["id"] as? String == app.id }) {
             cell.detailTextLabel?.text = entry["kind"] as? String == "group" ? "长按展开集合，滑动选择，松手运行" : "松手运行"
         }
-        cell.textLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        cell.textLabel?.font = .systemFont(ofSize: 14, weight: .regular)
         cell.textLabel?.textColor = .label
         cell.textLabel?.adjustsFontSizeToFitWidth = true
-        cell.textLabel?.minimumScaleFactor = 0.8
+        cell.textLabel?.minimumScaleFactor = 0.85
         cell.detailTextLabel?.font = .systemFont(ofSize: 11)
         cell.detailTextLabel?.textColor = .secondaryLabel
         cell.detailTextLabel?.lineBreakMode = .byTruncatingMiddle
         let fallback = shortcuts.first(where: { $0.id == app.id })?.symbol ?? (isAddURL ? "plus.circle" : app.id.hasPrefix("px.custom.") ? "square.stack.3d.up" : "link")
         if app.id.hasPrefix("px.") || isAddURL {
             cell.imageView?.image = (UIImage(systemName: symbols[app.id] ?? fallback) ?? UIImage(systemName: fallback))?
-                .applyingSymbolConfiguration(.init(pointSize: 24))
+                .applyingSymbolConfiguration(.init(pointSize: 22))
         } else if let cached = icons[app.id] { cell.imageView?.image = cached }
         else {
             if let rawIcon = PXApplicationIcon(app.id) {
@@ -170,9 +174,8 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
     private func addItem(at indexPath: IndexPath) {
         if indexPath.section == 0 { return }
         else if indexPath.section == 1 {
-            if indexPath.row == shortcuts.count + extraItems.count { addOrEditURL(at: nil); return }
-            let id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
-                extraItems[indexPath.row - shortcuts.count].id
+            if indexPath.row == addableShortcuts.count { addOrEditURL(at: nil); return }
+            let id = addableShortcuts[indexPath.row].id
             if id == "px.add.workflow" { chooseWorkflowMode(); return }
             if id == "px.add.quick" { configureActions(kind: "apps"); return }
             guard !selected.contains(id) else { return }
@@ -233,9 +236,8 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                           point: CGPoint) -> UIContextMenuConfiguration? {
         let id: String
         if indexPath.section == 0 { id = selected[indexPath.row] }
-        else if indexPath.section == 1 && indexPath.row < shortcuts.count + extraItems.count {
-            id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
-                extraItems[indexPath.row - shortcuts.count].id
+        else if indexPath.section == 1 && indexPath.row < addableShortcuts.count {
+            id = addableShortcuts[indexPath.row].id
         } else { return nil }
         guard id.hasPrefix("px."), !id.hasPrefix("px.add.") else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
@@ -345,10 +347,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                           editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
         if indexPath.section == 0 { return .delete }
         if indexPath.section == 2 { return .insert }
-        if indexPath.row == shortcuts.count + extraItems.count { return .insert }
-        let id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
-            extraItems[indexPath.row - shortcuts.count].id
-        return selected.contains(id) ? .none : .insert
+        return .insert
     }
 
     public func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle,
