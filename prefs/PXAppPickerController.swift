@@ -3,7 +3,7 @@ import UIKit
 @objc(PXAppPickerController)
 public final class PXAppPickerController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating {
     private let domain = "com.moxuan.parallelx"
-    private let table = UITableView(frame: .zero, style: .insetGrouped)
+    private let table = UITableView(frame: .zero, style: .plain)
     private let search = UISearchController(searchResultsController: nil)
     private var apps: [(id: String, name: String)] = []
     private var selected: [String] = []
@@ -48,10 +48,11 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         refreshAvailable()
         table.frame = view.bounds
         table.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        table.backgroundColor = .systemGroupedBackground
         table.dataSource = self
         table.delegate = self
         table.rowHeight = 56
-        table.allowsSelectionDuringEditing = false
+        table.allowsSelectionDuringEditing = true
         view.addSubview(table)
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
@@ -142,13 +143,20 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
             } else { cell.imageView?.image = nil }
         }
         cell.imageView?.tintColor = .label
-        cell.accessoryType = selected.contains(app.id) ? .checkmark : .none
+        cell.backgroundColor = .clear
+        cell.selectionStyle = .none
+        cell.accessoryType = .none
         if app.id.hasPrefix("px.add.") { cell.accessoryType = .disclosureIndicator }
         cell.showsReorderControl = indexPath.section == 0
         return cell
     }
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
+        addItem(at: indexPath)
+    }
+
+    private func addItem(at indexPath: IndexPath) {
         if indexPath.section == 0 { return }
         else if indexPath.section == 1 {
             if indexPath.row == shortcuts.count + extraItems.count { addOrEditURL(at: nil); return }
@@ -161,7 +169,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         } else { selected.append(available[indexPath.row].id) }
         refreshAvailable()
         saveSelection()
-        tableView.reloadData()
+        table.reloadData()
     }
 
     private func prompt(_ title: String, value: String, help: String,
@@ -324,11 +332,17 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
 
     public func tableView(_ tableView: UITableView,
                           editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
-        indexPath.section == 0 ? .delete : .none
+        if indexPath.section == 0 { return .delete }
+        if indexPath.section == 2 { return .insert }
+        if indexPath.row == shortcuts.count + extraItems.count { return .insert }
+        let id = indexPath.row < shortcuts.count ? shortcuts[indexPath.row].id :
+            extraItems[indexPath.row - shortcuts.count].id
+        return selected.contains(id) ? .none : .insert
     }
 
     public func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle,
                           forRowAt indexPath: IndexPath) {
+        if editingStyle == .insert { addItem(at: indexPath); return }
         guard editingStyle == .delete, indexPath.section == 0 else { return }
         selected.remove(at: indexPath.row)
         refreshAvailable()

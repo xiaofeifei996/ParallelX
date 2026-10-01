@@ -11,8 +11,8 @@ public final class PXLauncherController: UIViewController {
                           "第四环应用数", "环间距", "手柄滑动距离", "面板距右边缘", "长按全屏时长",
                           "手柄宽度", "手柄高度", "全局动画速度"]
     private let initial = [52, 3, 5, 7, 9, 10, 120, 6, 700, 24, 86, 100]
-    private let limits: [(Float, Float)] = [(36, 72), (1, 30), (1, 30),
-                                            (1, 30), (1, 30), (0, 60), (10, 240), (0, 120),
+    private let limits: [(Float, Float)] = [(36, 72), (0, 30), (0, 30),
+                                            (0, 30), (0, 30), (0, 60), (10, 240), (0, 120),
                                             (300, 2000), (12, 52), (44, 160), (10, 150)]
     private let labels = (0..<12).map { _ in UILabel() }
     private let sliders = (0..<12).map { _ in UISlider() }
@@ -64,7 +64,7 @@ public final class PXLauncherController: UIViewController {
             scroll.addSubview(button)
             updateLabel(index)
         }
-        hint.text = "长按环容量文字可输入数量。滑到图标后松手打开分屏；保持选中至设定时长再松手打开全屏。换图标会重新计时。空白处松手收回。"
+        hint.text = "环数设为 0 会关闭当前及后续环。长按环容量文字可输入数量。滑到图标后松手打开分屏；保持选中至设定时长再松手打开全屏。换图标会重新计时。空白处松手收回。"
         hint.textColor = .secondaryLabel
         hint.font = .preferredFont(forTextStyle: .footnote)
         hint.numberOfLines = 0

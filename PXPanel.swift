@@ -213,9 +213,9 @@ private final class PXPanelViewController: UIViewController {
         min(60, max(0, CGFloat(defaults?.object(forKey: "launcherRingGap") as? Int ?? 10)))
     }
     private var ringCounts: [Int] {
-        [3, 5, 7, 9].enumerated().map { index, fallback in
-            min(max(1, apps.count), max(1, defaults?.object(forKey: "launcherRing\(index + 1)") as? Int ?? fallback))
-        }
+        Array([3, 5, 7, 9].enumerated().map { index, fallback in
+            min(max(1, apps.count), max(0, defaults?.object(forKey: "launcherRing\(index + 1)") as? Int ?? fallback))
+        }.prefix(while: { $0 > 0 }))
     }
 
     override func viewDidLoad() {
@@ -343,7 +343,7 @@ private final class PXPanelViewController: UIViewController {
             previousRadius = radius
         }
         pageCapacity = max(1, rings.reduce(0) { $0 + $1.count })
-        pageControl.numberOfPages = max(1, (apps.count + pageCapacity - 1) / pageCapacity)
+        pageControl.numberOfPages = rings.isEmpty ? 1 : max(1, (apps.count + pageCapacity - 1) / pageCapacity)
         page = min(page, pageControl.numberOfPages - 1)
         pageControl.currentPage = page
         var appIndex = page * pageCapacity

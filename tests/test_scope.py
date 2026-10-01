@@ -466,10 +466,21 @@ assert 'title = "手势区域"' in gesture and '顶部触发区域' in gesture a
 assert "PXGestureAreaController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 launcher = (root / "prefs" / "PXLauncherController.swift").read_text(encoding="utf-8")
 assert all(key in launcher for key in ("launcherIconSize", "launcherRing1", "launcherRing4"))
+assert launcher.count('(0, 30)') == 4 and '环数设为 0 会关闭当前及后续环' in launcher
+assert '}.prefix(while: { $0 > 0 }))' in panel
+assert 'rings.isEmpty ? 1' in panel
+for configured, expected in (([0, 5, 7, 9], []), ([3, 0, 7, 9], [3]),
+                             ([3, 5, 0, 9], [3, 5]), ([3, 5, 7, 0], [3, 5, 7])):
+    assert configured[:next((i for i, count in enumerate(configured) if count == 0), 4)] == expected
 assert 'launcherRingGap' in launcher and '"环间距"' in launcher
 assert all(key in launcher for key in ("launcherEdgeInset", "launcherHoldMilliseconds", "handleWidth", "handleHeight"))
 assert "PXLauncherController.swift" in (root / "prefs" / "Makefile").read_text(encoding="utf-8")
 picker = (root / "prefs" / "PXAppPickerController.swift").read_text(encoding="utf-8")
+assert 'cell.selectionStyle = .none' in picker and 'cell.accessoryType = .none' in picker
+assert 'if indexPath.section == 0 { return .delete }' in picker
+assert 'if indexPath.section == 2 { return .insert }' in picker
+assert 'if editingStyle == .insert { addItem(at: indexPath); return }' in picker
+assert 'table.allowsSelectionDuringEditing = true' in picker
 assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destinationIndexPath.row)' in picker
 assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
 assert 'px.action.window' in picker
@@ -600,7 +611,7 @@ app_picker = (root / 'prefs' / 'PXAppPickerController.swift').read_text(encoding
 action_picker = (root / 'prefs' / 'PXActionPickerController.swift').read_text(encoding='utf-8')
 catalog = (root / 'PXAppCatalog.m').read_text(encoding='utf-8')
 assert 'if indexPath.section == 0 { return }' in app_picker
-assert 'indexPath.section == 0 ? .delete : .none' in app_picker
+assert 'if indexPath.section == 0 { return .delete }' in app_picker
 assert 'commit editingStyle: UITableViewCell.EditingStyle' in app_picker
 assert 'PXApplicationHasActions(id)' in action_picker
 assert 'PXStaticActions(bundleID).count' in catalog
