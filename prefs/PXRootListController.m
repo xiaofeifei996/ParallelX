@@ -4,142 +4,9 @@
 #import <Preferences/PSViewController.h>
 #import <math.h>
 
-#pragma mark - PXPageHostController
-
-@interface PXPageHostController : PSViewController
-
-@property(nonatomic, strong) UIViewController *contentController;
-
-@end
-
-@implementation PXPageHostController
-
-- (instancetype)initForContentSize:(CGSize)contentSize
-{
-    self = [super initForContentSize:contentSize];
-    return self;
-}
-
-- (void)viewDidLoad
-{
-    [super viewDidLoad];
-
-    [self installContentIfReady];
-}
-
-- (void)setSpecifier:(PSSpecifier *)specifier
-{
-    [super setSpecifier:specifier];
-
-    if (self.isViewLoaded) {
-        [self installContentIfReady];
-    }
-}
-
-- (void)viewWillAppear:(BOOL)animated
-{
-    [super viewWillAppear:animated];
-
-    [self installContentIfReady];
-}
-
-- (void)installContentIfReady
-{
-    if (self.contentController != nil) {
-        return;
-    }
-
-    PSSpecifier *specifier = self.specifier;
-
-    if (specifier == nil) {
-        return;
-    }
-
-    NSString *identifier = [specifier propertyForKey:@"id"];
-
-    NSDictionary<NSString *, NSString *> *pages = @{
-        @"picker"      : @"PXAppPickerController",
-        @"launcher"    : @"PXLauncherController",
-        @"radius"      : @"PXCornerRadiusController",
-        @"dock"        : @"PXDockController",
-        @"gestures"    : @"PXGestureAreaController",
-        @"urlBlacklist": @"PXExternalBlacklistController",
-        @"backup"      : @"PXBackupController"
-    };
-
-    NSString *className = pages[identifier];
-
-    if (className.length == 0) {
-        return;
-    }
-
-    Class pageClass = NSClassFromString(className);
-
-    if (pageClass == Nil) {
-        NSLog(@"[ParallelX] Page class not found: %@", className);
-        return;
-    }
-
-    if (![pageClass isSubclassOfClass:[UIViewController class]]) {
-        NSLog(@"[ParallelX] Page class is not UIViewController: %@", className);
-        return;
-    }
-
-    UIViewController *page = [[pageClass alloc] init];
-
-    if (page == nil) {
-        return;
-    }
-
-    self.contentController = page;
-
-    [self addChildViewController:page];
-
-    page.view.frame = self.view.bounds;
-    page.view.autoresizingMask =
-        UIViewAutoresizingFlexibleWidth |
-        UIViewAutoresizingFlexibleHeight;
-
-    [self.view addSubview:page.view];
-
-    [page didMoveToParentViewController:self];
-
-    NSString *pageTitle = page.title;
-
-    if (pageTitle.length > 0) {
-        self.title = pageTitle;
-    } else if (specifier.name.length > 0) {
-        self.title = specifier.name;
-    }
-
-    if (page.navigationItem.rightBarButtonItem != nil) {
-        self.navigationItem.rightBarButtonItem =
-            page.navigationItem.rightBarButtonItem;
-    }
-
-    if (@available(iOS 11.0, *)) {
-        if (page.navigationItem.searchController != nil) {
-            self.navigationItem.searchController =
-                page.navigationItem.searchController;
-
-            self.navigationItem.hidesSearchBarWhenScrolling =
-                page.navigationItem.hidesSearchBarWhenScrolling;
-        }
-    }
-}
-
-- (BOOL)canBeShownFromSuspendedState
-{
-    return YES;
-}
-
-@end
-
-
 #pragma mark - PXSettingsListController
 
 @interface PXSettingsListController : PSListController
-
 @end
 
 @implementation PXSettingsListController
@@ -148,11 +15,6 @@
 {
     [super setSpecifier:specifier];
 
-    /*
-     * The root controller and child settings pages use different
-     * plist files. Clear the cached specifiers after the specifier
-     * has been assigned so the correct plist can be loaded.
-     */
     _specifiers = nil;
 }
 
@@ -163,7 +25,7 @@
         NSString *page =
             [self.specifier propertyForKey:@"id"];
 
-        NSDictionary<NSString *, NSString *> *pages = @{
+        NSDictionary *pages = @{
             @"window"   : @"Window",
             @"keyboard" : @"Keyboard",
             @"external" : @"External",
@@ -173,13 +35,8 @@
         NSString *plistName = pages[page];
 
         /*
-         * IMPORTANT:
-         *
-         * PXRootListController does not have an "id" specifier.
-         * Therefore the root page MUST fall back to Root.plist.
-         *
-         * Without this fallback, Preferences shows a completely
-         * blank ParallelX page.
+         * Root controller has no id.
+         * Always load Root.plist for the main page.
          */
         if (plistName.length == 0) {
             plistName = @"Root";
@@ -214,18 +71,17 @@
     BOOL keyboardDim =
         [key isEqualToString:@"keyboardDimOpacity"];
 
-    /*
-     * Custom slider cells.
-     */
     if (horizontal || focus || keyboardDim) {
 
         NSString *title;
 
         if (focus) {
             title = @"内置键盘放大倍数";
-        } else if (horizontal) {
+        }
+        else if (horizontal) {
             title = @"横屏外置键盘位置";
-        } else {
+        }
+        else {
             title = @"键盘关闭遮罩深度";
         }
 
@@ -235,9 +91,11 @@
 
         if (focus) {
             maximum = 200;
-        } else if (horizontal) {
+        }
+        else if (horizontal) {
             maximum = 100;
-        } else {
+        }
+        else {
             maximum = 60;
         }
 
@@ -254,15 +112,17 @@
 
         if (@available(iOS 13.0, *)) {
             cell.backgroundColor =
-                [UIColor secondarySystemGroupedBackgroundColor];
+                UIColor.secondarySystemGroupedBackgroundColor;
         }
 
-        UILabel *label = [[UILabel alloc] init];
-
-        label.font =
-            [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        UILabel *label =
+            [[UILabel alloc] init];
 
         label.translatesAutoresizingMaskIntoConstraints = NO;
+
+        label.font =
+            [UIFont preferredFontForTextStyle:
+                UIFontTextStyleBody];
 
         UISlider *slider =
             [[UISlider alloc] init];
@@ -272,11 +132,11 @@
         slider.minimumValue = minimum;
         slider.maximumValue = maximum;
 
-        NSNumber *preferenceValue =
+        NSNumber *number =
             [self readPreferenceValue:specifier];
 
         CGFloat value =
-            [preferenceValue floatValue] * multiplier;
+            [number floatValue] * multiplier;
 
         if (value < minimum) {
             value = minimum;
@@ -289,12 +149,14 @@
         slider.value = value;
 
         label.text =
-            [NSString stringWithFormat:@"%@：%.0f%%",
-                                       title,
-                                       slider.value];
+            [NSString stringWithFormat:
+                @"%@：%.0f%%",
+                title,
+                slider.value];
 
         UIButton *button =
-            [UIButton buttonWithType:UIButtonTypeSystem];
+            [UIButton buttonWithType:
+                UIButtonTypeSystem];
 
         button.translatesAutoresizingMaskIntoConstraints = NO;
 
@@ -324,17 +186,19 @@
                 roundf(control.value);
 
             label.text =
-                [NSString stringWithFormat:@"%@：%.0f%%",
-                                           title,
-                                           control.value];
+                [NSString stringWithFormat:
+                    @"%@：%.0f%%",
+                    title,
+                    control.value];
 
             __strong typeof(weakSelf) strongSelf =
                 weakSelf;
 
             if (strongSelf != nil) {
 
-                [strongSelf setPreferenceValue:
-                    @(control.value / multiplier)
+                [strongSelf
+                    setPreferenceValue:
+                        @(control.value / multiplier)
                     specifier:specifier];
             }
 
@@ -363,7 +227,8 @@
                             @"输入 %d–%d（%%）",
                             minimum,
                             maximum]
-                    preferredStyle:UIAlertControllerStyleAlert];
+                    preferredStyle:
+                        UIAlertControllerStyleAlert];
 
             [alert addTextFieldWithConfigurationHandler:
                 ^(UITextField *field) {
@@ -375,7 +240,6 @@
                     weakSlider;
 
                 if (currentSlider != nil) {
-
                     field.text =
                         [NSString stringWithFormat:
                             @"%.0f",
@@ -412,7 +276,8 @@
                 }
 
                 NSString *text =
-                    strongAlert.textFields.firstObject.text;
+                    strongAlert.textFields
+                        .firstObject.text;
 
                 if (text.length == 0) {
                     return;
@@ -430,7 +295,6 @@
                     !scanner.isAtEnd ||
                     inputValue < minimum ||
                     inputValue > maximum) {
-
                     return;
                 }
 
@@ -440,6 +304,7 @@
                 [strongSlider
                     sendActionsForControlEvents:
                         UIControlEventValueChanged];
+
             }]];
 
 
@@ -504,14 +369,10 @@
                 constraintEqualToConstant:38.0]
         ]];
 
-
         return cell;
     }
 
 
-    /*
-     * Normal Preferences cells.
-     */
     UITableViewCell *cell =
         [super tableView:tableView
    cellForRowAtIndexPath:indexPath];
@@ -521,18 +382,15 @@
             NSClassFromString(@"PSLinkCell")]) {
 
         cell.textLabel.textColor =
-            [UIColor labelColor];
+            UIColor.labelColor;
 
         cell.accessoryType =
             UITableViewCellAccessoryDisclosureIndicator;
     }
 
-
     return cell;
 }
 
-
-#pragma mark - Cell Height
 
 - (CGFloat)tableView:(UITableView *)tableView
 heightForRowAtIndexPath:(NSIndexPath *)indexPath
@@ -543,14 +401,15 @@ heightForRowAtIndexPath:(NSIndexPath *)indexPath
     NSString *key =
         [specifier propertyForKey:@"key"];
 
-
-    if ([key isEqualToString:@"keyboardDimOpacity"] ||
-        [key isEqualToString:@"externalKeyboardHorizontalPercent"] ||
-        [key isEqualToString:@"internalKeyboardZoomPercent"]) {
+    if ([key isEqualToString:
+            @"keyboardDimOpacity"] ||
+        [key isEqualToString:
+            @"externalKeyboardHorizontalPercent"] ||
+        [key isEqualToString:
+            @"internalKeyboardZoomPercent"]) {
 
         return 82.0;
     }
-
 
     return
         [super tableView:tableView
@@ -560,12 +419,10 @@ heightForRowAtIndexPath:indexPath];
 @end
 
 
-#pragma mark - PXRootListController
+#pragma mark - Root Controller
 
 @interface PXRootListController : PXSettingsListController
-
 @end
 
 @implementation PXRootListController
-
 @end
