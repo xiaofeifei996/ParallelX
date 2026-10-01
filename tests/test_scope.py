@@ -481,6 +481,8 @@ assert 'if indexPath.section == 0 { return .delete }' in picker
 assert 'if indexPath.section == 2 { return .insert }' in picker
 assert 'if editingStyle == .insert { addItem(at: indexPath); return }' in picker
 assert 'table.allowsSelectionDuringEditing = true' in picker
+assert 'table.setEditing(true, animated: false)' in picker and 'editButtonItem' not in picker
+assert 'table.rowHeight = 64' in picker and 'table.separatorColor = .quaternaryLabel' in picker
 assert 'moveRowAt sourceIndexPath' in picker and 'selected.insert(id, at: destinationIndexPath.row)' in picker
 assert 'numberOfSections(in tableView: UITableView) -> Int { 3 }' in picker
 assert 'px.action.window' in picker

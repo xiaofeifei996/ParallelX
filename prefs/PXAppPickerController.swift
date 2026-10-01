@@ -51,15 +51,18 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         table.backgroundColor = .systemGroupedBackground
         table.dataSource = self
         table.delegate = self
-        table.rowHeight = 56
+        table.rowHeight = 64
+        table.sectionHeaderHeight = 40
+        table.separatorColor = .quaternaryLabel
+        table.separatorInset = UIEdgeInsets(top: 0, left: 82, bottom: 0, right: 16)
         table.allowsSelectionDuringEditing = true
         view.addSubview(table)
+        table.setEditing(true, animated: false)
         search.searchResultsUpdater = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = "搜索应用名称或标识"
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
-        navigationItem.rightBarButtonItem = editButtonItem
     }
 
     private func refreshAvailable() {
@@ -86,17 +89,19 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
                       forKey: "applicationNames")
     }
 
-    public override func setEditing(_ editing: Bool, animated: Bool) {
-        super.setEditing(editing, animated: animated)
-        table.setEditing(editing, animated: animated)
-    }
-
     public func numberOfSections(in tableView: UITableView) -> Int { 3 }
 
     public func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         if search.searchBar.text?.isEmpty == false && section < 2 { return nil }
-        return section == 0 ? "已添加 · 编辑可拖动排序" :
+        return section == 0 ? "已添加 · 拖动右侧排序" :
             section == 1 ? "快捷操作 · 长按可自定义图标与选项" : "可添加应用"
+    }
+
+    public func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
+        guard let header = view as? UITableViewHeaderFooterView else { return }
+        header.textLabel?.font = .systemFont(ofSize: 12, weight: .semibold)
+        header.textLabel?.textColor = .secondaryLabel
+        header.contentView.backgroundColor = .systemGroupedBackground
     }
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -126,7 +131,13 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
         if let entry = customActions.first(where: { $0["id"] as? String == app.id }) {
             cell.detailTextLabel?.text = entry["kind"] as? String == "group" ? "长按展开集合，滑动选择，松手运行" : "松手运行"
         }
+        cell.textLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        cell.textLabel?.textColor = .label
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.8
+        cell.detailTextLabel?.font = .systemFont(ofSize: 11)
         cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.lineBreakMode = .byTruncatingMiddle
         let fallback = shortcuts.first(where: { $0.id == app.id })?.symbol ?? (isAddURL ? "plus.circle" : app.id.hasPrefix("px.custom.") ? "square.stack.3d.up" : "link")
         if app.id.hasPrefix("px.") || isAddURL {
             cell.imageView?.image = (UIImage(systemName: symbols[app.id] ?? fallback) ?? UIImage(systemName: fallback))?
@@ -143,7 +154,7 @@ public final class PXAppPickerController: UIViewController, UITableViewDataSourc
             } else { cell.imageView?.image = nil }
         }
         cell.imageView?.tintColor = .label
-        cell.backgroundColor = .clear
+        cell.backgroundColor = .secondarySystemGroupedBackground
         cell.selectionStyle = .none
         cell.accessoryType = .none
         if app.id.hasPrefix("px.add.") { cell.accessoryType = .disclosureIndicator }
