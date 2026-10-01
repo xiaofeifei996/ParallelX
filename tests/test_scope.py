@@ -53,6 +53,16 @@ screen_geometry = panel.split('@objc private func screenGeometryChanged()', 1)[1
 assert 'if !fullscreenToWindowInProgress' not in screen_geometry
 assert 'UIView.performWithoutAnimation { matchHostAspect() }' in screen_geometry
 assert 'activeBridge.refreshHostedOrientationMap()' in screen_geometry
+assert 'let rotating = orientation != layoutOrientation && layoutOrientation != .unknown' in screen_geometry
+assert 'if rotating && !fullscreenToWindowInProgress {' in screen_geometry
+assert screen_geometry.index('layoutDocks(animated: false)') < screen_geometry.index('PXMotion.rotation(card, from: frame, in: oldBounds, to: screen)')
+rotation_motion = panel.split('static func rotation(_ card: UIView', 1)[1].split('\n}', 1)[0]
+assert 'UIAccessibility.isReduceMotionEnabled' in rotation_motion and 'animation.duration = 0.32 / speed' in rotation_motion
+assert 'card.layer.add(animation, forKey: "pxScreenRotation")' in rotation_motion
+for old_size, new_size, old_center in (((390, 844), (844, 390), (300, 422)),
+                                       ((844, 390), (390, 844), (60, 70))):
+    start = tuple(old_center[index] / old_size[index] * new_size[index] for index in (0, 1))
+    assert 0 <= start[0] <= new_size[0] and 0 <= start[1] <= new_size[1]
 assert 'self.originalOrientationMapResolver = PXCall(settings, @"interfaceOrientationMapResolver")' in bridge
 assert 'objc_msgSend)(mutable, resolver, self.originalOrientationMapResolver)' in bridge
 foreground = bridge.split('- (BOOL)foregroundScene:', 1)[1].split('- (void)keepHostedProcessAlive', 1)[0]

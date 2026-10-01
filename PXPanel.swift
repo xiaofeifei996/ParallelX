@@ -24,6 +24,25 @@ private enum PXMotion {
                        options: [.allowUserInteraction, .beginFromCurrentState],
                        animations: animations, completion: completion)
     }
+
+    static func rotation(_ card: UIView, from frame: CGRect, in oldBounds: CGRect, to newBounds: CGRect) {
+        guard !UIAccessibility.isReduceMotionEnabled, oldBounds.width > 0, oldBounds.height > 0,
+              frame.width > 0, card.frame.width > 0, card.window?.isHidden == false else { return }
+        let start = CGPoint(x: newBounds.minX + (frame.midX - oldBounds.minX) / oldBounds.width * newBounds.width,
+                            y: newBounds.minY + (frame.midY - oldBounds.minY) / oldBounds.height * newBounds.height)
+        let scale = min(1.4, max(0.7, frame.width / card.frame.width))
+        let position = CABasicAnimation(keyPath: "position")
+        position.fromValue = NSValue(cgPoint: start)
+        position.toValue = NSValue(cgPoint: card.layer.position)
+        let transform = CABasicAnimation(keyPath: "transform")
+        transform.fromValue = NSValue(caTransform3D: CATransform3DScale(card.layer.transform, scale, scale, 1))
+        transform.toValue = NSValue(caTransform3D: card.layer.transform)
+        let animation = CAAnimationGroup()
+        animation.animations = [position, transform]
+        animation.duration = 0.32 / speed
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        card.layer.add(animation, forKey: "pxScreenRotation")
+    }
 }
 private let shortcuts: [(id: String, name: String, symbol: String)] = [
     ("px.action.dark", "深色模式", "moon.fill"),
@@ -1247,6 +1266,9 @@ public final class PXPanelEntry: NSObject {
             ? CGSize(width: max(physical.width, physical.height), height: min(physical.width, physical.height))
             : CGSize(width: min(physical.width, physical.height), height: max(physical.width, physical.height))
         if expectedSize == layoutScreenBounds.size && orientation == layoutOrientation { return }
+        let oldBounds = layoutScreenBounds
+        let rotating = orientation != layoutOrientation && layoutOrientation != .unknown
+        let cards = ([hostCard].compactMap { $0 } + dockedHosts.map { $0.card }).map { ($0, $0.frame) }
         applyingScreenGeometry = true
         defer { applyingScreenGeometry = false }
         UIView.performWithoutAnimation {
@@ -1274,6 +1296,9 @@ public final class PXPanelEntry: NSObject {
         activeBridge.refreshKeyboardPlacement()
         layoutDocks(animated: false)
         refreshKeyboardDismissLayer()
+        if rotating && !fullscreenToWindowInProgress {
+            for (card, frame) in cards { PXMotion.rotation(card, from: frame, in: oldBounds, to: screen) }
+        }
     }
 
     @objc private func hostedGeometryChanged(_ notification: Notification) {
