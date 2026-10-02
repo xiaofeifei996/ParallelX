@@ -2832,7 +2832,33 @@ public final class PXPanelEntry: NSObject {
                 dockAfterOpenBundleID = nil
                 fullscreenAfterOpenBundleID = nil
             }
-            card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
+
+            let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+            var proposed = start.offsetBy(dx: translation.x, dy: translation.y)
+            let landscape = PXSceneBridge.systemOrientation().isLandscape || windowOrientationIsLandscapeForControls()
+
+            // ScreenCore keeps a dragged split window inside the active scene
+            // bounds. In the full-height landscape mode the vertical axis is
+            // locked: the window remains flush with both the top and bottom
+            // edges, while the side gesture moves it horizontally.
+            if landscape && abs(start.height - screen.height) <= 2.0 {
+                proposed.origin.y = screen.minY
+            } else {
+                proposed.origin.y = min(max(proposed.minY, screen.minY),
+                                        max(screen.minY, screen.maxY - proposed.height))
+            }
+
+            // Never allow the card itself to cross the left/right scene
+            // boundary. This also prevents a fast side drag from leaving the
+            // draggable edge region outside the screen.
+            if proposed.width >= screen.width {
+                proposed.origin.x = screen.minX
+            } else {
+                proposed.origin.x = min(max(proposed.minX, screen.minX),
+                                        screen.maxX - proposed.width)
+            }
+
+            card.frame = proposed
             if hostCanvas?.isUserInteractionEnabled == false { launchMovedCenter = card.center }
             layoutHostControls()
             if gesture.state == .ended { rememberCurrentHostFrame() }
