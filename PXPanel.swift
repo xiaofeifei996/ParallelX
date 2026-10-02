@@ -2609,7 +2609,11 @@ public final class PXPanelEntry: NSObject {
         let fallback = CGSize(width: min(natural.width, natural.height),
                               height: max(natural.width, natural.height))
         let resolved = source.width > 0 && source.height > 0 ? source : fallback
-        let frame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: resolved))
+        let defaultFrame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: resolved))
+        // When the split window is restored from the corner mini-window, use
+        // the exact remembered frame instead of rebuilding it at the default
+        // position first. This keeps the last drag/resize position.
+        let frame = (rememberSplitFrameEnabled ? rememberedFrame(bundleID: dock.bundleID, in: screen) : nil) ?? defaultFrame
         dock.card.layer.cornerRadius = configuredCornerRadius(in: screen, source: resolved)
         PXMotion.spring(0.32, animations: {
             dock.card.transform = .identity
@@ -2797,6 +2801,10 @@ public final class PXPanelEntry: NSObject {
            gesture.state == .ended, abs(translation.x) > 35,
            abs(translation.x) > abs(translation.y) * 1.2,
            abs(velocity.x) > 500, translation.x * velocity.x > 0 {
+            if let bundleID = hostedBundleID,
+               let screen = window.rootViewController?.view.bounds {
+                saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: screen)
+            }
             moveStartFrame = nil
             parkMain(side: translation.x < 0 ? -1 : 1)
             return
@@ -2804,6 +2812,10 @@ public final class PXPanelEntry: NSObject {
         if dockSwipeEnabled, gesture.state == .ended, translation.y < -35,
            -translation.y > abs(translation.x) * 1.2,
            velocity.y < -500 {
+            if let bundleID = hostedBundleID,
+               let screen = window.rootViewController?.view.bounds {
+                saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: screen)
+            }
             moveStartFrame = nil
             parkMain(side: defaultDockSide)
             return
