@@ -2133,27 +2133,15 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
 
         if landscape {
-            // ScreenCore treats the split surface as a container with its own
-            // width policy instead of blindly using the hosted scene's native
-            // aspect ratio.  Keep the window full-height, but give portrait
-            // hosts a little extra horizontal room so the result looks like
-            // ScreenCore's wider floating split window.  The hosted scene is
-            // still aspect-fitted by PXSceneBridge.layoutHost(), so this does
-            // not stretch the application's pixels.
+            // Landscape split window: keep the original hosted-content layout
+            // untouched and only make the outer PXPanel window wider.  ScreenCore
+            // presents a substantially wider landscape container; use 90% of
+            // the available screen width here while retaining full height.
+            // PXSceneBridge.layoutHost() is intentionally not changed by this
+            // policy, so the app's own aspect-ratio handling remains intact.
             let height = screen.height
-            let nativeScale = height / source.height
-            let nativeWidth = source.width * nativeScale
-            let widthFloor = height * 0.88
-            let preferredWidth = max(nativeWidth, widthFloor)
-            // ScreenCore's default split window size is 76%; allow a little
-            // more room horizontally while still leaving a visible edge of the
-            // underlying app.
-            let width = min(screen.width * 0.94, preferredWidth)
-
-            if width >= screen.width - 0.5 {
-                return CGSize(width: screen.width, height: height)
-            }
-            return CGSize(width: width, height: height)
+            let width = min(screen.width * 0.90, screen.width)
+            return CGSize(width: max(height * 0.88, width), height: height)
         }
 
         let key = source.width > source.height
