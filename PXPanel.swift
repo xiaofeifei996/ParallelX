@@ -1851,6 +1851,9 @@ public final class PXPanelEntry: NSObject {
         else { closeHost(animated: false) }
         fullscreenToWindowInProgress = wasFullscreen
         hostedBundleID = bundleID
+        // Keep this enabled for the first scene layout as well as orientation
+        // changes; the frame has already been applied above, so this no longer
+        // causes a visible jump.
         restoreRememberedFrameOnNextLayout = rememberSplitFrameEnabled
         launchMovedCenter = nil
         launchWidthScale = nil
@@ -1859,7 +1862,12 @@ public final class PXPanelEntry: NSObject {
         let size = initialCardSize(in: screen, source: CGSize(width: min(natural.width, natural.height), height: max(natural.width, natural.height)))
         let width = size.width
         let height = size.height
-        let cardFrame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
+        let defaultCardFrame = initialCardFrame(in: screen, size: CGSize(width: width, height: height))
+        // Resolve the remembered frame before the window is shown. This avoids
+        // the old behavior where the split window first appeared at its default
+        // position and then jumped to the remembered position after the scene
+        // finished mounting.
+        let cardFrame = (rememberSplitFrameEnabled ? rememberedFrame(bundleID: bundleID, in: screen) : nil) ?? defaultCardFrame
         let window = PXHandleWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
         window.windowLevel = .statusBar + 0.2
@@ -1912,9 +1920,9 @@ public final class PXPanelEntry: NSObject {
         titleName.lineBreakMode = .byTruncatingTail
         title.contentView.addSubview(titleName)
         clip.addSubview(title)
-        let memoryButton = makeRememberButton()
-        clip.addSubview(memoryButton)
-        hostMemoryButton = memoryButton
+        // The remember-size/position switch is configured from ParallelX settings.
+        // Do not place the pin button inside the main split window.
+        hostMemoryButton = nil
         hostCanvas = canvas
         let coldStart = !activeBridge.hasScene(forApplication: bundleID)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
@@ -2145,18 +2153,22 @@ public final class PXPanelEntry: NSObject {
 
     private func updateRememberButton(_ button: UIButton) {
         let enabled = rememberSplitFrameEnabled
+        button.setTitle(enabled ? "记忆 ✓" : "记忆", for: .normal)
         button.setImage(UIImage(systemName: enabled ? "pin.fill" : "pin"), for: .normal)
         button.tintColor = enabled ? .systemBlue : .secondaryLabel
-        button.backgroundColor = enabled ? UIColor.systemBlue.withAlphaComponent(0.14) : UIColor.black.withAlphaComponent(0.08)
-        button.accessibilityLabel = enabled ? "记忆大小位置：已开启" : "记忆大小位置：已关闭"
+        button.setTitleColor(enabled ? .systemBlue : .label, for: .normal)
+        button.backgroundColor = enabled ? UIColor.systemBlue.withAlphaComponent(0.16) : UIColor.black.withAlphaComponent(0.08)
+        button.accessibilityLabel = enabled ? "记忆大小位置：已开启，点击关闭" : "记忆大小位置：已关闭，点击开启"
     }
 
     private func makeRememberButton() -> UIButton {
         let button = UIButton(type: .system)
         button.tag = 0x50584D
-        button.layer.cornerRadius = 12
+        button.layer.cornerRadius = 10
         button.clipsToBounds = true
         button.isAccessibilityElement = true
+        button.titleLabel?.font = .systemFont(ofSize: 11, weight: .semibold)
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 7, bottom: 0, right: 7)
         button.addTarget(self, action: #selector(toggleRememberSplitFrame(_:)), for: .touchUpInside)
         updateRememberButton(button)
         return button
@@ -2181,9 +2193,10 @@ public final class PXPanelEntry: NSObject {
     }
 
     private func layoutRememberButton(_ button: UIButton, in frame: CGRect) {
-        let size = min(30, max(24, min(frame.width, frame.height) * 0.14))
-        button.frame = CGRect(x: frame.maxX - size - 8, y: frame.minY + 8, width: size, height: size)
-        button.layer.cornerRadius = size / 2
+        let width = min(62, max(48, frame.width * 0.18))
+        let height = min(30, max(26, frame.height * 0.06))
+        button.frame = CGRect(x: frame.maxX - width - 8, y: frame.minY + 40, width: width, height: height)
+        button.layer.cornerRadius = height / 2
     }
 
     private func matchHostAspect() {
@@ -2449,11 +2462,6 @@ public final class PXPanelEntry: NSObject {
         let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
         hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
                                     width: topWidth, height: topHeight)
-        if let hostMemoryButton {
-            layoutRememberButton(hostMemoryButton, in: card.bounds)
-            updateRememberButton(hostMemoryButton)
-            clipBringToFront(hostMemoryButton, in: card)
-        }
         refreshKeyboardDismissLayer()
     }
 
