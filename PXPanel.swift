@@ -141,11 +141,13 @@ private final class PXDockedHost {
     let moveGrip: UIView?
     let landscapeMoveGrips: [UIView]
     let overlay: UIView
+    let memoryButton: UIButton
     var loading: Bool
 
     init(window: UIWindow, card: UIView, canvas: UIView, bridge: PXSceneBridge,
          bundleID: String, side: Int, corners: [UIView], topCorners: [UIView],
-         topGrip: UIView?, moveGrip: UIView?, landscapeMoveGrips: [UIView], overlay: UIView, loading: Bool) {
+         topGrip: UIView?, moveGrip: UIView?, landscapeMoveGrips: [UIView], overlay: UIView,
+         memoryButton: UIButton, loading: Bool) {
         self.window = window
         self.card = card
         self.canvas = canvas
@@ -159,6 +161,7 @@ private final class PXDockedHost {
         self.moveGrip = moveGrip
         self.landscapeMoveGrips = landscapeMoveGrips
         self.overlay = overlay
+        self.memoryButton = memoryButton
         self.loading = loading
     }
 }
@@ -1035,6 +1038,8 @@ public final class PXPanelEntry: NSObject {
     private var activeBridge: PXSceneBridge = .shared()
     private var hostMoveGrip: UIView?
     private var hostTopGrip: UIView?
+    private var hostMemoryButton: UIButton?
+    private var restoreRememberedFrameOnNextLayout = false
     private weak var hostCanvas: UIView?
     private var panel: PXPanelViewController?
     private var handle: UIView?
@@ -1846,6 +1851,7 @@ public final class PXPanelEntry: NSObject {
         else { closeHost(animated: false) }
         fullscreenToWindowInProgress = wasFullscreen
         hostedBundleID = bundleID
+        restoreRememberedFrameOnNextLayout = rememberSplitFrameEnabled
         launchMovedCenter = nil
         launchWidthScale = nil
         let screen = controls.bounds
@@ -1906,6 +1912,9 @@ public final class PXPanelEntry: NSObject {
         titleName.lineBreakMode = .byTruncatingTail
         title.contentView.addSubview(titleName)
         clip.addSubview(title)
+        let memoryButton = makeRememberButton()
+        clip.addSubview(memoryButton)
+        hostMemoryButton = memoryButton
         hostCanvas = canvas
         let coldStart = !activeBridge.hasScene(forApplication: bundleID)
         let debug = defaults?.bool(forKey: "gestureDebug") == true
@@ -2097,6 +2106,86 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
+    private var rememberSplitFrameEnabled: Bool {
+        UserDefaults(suiteName: preferenceDomain)?.object(forKey: "rememberSplitFrameEnabled") as? Bool ?? false
+    }
+
+    private func rememberFrameKey(bundleID: String, screen: CGRect) -> String {
+        let orientation = screen.width > screen.height ? "landscape" : "portrait"
+        return "rememberedSplitFrame.v1.\(bundleID).\(orientation)"
+    }
+
+    private func saveRememberedFrame(bundleID: String?, frame: CGRect, in screen: CGRect) {
+        guard rememberSplitFrameEnabled, let bundleID, screen.width > 0, screen.height > 0 else { return }
+        let clamped = frame.intersection(screen).isNull ? frame : frame
+        let x = min(max(clamped.minX, screen.minX), max(screen.minX, screen.maxX - clamped.width))
+        let y = min(max(clamped.minY, screen.minY), max(screen.minY, screen.maxY - clamped.height))
+        let width = min(max(1, clamped.width), screen.width)
+        let height = min(max(1, clamped.height), screen.height)
+        let dict: [String: Double] = [
+            "x": Double((x - screen.minX) / screen.width),
+            "y": Double((y - screen.minY) / screen.height),
+            "w": Double(width / screen.width),
+            "h": Double(height / screen.height)
+        ]
+        UserDefaults(suiteName: preferenceDomain)?.set(dict, forKey: rememberFrameKey(bundleID: bundleID, screen: screen))
+    }
+
+    private func rememberedFrame(bundleID: String, in screen: CGRect) -> CGRect? {
+        guard rememberSplitFrameEnabled, screen.width > 0, screen.height > 0,
+              let dict = UserDefaults(suiteName: preferenceDomain)?.dictionary(forKey: rememberFrameKey(bundleID: bundleID, screen: screen)),
+              let xd = dict["x"] as? Double, let yd = dict["y"] as? Double,
+              let wd = dict["w"] as? Double, let hd = dict["h"] as? Double else { return nil }
+        let width = min(screen.width, max(1, screen.width * CGFloat(wd)))
+        let height = min(screen.height, max(1, screen.height * CGFloat(hd)))
+        let x = min(max(screen.minX + screen.width * CGFloat(xd), screen.minX), screen.maxX - width)
+        let y = min(max(screen.minY + screen.height * CGFloat(yd), screen.minY), screen.maxY - height)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    private func updateRememberButton(_ button: UIButton) {
+        let enabled = rememberSplitFrameEnabled
+        button.setImage(UIImage(systemName: enabled ? "pin.fill" : "pin"), for: .normal)
+        button.tintColor = enabled ? .systemBlue : .secondaryLabel
+        button.backgroundColor = enabled ? UIColor.systemBlue.withAlphaComponent(0.14) : UIColor.black.withAlphaComponent(0.08)
+        button.accessibilityLabel = enabled ? "记忆大小位置：已开启" : "记忆大小位置：已关闭"
+    }
+
+    private func makeRememberButton() -> UIButton {
+        let button = UIButton(type: .system)
+        button.tag = 0x50584D
+        button.layer.cornerRadius = 12
+        button.clipsToBounds = true
+        button.isAccessibilityElement = true
+        button.addTarget(self, action: #selector(toggleRememberSplitFrame(_:)), for: .touchUpInside)
+        updateRememberButton(button)
+        return button
+    }
+
+    @objc private func toggleRememberSplitFrame(_ sender: UIButton) {
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let enabled = !rememberSplitFrameEnabled
+        defaults?.set(enabled, forKey: "rememberSplitFrameEnabled")
+        if enabled {
+            if let window = hostWindow, let card = hostCard, let bundleID = hostedBundleID,
+               let screen = window.rootViewController?.view.bounds {
+                saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: screen)
+            } else if let dock = dockedHosts.first(where: { $0.memoryButton === sender }) {
+                let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
+                saveRememberedFrame(bundleID: dock.bundleID, frame: dock.overlay.frame, in: screen)
+            }
+        }
+        updateRememberButton(sender)
+        if let hostMemoryButton { updateRememberButton(hostMemoryButton) }
+        for dock in dockedHosts { updateRememberButton(dock.memoryButton) }
+    }
+
+    private func layoutRememberButton(_ button: UIButton, in frame: CGRect) {
+        let size = min(30, max(24, min(frame.width, frame.height) * 0.14))
+        button.frame = CGRect(x: frame.maxX - size - 8, y: frame.minY + 8, width: size, height: size)
+        button.layer.cornerRadius = size / 2
+    }
+
     private func matchHostAspect() {
         guard let window = hostWindow, let card = hostCard else { return }
         let source = activeBridge.hostedSourceSize()
@@ -2113,6 +2202,11 @@ public final class PXPanelEntry: NSObject {
         keyboardFocusFrame = .null
         card.transform = .identity
         card.frame = initialCardFrame(in: screen, size: size)
+        if restoreRememberedFrameOnNextLayout, let bundleID = hostedBundleID,
+           let remembered = rememberedFrame(bundleID: bundleID, in: screen) {
+            card.frame = remembered
+        }
+        restoreRememberedFrameOnNextLayout = false
         if let center = launchMovedCenter {
             card.center = CGPoint(x: min(max(center.x, screen.minX + size.width / 2), screen.maxX - size.width / 2),
                                   y: min(max(center.y, screen.minY + size.height / 2), screen.maxY - size.height / 2))
@@ -2269,6 +2363,10 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
+    private func clipBringToFront(_ view: UIView, in card: UIView) {
+        view.superview?.bringSubviewToFront(view)
+    }
+
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
         let defaults = UserDefaults(suiteName: preferenceDomain)
@@ -2351,6 +2449,11 @@ public final class PXPanelEntry: NSObject {
         let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
         hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
                                     width: topWidth, height: topHeight)
+        if let hostMemoryButton {
+            layoutRememberButton(hostMemoryButton, in: card.bounds)
+            updateRememberButton(hostMemoryButton)
+            clipBringToFront(hostMemoryButton, in: card)
+        }
         refreshKeyboardDismissLayer()
     }
 
@@ -2375,6 +2478,8 @@ public final class PXPanelEntry: NSObject {
             swipe.direction = direction
             overlay.addGestureRecognizer(swipe)
         }
+        let memoryButton = makeRememberButton()
+        overlay.addSubview(memoryButton)
         root.addSubview(overlay)
         window.windowLevel = .statusBar + 0.3
         card.viewWithTag(0x505847)?.isHidden = true
@@ -2385,7 +2490,7 @@ public final class PXPanelEntry: NSObject {
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 topGrip: hostTopGrip, moveGrip: hostMoveGrip, landscapeMoveGrips: hostLandscapeMoveGrips, overlay: overlay,
-                                loading: loading)
+                                memoryButton: memoryButton, loading: loading)
         dockedHosts.append(dock)
         if dockAfterOpenBundleID == bundleID { dockAfterOpenBundleID = nil }
         if fullscreenAfterOpenBundleID == bundleID { fullscreenAfterOpenBundleID = nil }
@@ -2398,6 +2503,7 @@ public final class PXPanelEntry: NSObject {
         hostLandscapeMoveGrips = []
         hostMoveGrip = nil
         hostTopGrip = nil
+        hostMemoryButton = nil
         hostedBundleID = nil
         activeBridge = PXSceneBridge()
         refreshKeyboardDismissLayer()
@@ -2443,6 +2549,8 @@ public final class PXPanelEntry: NSObject {
                 dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)
                 dock.card.center = CGPoint(x: frame.midX, y: frame.midY)
                 dock.overlay.frame = frame
+                self.layoutRememberButton(dock.memoryButton, in: CGRect(origin: .zero, size: frame.size))
+                self.updateRememberButton(dock.memoryButton)
             }
             if animated { PXMotion.spring(0.30, animations: changes) }
             else { UIView.performWithoutAnimation(changes) }
@@ -2496,6 +2604,11 @@ public final class PXPanelEntry: NSObject {
         hostTopGrip = dock.topGrip
         hostLandscapeMoveGrips = dock.landscapeMoveGrips
         hostedBundleID = dock.bundleID
+        let restoredMemoryButton = makeRememberButton()
+        if let clip = dock.card.subviews.first {
+            clip.addSubview(restoredMemoryButton)
+            hostMemoryButton = restoredMemoryButton
+        }
         (hostCorners + hostTopCorners + hostLandscapeMoveGrips + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
         let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
@@ -2655,6 +2768,10 @@ public final class PXPanelEntry: NSObject {
                 card.layer.cornerRadius = resizeStartRadius
                 CATransaction.commit()
             }
+            if gesture.state == .ended, let bundleID = hostedBundleID,
+               let screen = window.rootViewController?.view.bounds {
+                saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: screen)
+            }
             resizeStartFrame = nil
             layoutHostControls()
         }
@@ -2679,13 +2796,8 @@ public final class PXPanelEntry: NSObject {
             moveStartFrame = card.frame
         }
         guard let start = moveStartFrame else { return }
-        // The card is a direct subview of the host root view. Use that exact
-        // coordinate space for both the gesture translation and the screen
-        // bounds; mixing it with another root/screen coordinate space can make
-        // the portrait window appear to slip outside the visible area.
-        let moveSuperview = card.superview ?? window.rootViewController?.view
-        let translation = gesture.translation(in: moveSuperview)
-        let velocity = gesture.velocity(in: moveSuperview)
+        let translation = gesture.translation(in: window.rootViewController?.view)
+        let velocity = gesture.velocity(in: window.rootViewController?.view)
         let dockSwipeEnabled = UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockSwipeEnabled") as? Bool ?? true
         if dockSwipeEnabled, gesture.view === hostMoveGrip,
@@ -2745,23 +2857,23 @@ public final class PXPanelEntry: NSObject {
                 dockAfterOpenBundleID = nil
                 fullscreenAfterOpenBundleID = nil
             }
-            let screen = moveSuperview?.bounds ?? window.bounds
+            let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
             var proposed = start.offsetBy(dx: translation.x, dy: translation.y)
 
-            // Hard clamp in the card's actual superview coordinate space. This
-            // applies to BOTH portrait and landscape, so the entire card must
-            // remain visible and can never be dragged past any screen edge.
+            // Keep the whole split window inside the visible screen. This is
+            // especially important for the landscape full-height layout: it can
+            // move left/right, but its top/bottom edges must remain on-screen.
             if proposed.width <= screen.width {
                 proposed.origin.x = min(max(proposed.origin.x, screen.minX),
                                         screen.maxX - proposed.width)
             } else {
-                proposed.origin.x = screen.midX - proposed.width / 2
+                proposed.origin.x = screen.minX
             }
             if proposed.height <= screen.height {
                 proposed.origin.y = min(max(proposed.origin.y, screen.minY),
                                         screen.maxY - proposed.height)
             } else {
-                proposed.origin.y = screen.midY - proposed.height / 2
+                proposed.origin.y = screen.minY
             }
 
             card.frame = proposed
@@ -2769,6 +2881,10 @@ public final class PXPanelEntry: NSObject {
             layoutHostControls()
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
+            if gesture.state == .ended, let bundleID = hostedBundleID,
+               let screen = window.rootViewController?.view.bounds {
+                saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: screen)
+            }
             moveStartFrame = nil
         }
     }
@@ -2796,6 +2912,7 @@ public final class PXPanelEntry: NSObject {
         hostLandscapeMoveGrips = []
         hostMoveGrip = nil
         hostTopGrip = nil
+        hostMemoryButton = nil
         hostedBundleID = nil
         launchMovedCenter = nil
         launchWidthScale = nil
