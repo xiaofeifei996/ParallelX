@@ -139,12 +139,13 @@ private final class PXDockedHost {
     let topCorners: [UIView]
     let topGrip: UIView?
     let moveGrip: UIView?
+    let landscapeMoveGrips: [UIView]
     let overlay: UIView
     var loading: Bool
 
     init(window: UIWindow, card: UIView, canvas: UIView, bridge: PXSceneBridge,
          bundleID: String, side: Int, corners: [UIView], topCorners: [UIView],
-         topGrip: UIView?, moveGrip: UIView?, overlay: UIView, loading: Bool) {
+         topGrip: UIView?, moveGrip: UIView?, landscapeMoveGrips: [UIView], overlay: UIView, loading: Bool) {
         self.window = window
         self.card = card
         self.canvas = canvas
@@ -156,6 +157,7 @@ private final class PXDockedHost {
         self.topCorners = topCorners
         self.topGrip = topGrip
         self.moveGrip = moveGrip
+        self.landscapeMoveGrips = landscapeMoveGrips
         self.overlay = overlay
         self.loading = loading
     }
@@ -1028,6 +1030,7 @@ public final class PXPanelEntry: NSObject {
     private var hostCard: UIView?
     private var hostCorners: [UIView] = []
     private var hostTopCorners: [UIView] = []
+    private var hostLandscapeMoveGrips: [UIView] = []
     private var dockedHosts: [PXDockedHost] = []
     private var activeBridge: PXSceneBridge = .shared()
     private var hostMoveGrip: UIView?
@@ -1942,6 +1945,24 @@ public final class PXPanelEntry: NSObject {
                                                                   action: #selector(moveGripHeld(_:))))
         root.view.insertSubview(topGrip, belowSubview: hostTopCorners[0])
         hostTopGrip = topGrip
+        // Landscape full-height windows no longer have a usable bottom/top drag
+        // area. Add dedicated left/right move regions inside the card so the
+        // window can always be dragged horizontally without stealing the whole
+        // hosted app surface.
+        hostLandscapeMoveGrips.removeAll()
+        for side in [-1, 1] {
+            let grip = UIView(frame: .zero)
+            grip.tag = side
+            grip.backgroundColor = debug ? UIColor.systemBlue.withAlphaComponent(0.20) : .clear
+            PXSceneBridge.keepTransparentGestureViewHittable(grip)
+            grip.isUserInteractionEnabled = true
+            grip.isAccessibilityElement = true
+            grip.accessibilityLabel = side < 0 ? "左侧拖动移动分屏窗口" : "右侧拖动移动分屏窗口"
+            grip.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(moveHost(_:))))
+            root.view.addSubview(grip)
+            hostLandscapeMoveGrips.append(grip)
+        }
+
         let moveGrip = UIView(frame: .zero)
         moveGrip.backgroundColor = .clear
         PXSceneBridge.keepTransparentGestureViewHittable(moveGrip)
@@ -2301,6 +2322,30 @@ public final class PXPanelEntry: NSObject {
         let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
         hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
                                      width: width, height: height)
+
+        // In landscape the card is normally full-height, so the old bottom/top
+        // grips are outside the visible screen. Keep narrow, transparent move
+        // regions on both sides of the card. They are placed inside the card so
+        // UIKit can receive the pan even when the hosted surface fills the card.
+        let screen = hostWindow?.rootViewController?.view.bounds ?? UIScreen.main.bounds
+        let landscape = screen.width > screen.height
+        if landscape {
+            let gripWidth: CGFloat = 44
+            let verticalInset: CGFloat = min(28, max(8, frame.height * 0.06))
+            let gripHeight = max(44, frame.height - verticalInset * 2)
+            if hostLandscapeMoveGrips.count == 2 {
+                hostLandscapeMoveGrips[0].frame = CGRect(x: frame.minX + 2,
+                                                         y: frame.minY + verticalInset,
+                                                         width: gripWidth, height: gripHeight)
+                hostLandscapeMoveGrips[1].frame = CGRect(x: frame.maxX - gripWidth - 2,
+                                                         y: frame.minY + verticalInset,
+                                                         width: gripWidth, height: gripHeight)
+                hostLandscapeMoveGrips.forEach { $0.isHidden = false }
+            }
+        } else {
+            hostLandscapeMoveGrips.forEach { $0.isHidden = true }
+        }
+
         let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
         let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
         let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
@@ -2339,17 +2384,18 @@ public final class PXPanelEntry: NSObject {
         let dock = PXDockedHost(window: window, card: card, canvas: canvas,
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
-                                topGrip: hostTopGrip, moveGrip: hostMoveGrip, overlay: overlay,
+                                topGrip: hostTopGrip, moveGrip: hostMoveGrip, landscapeMoveGrips: hostLandscapeMoveGrips, overlay: overlay,
                                 loading: loading)
         dockedHosts.append(dock)
         if dockAfterOpenBundleID == bundleID { dockAfterOpenBundleID = nil }
         if fullscreenAfterOpenBundleID == bundleID { fullscreenAfterOpenBundleID = nil }
-        (hostCorners + hostTopCorners + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
+        (hostCorners + hostTopCorners + hostLandscapeMoveGrips + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
         hostWindow = nil
         hostCard = nil
         hostCanvas = nil
         hostCorners = []
         hostTopCorners = []
+        hostLandscapeMoveGrips = []
         hostMoveGrip = nil
         hostTopGrip = nil
         hostedBundleID = nil
@@ -2448,8 +2494,9 @@ public final class PXPanelEntry: NSObject {
         hostTopCorners = dock.topCorners
         hostMoveGrip = dock.moveGrip
         hostTopGrip = dock.topGrip
+        hostLandscapeMoveGrips = dock.landscapeMoveGrips
         hostedBundleID = dock.bundleID
-        (hostCorners + hostTopCorners + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
+        (hostCorners + hostTopCorners + hostLandscapeMoveGrips + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
         let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
         let source = dock.bridge.hostedSourceSize()
@@ -2632,8 +2679,13 @@ public final class PXPanelEntry: NSObject {
             moveStartFrame = card.frame
         }
         guard let start = moveStartFrame else { return }
-        let translation = gesture.translation(in: window.rootViewController?.view)
-        let velocity = gesture.velocity(in: window.rootViewController?.view)
+        // The card is a direct subview of the host root view. Use that exact
+        // coordinate space for both the gesture translation and the screen
+        // bounds; mixing it with another root/screen coordinate space can make
+        // the portrait window appear to slip outside the visible area.
+        let moveSuperview = card.superview ?? window.rootViewController?.view
+        let translation = gesture.translation(in: moveSuperview)
+        let velocity = gesture.velocity(in: moveSuperview)
         let dockSwipeEnabled = UserDefaults(suiteName: preferenceDomain)?
             .object(forKey: "dockSwipeEnabled") as? Bool ?? true
         if dockSwipeEnabled, gesture.view === hostMoveGrip,
@@ -2693,7 +2745,26 @@ public final class PXPanelEntry: NSObject {
                 dockAfterOpenBundleID = nil
                 fullscreenAfterOpenBundleID = nil
             }
-            card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
+            let screen = moveSuperview?.bounds ?? window.bounds
+            var proposed = start.offsetBy(dx: translation.x, dy: translation.y)
+
+            // Hard clamp in the card's actual superview coordinate space. This
+            // applies to BOTH portrait and landscape, so the entire card must
+            // remain visible and can never be dragged past any screen edge.
+            if proposed.width <= screen.width {
+                proposed.origin.x = min(max(proposed.origin.x, screen.minX),
+                                        screen.maxX - proposed.width)
+            } else {
+                proposed.origin.x = screen.midX - proposed.width / 2
+            }
+            if proposed.height <= screen.height {
+                proposed.origin.y = min(max(proposed.origin.y, screen.minY),
+                                        screen.maxY - proposed.height)
+            } else {
+                proposed.origin.y = screen.midY - proposed.height / 2
+            }
+
+            card.frame = proposed
             if hostCanvas?.isUserInteractionEnabled == false { launchMovedCenter = card.center }
             layoutHostControls()
         }
@@ -2713,6 +2784,7 @@ public final class PXPanelEntry: NSObject {
         resizePreview = nil
         hostCorners.forEach { $0.removeFromSuperview() }
         hostTopCorners.forEach { $0.removeFromSuperview() }
+        hostLandscapeMoveGrips.forEach { $0.removeFromSuperview() }
         hostMoveGrip?.removeFromSuperview()
         hostTopGrip?.removeFromSuperview()
         window.isUserInteractionEnabled = false
@@ -2721,6 +2793,7 @@ public final class PXPanelEntry: NSObject {
         hostCanvas = nil
         hostCorners = []
         hostTopCorners = []
+        hostLandscapeMoveGrips = []
         hostMoveGrip = nil
         hostTopGrip = nil
         hostedBundleID = nil
