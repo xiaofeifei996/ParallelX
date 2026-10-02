@@ -2138,9 +2138,12 @@ public final class PXPanelEntry: NSObject {
             let height = screen.height
             let nativeScale = height / source.height
             let nativeWidth = source.width * nativeScale
-            let widthFloor = height * 0.50
+            let widthFloor = height * 0.76
             let preferredWidth = max(nativeWidth, widthFloor)
-            let width = min(screen.width, preferredWidth)
+            // ScreenCore's default split window size is 76%; allow a little
+            // more room horizontally while still leaving a visible edge of the
+            // underlying app.
+            let width = min(screen.width * 0.88, preferredWidth)
 
             if width >= screen.width - 0.5 {
                 return CGSize(width: screen.width, height: height)
@@ -2300,16 +2303,39 @@ public final class PXPanelEntry: NSObject {
             corner.frame = CGRect(x: corner.tag < 0 ? frame.minX - 12 : frame.maxX - 32,
                                   y: frame.minY - 12, width: 44, height: 44)
         }
-        let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
-        let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
-        let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
-        hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
-                                     width: width, height: height)
-        let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
-        let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
-        let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
-        hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
-                                    width: topWidth, height: topHeight)
+        let landscape = layoutOrientation.isLandscape || frame.width > frame.height
+        if landscape && frame.height >= (hostWindow?.bounds.height ?? frame.height) - 2 {
+            // A full-height landscape card has no usable area below it. Put the
+            // move grip INSIDE the top edge so the gesture remains hittable.
+            let gripWidth = min(frame.width - 24, max(180, frame.width * 0.72))
+            let gripHeight: CGFloat = 44
+            hostMoveGrip?.frame = CGRect(x: frame.midX - gripWidth / 2,
+                                         y: frame.minY + 2,
+                                         width: gripWidth, height: gripHeight)
+            let sideWidth: CGFloat = 42
+            if let moveGrip = hostMoveGrip {
+                moveGrip.accessibilityLabel = "横屏拖动窗口；双击关闭；长按全屏"
+            }
+            let topWidth = min(frame.width - 24, max(180, frame.width * 0.72))
+            let topHeight: CGFloat = 42
+            hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2,
+                                        y: frame.minY + 2,
+                                        width: topWidth, height: topHeight)
+            // Keep the actual move target above the content without placing a
+            // second independent gesture view over the whole window.
+            _ = sideWidth
+        } else {
+            let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
+            let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
+            let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
+            hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
+                                         width: width, height: height)
+            let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
+            let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
+            let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
+            hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
+                                        width: topWidth, height: topHeight)
+        }
         refreshKeyboardDismissLayer()
     }
 
