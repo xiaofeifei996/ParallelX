@@ -1032,6 +1032,9 @@ public final class PXPanelEntry: NSObject {
     private var activeBridge: PXSceneBridge = .shared()
     private var hostMoveGrip: UIView?
     private var hostTopGrip: UIView?
+    // ScreenCore-style edge drag regions. These remain usable even when the
+    // landscape host occupies the full screen height.
+    private var hostEdgeMoveGrips: [UIView] = []
     private weak var hostCanvas: UIView?
     private var panel: PXPanelViewController?
     private var handle: UIView?
@@ -1077,6 +1080,8 @@ public final class PXPanelEntry: NSObject {
     // minor screen/bounds changes.
     private let rememberedPortraitFrameKey = "rememberedPortraitFrame.v1"
     private let rememberedLandscapeFrameKey = "rememberedLandscapeFrame.v1"
+    private var sessionRememberedPortraitFrame: CGRect?
+    private var sessionRememberedLandscapeFrame: CGRect?
 
     @objc public static func hasVisibleHost() -> Bool {
         shared.hostWindow?.isHidden == false || shared.dockedHosts.contains { !$0.window.isHidden }
@@ -1955,6 +1960,24 @@ public final class PXPanelEntry: NSObject {
                                                                   action: #selector(moveGripHeld(_:))))
         root.view.insertSubview(topGrip, belowSubview: hostTopCorners[0])
         hostTopGrip = topGrip
+
+        // ScreenCore does not depend on the whole hosted surface being a
+        // draggable view. It exposes small gesture regions around the window
+        // edges. This is especially important for a full-height landscape
+        // window, whose content otherwise consumes all of the touch area.
+        hostEdgeMoveGrips.removeAll()
+        for edge in 0..<2 {
+            let grip = UIView(frame: .zero)
+            grip.tag = edge == 0 ? -1001 : -1002
+            grip.backgroundColor = .clear
+            PXSceneBridge.keepTransparentGestureViewHittable(grip)
+            grip.isAccessibilityElement = true
+            grip.accessibilityLabel = edge == 0 ? "左侧拖动区域" : "右侧拖动区域"
+            grip.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(moveHost(_:))))
+            root.view.addSubview(grip)
+            hostEdgeMoveGrips.append(grip)
+        }
+
         let moveGrip = UIView(frame: .zero)
         moveGrip.backgroundColor = .clear
         PXSceneBridge.keepTransparentGestureViewHittable(moveGrip)
@@ -2102,22 +2125,22 @@ public final class PXPanelEntry: NSObject {
                             (screen.height - 40) / initial.height)
             size = CGSize(width: initial.width * scale, height: initial.height * scale)
         } else if let remembered = rememberedHostFrame(orientation: PXSceneBridge.systemOrientation(), in: screen, source: source) {
-            // In landscape the height is deliberately derived from the current
-            // screen so the card reaches both top and bottom edges.  Only its
-            // horizontal placement is restored.  Portrait restores the complete
-            // remembered frame.
+            // ScreenCore keeps independent frames for each orientation. Keep
+            // that state, but preserve ParallelX's required full-height
+            // landscape presentation: the remembered landscape frame controls
+            // the horizontal placement only.
             if screen.width > screen.height {
-                size = initial
-                let centerX = min(max(remembered.midX, screen.minX + size.width / 2),
-                                  screen.maxX - size.width / 2)
-                targetFrame = CGRect(x: centerX - size.width / 2, y: screen.minY,
-                                     width: size.width, height: size.height)
+                size = initialCardSize(in: screen, source: source)
+                let x = min(max(remembered.minX, screen.minX), screen.maxX - size.width)
+                targetFrame = CGRect(x: x, y: screen.minY, width: size.width, height: size.height)
             } else {
                 let width = min(max(remembered.width, 80), screen.width - 16)
                 let scale = width / max(remembered.width, 1)
                 let height = min(remembered.height * scale, screen.height - 16)
                 size = CGSize(width: width, height: height)
-                targetFrame = CGRect(x: remembered.minX, y: remembered.minY, width: width, height: height)
+                let x = min(max(remembered.minX, screen.minX), screen.maxX - width)
+                let y = min(max(remembered.minY, screen.minY), screen.maxY - height)
+                targetFrame = CGRect(x: x, y: y, width: width, height: height)
             }
         }
         keyboardFocusBase = nil
@@ -2142,6 +2165,15 @@ public final class PXPanelEntry: NSObject {
 
     private func saveRememberedHostFrame(_ frame: CGRect, orientation: UIInterfaceOrientation, in screen: CGRect) {
         guard screen.width > 0, screen.height > 0, frame.width > 0, frame.height > 0 else { return }
+        let normalizedFrame = CGRect(x: (frame.minX - screen.minX) / screen.width,
+                                     y: (frame.minY - screen.minY) / screen.height,
+                                     width: frame.width / screen.width,
+                                     height: frame.height / screen.height)
+        if orientation.isLandscape { sessionRememberedLandscapeFrame = normalizedFrame }
+        else if orientation.isPortrait { sessionRememberedPortraitFrame = normalizedFrame }
+        let defaults = UserDefaults(suiteName: preferenceDomain)
+        let persist = defaults?.object(forKey: "splitRememberSizeAndPosition") as? Bool ?? false
+        if !persist { return }
         let normalized = [
             "x": Double((frame.minX - screen.minX) / screen.width),
             "y": Double((frame.minY - screen.minY) / screen.height),
@@ -2153,8 +2185,19 @@ public final class PXPanelEntry: NSObject {
 
     private func rememberedHostFrame(orientation: UIInterfaceOrientation, in screen: CGRect, source: CGSize) -> CGRect? {
         guard screen.width > 0, screen.height > 0, source.width > 0, source.height > 0 else { return nil }
-        guard let values = UserDefaults(suiteName: preferenceDomain)?.dictionary(forKey: rememberedFrameKey(for: orientation)),
-              let x = values["x"] as? NSNumber,
+        let session = orientation.isLandscape ? sessionRememberedLandscapeFrame : sessionRememberedPortraitFrame
+        let values: [String: NSNumber]
+        if let session {
+            values = ["x": NSNumber(value: Double(session.minX)),
+                      "y": NSNumber(value: Double(session.minY)),
+                      "w": NSNumber(value: Double(session.width)),
+                      "h": NSNumber(value: Double(session.height))]
+        } else if let stored = UserDefaults(suiteName: preferenceDomain)?.dictionary(forKey: rememberedFrameKey(for: orientation)) {
+            values = stored.compactMapValues { $0 as? NSNumber }
+        } else {
+            return nil
+        }
+        guard let x = values["x"],
               let y = values["y"] as? NSNumber,
               let w = values["w"] as? NSNumber,
               let h = values["h"] as? NSNumber else { return nil }
@@ -2198,22 +2241,20 @@ public final class PXPanelEntry: NSObject {
         let defaults = UserDefaults(suiteName: preferenceDomain)
 
         if landscape {
-            // Landscape split windows fill the screen vertically.
-            // This deliberately ignores the old 78%/95% landscape size setting.
-            // The source aspect ratio determines the width.
-            let height = screen.height
-            let scale = height / source.height
+            // Keep the original full-height landscape behavior: the host card
+            // reaches the physical top and bottom edges.  ScreenCore's
+            // orientation-specific frame state is still used for the horizontal
+            // position, while vertical dragging is handled by the existing
+            // handle/gesture layer rather than shrinking the card.
+            let targetHeight = screen.height
+            let scale = targetHeight / source.height
             let width = source.width * scale
-
-            // If an unusually wide source would exceed the physical screen,
-            // clamp to the screen width while preserving the aspect ratio.
             if width > screen.width {
                 let clampedScale = screen.width / source.width
                 return CGSize(width: screen.width, height: source.height * clampedScale)
             }
-            return CGSize(width: width, height: height)
+            return CGSize(width: width, height: targetHeight)
         }
-
         let key = source.width > source.height
             ? "portraitLandscapeInitialWidthPercent" : "portraitInitialWidthPercent"
         let saved = defaults?.object(forKey: key) as? NSNumber
@@ -2376,6 +2417,18 @@ public final class PXPanelEntry: NSObject {
         let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
         hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
                                     width: topWidth, height: topHeight)
+
+        // ScreenCore-style side gesture regions. Keep them inside the card so
+        // they are still hittable when the card is exactly screen-height.
+        let edgeWidth = min(42, max(24, CGFloat(truncating: defaults?.object(forKey: "splitGestureRegionSize") as? NSNumber ?? 32)))
+        let edgeHeight = min(frame.height - 48, max(140, frame.height * 0.42))
+        let edgeY = frame.midY - edgeHeight / 2
+        if hostEdgeMoveGrips.count >= 2 {
+            hostEdgeMoveGrips[0].frame = CGRect(x: frame.minX, y: edgeY, width: edgeWidth, height: edgeHeight)
+            hostEdgeMoveGrips[1].frame = CGRect(x: frame.maxX - edgeWidth, y: edgeY, width: edgeWidth, height: edgeHeight)
+            let landscape = frame.width > frame.height
+            hostEdgeMoveGrips.forEach { $0.isHidden = !landscape }
+        }
         refreshKeyboardDismissLayer()
     }
 
@@ -2414,7 +2467,7 @@ public final class PXPanelEntry: NSObject {
         dockedHosts.append(dock)
         if dockAfterOpenBundleID == bundleID { dockAfterOpenBundleID = nil }
         if fullscreenAfterOpenBundleID == bundleID { fullscreenAfterOpenBundleID = nil }
-        (hostCorners + hostTopCorners + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = true }
+        (hostCorners + hostTopCorners + [hostTopGrip, hostMoveGrip].compactMap { $0 } + hostEdgeMoveGrips).forEach { $0.isHidden = true }
         hostWindow = nil
         hostCard = nil
         hostCanvas = nil
@@ -2788,6 +2841,8 @@ public final class PXPanelEntry: NSObject {
         hostTopCorners.forEach { $0.removeFromSuperview() }
         hostMoveGrip?.removeFromSuperview()
         hostTopGrip?.removeFromSuperview()
+        hostEdgeMoveGrips.forEach { $0.removeFromSuperview() }
+        hostEdgeMoveGrips.removeAll()
         window.isUserInteractionEnabled = false
         hostWindow = nil
         hostCard = nil
