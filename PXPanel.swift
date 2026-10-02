@@ -2359,6 +2359,12 @@ public final class PXPanelEntry: NSObject {
         }
     }
 
+    private func windowOrientationIsLandscapeForControls() -> Bool {
+        guard let root = hostWindow?.rootViewController?.view else { return false }
+        let bounds = root.bounds
+        return bounds.width > bounds.height
+    }
+
     private func layoutHostControls() {
         guard let card = hostCard, hostWindow != nil else { return }
         let defaults = UserDefaults(suiteName: preferenceDomain)
@@ -2420,14 +2426,22 @@ public final class PXPanelEntry: NSObject {
 
         // ScreenCore-style side gesture regions. Keep them inside the card so
         // they are still hittable when the card is exactly screen-height.
-        let edgeWidth = min(42, max(24, CGFloat(truncating: defaults?.object(forKey: "splitGestureRegionSize") as? NSNumber ?? 32)))
-        let edgeHeight = min(frame.height - 48, max(140, frame.height * 0.42))
+        let edgeWidth = min(56, max(32, CGFloat(truncating: defaults?.object(forKey: "splitGestureRegionSize") as? NSNumber ?? 40)))
+        let edgeHeight = max(140, frame.height - 96)
         let edgeY = frame.midY - edgeHeight / 2
         if hostEdgeMoveGrips.count >= 2 {
             hostEdgeMoveGrips[0].frame = CGRect(x: frame.minX, y: edgeY, width: edgeWidth, height: edgeHeight)
             hostEdgeMoveGrips[1].frame = CGRect(x: frame.maxX - edgeWidth, y: edgeY, width: edgeWidth, height: edgeHeight)
-            let landscape = frame.width > frame.height
+            let landscape = PXSceneBridge.systemOrientation().isLandscape || windowOrientationIsLandscapeForControls()
             hostEdgeMoveGrips.forEach { $0.isHidden = !landscape }
+            // These views must sit above the hosted surface. A full-height card
+            // otherwise wins hit-testing and the side pan never reaches moveHost(_:).
+            if landscape {
+                hostEdgeMoveGrips.forEach {
+                    $0.isUserInteractionEnabled = true
+                    $0.superview?.bringSubviewToFront($0)
+                }
+            }
         }
         refreshKeyboardDismissLayer()
     }
