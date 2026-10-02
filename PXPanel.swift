@@ -141,13 +141,12 @@ private final class PXDockedHost {
     let moveGrip: UIView?
     let landscapeMoveGrips: [UIView]
     let overlay: UIView
-    let memoryButton: UIButton
     var loading: Bool
 
     init(window: UIWindow, card: UIView, canvas: UIView, bridge: PXSceneBridge,
          bundleID: String, side: Int, corners: [UIView], topCorners: [UIView],
          topGrip: UIView?, moveGrip: UIView?, landscapeMoveGrips: [UIView], overlay: UIView,
-         memoryButton: UIButton, loading: Bool) {
+         loading: Bool) {
         self.window = window
         self.card = card
         self.canvas = canvas
@@ -161,7 +160,6 @@ private final class PXDockedHost {
         self.moveGrip = moveGrip
         self.landscapeMoveGrips = landscapeMoveGrips
         self.overlay = overlay
-        self.memoryButton = memoryButton
         self.loading = loading
     }
 }
@@ -2182,14 +2180,10 @@ public final class PXPanelEntry: NSObject {
             if let window = hostWindow, let card = hostCard, let bundleID = hostedBundleID,
                let screen = window.rootViewController?.view.bounds {
                 saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: screen)
-            } else if let dock = dockedHosts.first(where: { $0.memoryButton === sender }) {
-                let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-                saveRememberedFrame(bundleID: dock.bundleID, frame: dock.overlay.frame, in: screen)
             }
         }
         updateRememberButton(sender)
         if let hostMemoryButton { updateRememberButton(hostMemoryButton) }
-        for dock in dockedHosts { updateRememberButton(dock.memoryButton) }
     }
 
     private func layoutRememberButton(_ button: UIButton, in frame: CGRect) {
@@ -2486,8 +2480,6 @@ public final class PXPanelEntry: NSObject {
             swipe.direction = direction
             overlay.addGestureRecognizer(swipe)
         }
-        let memoryButton = makeRememberButton()
-        overlay.addSubview(memoryButton)
         root.addSubview(overlay)
         window.windowLevel = .statusBar + 0.3
         card.viewWithTag(0x505847)?.isHidden = true
@@ -2498,7 +2490,7 @@ public final class PXPanelEntry: NSObject {
                                 bridge: activeBridge, bundleID: bundleID, side: side,
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 topGrip: hostTopGrip, moveGrip: hostMoveGrip, landscapeMoveGrips: hostLandscapeMoveGrips, overlay: overlay,
-                                memoryButton: memoryButton, loading: loading)
+                                loading: loading)
         dockedHosts.append(dock)
         if dockAfterOpenBundleID == bundleID { dockAfterOpenBundleID = nil }
         if fullscreenAfterOpenBundleID == bundleID { fullscreenAfterOpenBundleID = nil }
@@ -2557,8 +2549,6 @@ public final class PXPanelEntry: NSObject {
                 dock.card.transform = CGAffineTransform(scaleX: scale, y: scale)
                 dock.card.center = CGPoint(x: frame.midX, y: frame.midY)
                 dock.overlay.frame = frame
-                self.layoutRememberButton(dock.memoryButton, in: CGRect(origin: .zero, size: frame.size))
-                self.updateRememberButton(dock.memoryButton)
             }
             if animated { PXMotion.spring(0.30, animations: changes) }
             else { UIView.performWithoutAnimation(changes) }
@@ -2612,11 +2602,6 @@ public final class PXPanelEntry: NSObject {
         hostTopGrip = dock.topGrip
         hostLandscapeMoveGrips = dock.landscapeMoveGrips
         hostedBundleID = dock.bundleID
-        let restoredMemoryButton = makeRememberButton()
-        if let clip = dock.card.subviews.first {
-            clip.addSubview(restoredMemoryButton)
-            hostMemoryButton = restoredMemoryButton
-        }
         (hostCorners + hostTopCorners + hostLandscapeMoveGrips + [hostTopGrip, hostMoveGrip].compactMap { $0 }).forEach { $0.isHidden = false }
         let screen = dock.window.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let natural = UIScreen.main.fixedCoordinateSpace.bounds.size
