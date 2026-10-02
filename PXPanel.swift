@@ -142,6 +142,10 @@ private final class PXDockedHost {
     let landscapeMoveGrips: [UIView]
     let overlay: UIView
     var loading: Bool
+    // Exact frame captured when the split window is parked. The dock layout
+    // is allowed to resize/reposition the mini-window without changing this.
+    var parkedFrame: CGRect?
+    var parkedScreenBounds: CGRect?
 
     init(window: UIWindow, card: UIView, canvas: UIView, bridge: PXSceneBridge,
          bundleID: String, side: Int, corners: [UIView], topCorners: [UIView],
@@ -161,6 +165,8 @@ private final class PXDockedHost {
         self.landscapeMoveGrips = landscapeMoveGrips
         self.overlay = overlay
         self.loading = loading
+        self.parkedFrame = nil
+        self.parkedScreenBounds = nil
     }
 }
 
@@ -2491,6 +2497,14 @@ public final class PXPanelEntry: NSObject {
                                 corners: hostCorners, topCorners: hostTopCorners,
                                 topGrip: hostTopGrip, moveGrip: hostMoveGrip, landscapeMoveGrips: hostLandscapeMoveGrips, overlay: overlay,
                                 loading: loading)
+        // Capture the real split-window frame BEFORE layoutDocks() changes the
+        // card into its mini-window size/position. Reusing this exact frame on
+        // every restore prevents the second dock -> restore cycle from drifting.
+        dock.parkedFrame = card.frame
+        dock.parkedScreenBounds = root.bounds
+        if rememberSplitFrameEnabled {
+            saveRememberedFrame(bundleID: bundleID, frame: card.frame, in: root.bounds)
+        }
         dockedHosts.append(dock)
         if dockAfterOpenBundleID == bundleID { dockAfterOpenBundleID = nil }
         if fullscreenAfterOpenBundleID == bundleID { fullscreenAfterOpenBundleID = nil }
@@ -2610,10 +2624,13 @@ public final class PXPanelEntry: NSObject {
                               height: max(natural.width, natural.height))
         let resolved = source.width > 0 && source.height > 0 ? source : fallback
         let defaultFrame = initialCardFrame(in: screen, size: initialCardSize(in: screen, source: resolved))
-        // When the split window is restored from the corner mini-window, use
-        // the exact remembered frame instead of rebuilding it at the default
-        // position first. This keeps the last drag/resize position.
-        let frame = (rememberSplitFrameEnabled ? rememberedFrame(bundleID: dock.bundleID, in: screen) : nil) ?? defaultFrame
+        // Prefer the exact frame captured when this window was parked. While
+        // docked, layoutDocks() changes card.frame for the mini-window, so
+        // reading card.frame here would otherwise make repeated restores drift.
+        let sameScreen = dock.parkedScreenBounds.map { $0.size == screen.size } ?? false
+        let frame = (sameScreen ? dock.parkedFrame : nil)
+            ?? (rememberSplitFrameEnabled ? rememberedFrame(bundleID: dock.bundleID, in: screen) : nil)
+            ?? defaultFrame
         dock.card.layer.cornerRadius = configuredCornerRadius(in: screen, source: resolved)
         PXMotion.spring(0.32, animations: {
             dock.card.transform = .identity
