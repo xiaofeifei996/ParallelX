@@ -2106,29 +2106,53 @@ public final class PXPanelEntry: NSObject {
 
     private func initialCardFrame(in screen: CGRect, size: CGSize) -> CGRect {
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let key = screen.width > screen.height ? "landscapeInitialRightInset" : "initialRightInset"
+        let landscape = screen.width > screen.height
+        let key = landscape ? "landscapeInitialRightInset" : "initialRightInset"
         let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "initialRightInset") as? NSNumber
         let inset = min(max(0, screen.width - size.width), max(0, CGFloat(saved?.doubleValue ?? legacy?.doubleValue ?? 12)))
+
+        // In landscape the split window is intentionally full-height.
+        // Keep its top edge at the screen top instead of vertically centering it.
+        let y = landscape && size.height >= screen.height - 1
+            ? screen.minY
+            : screen.midY - size.height / 2
+
         return CGRect(x: screen.maxX - size.width - inset,
-                      y: screen.midY - size.height / 2, width: size.width, height: size.height)
+                      y: y, width: size.width, height: size.height)
     }
 
     private func initialCardSize(in screen: CGRect, source: CGSize) -> CGSize {
         guard source.width > 0, source.height > 0 else { return .zero }
         let landscape = screen.width > screen.height
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let key = landscape ? "initialWidthPercent" : source.width > source.height
+
+        if landscape {
+            // Landscape split windows fill the screen vertically.
+            // This deliberately ignores the old 78%/95% landscape size setting.
+            // The source aspect ratio determines the width.
+            let height = screen.height
+            let scale = height / source.height
+            let width = source.width * scale
+
+            // If an unusually wide source would exceed the physical screen,
+            // clamp to the screen width while preserving the aspect ratio.
+            if width > screen.width {
+                let clampedScale = screen.width / source.width
+                return CGSize(width: screen.width, height: source.height * clampedScale)
+            }
+            return CGSize(width: width, height: height)
+        }
+
+        let key = source.width > source.height
             ? "portraitLandscapeInitialWidthPercent" : "portraitInitialWidthPercent"
         let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "initialWidthPercent") as? NSNumber
         let portrait = defaults?.object(forKey: "portraitInitialWidthPercent") as? NSNumber
-        let fallback = !landscape && source.width > source.height ? portrait : legacy
+        let fallback = source.width > source.height ? portrait : legacy
         let initialWidthFraction = CGFloat(min(95, max(35, saved?.doubleValue ?? fallback?.doubleValue ?? 78))) / 100
-        let scale = landscape
-            ? min(screen.height * initialWidthFraction / max(source.width, source.height),
-                  (screen.width - landscapeDockWidth(in: screen) - 48) / source.width)
-            : min(screen.width * initialWidthFraction / source.width, (screen.height - 80) / source.height)
+        let scale = min(screen.width * initialWidthFraction / source.width,
+                        (screen.height - 80) / source.height)
         return CGSize(width: source.width * scale, height: source.height * scale)
     }
 
