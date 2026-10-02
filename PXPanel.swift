@@ -1072,6 +1072,12 @@ public final class PXPanelEntry: NSObject {
     private var keyboardFocusFrame = CGRect.null
     private var keyboardFocusRadius: CGFloat = 20
 
+    // ScreenCore-style orientation-specific window memory.  Frames are stored
+    // normalized to the screen so a remembered position survives rotation and
+    // minor screen/bounds changes.
+    private let rememberedPortraitFrameKey = "rememberedPortraitFrame.v1"
+    private let rememberedLandscapeFrameKey = "rememberedLandscapeFrame.v1"
+
     @objc public static func hasVisibleHost() -> Bool {
         shared.hostWindow?.isHidden == false || shared.dockedHosts.contains { !$0.window.isHidden }
     }
@@ -1276,6 +1282,13 @@ public final class PXPanelEntry: NSObject {
         let oldOrientation = layoutOrientation
         let rotating = orientation != layoutOrientation && layoutOrientation != .unknown
         let cards = ([hostCard].compactMap { $0 } + dockedHosts.map { $0.card }).map { ($0, $0.frame) }
+
+        // Preserve the frame in the orientation we are leaving before UIKit
+        // changes the overlay coordinate space.  ScreenCore keeps independent
+        // portrait/landscape layout state instead of transforming one frame.
+        if rotating, let card = hostCard, oldBounds.width > 0, oldBounds.height > 0 {
+            saveRememberedHostFrame(card.frame, orientation: oldOrientation, in: oldBounds)
+        }
         applyingScreenGeometry = true
         defer { applyingScreenGeometry = false }
         UIView.performWithoutAnimation {
@@ -2083,15 +2096,34 @@ public final class PXPanelEntry: NSObject {
         let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
         let initial = initialCardSize(in: screen, source: source)
         var size = initial
+        var targetFrame: CGRect?
         if let requested = launchWidthScale {
             let scale = min(requested, (screen.width - 24) / initial.width,
                             (screen.height - 40) / initial.height)
             size = CGSize(width: initial.width * scale, height: initial.height * scale)
+        } else if let remembered = rememberedHostFrame(orientation: PXSceneBridge.systemOrientation(), in: screen, source: source) {
+            // In landscape the height is deliberately derived from the current
+            // screen so the card reaches both top and bottom edges.  Only its
+            // horizontal placement is restored.  Portrait restores the complete
+            // remembered frame.
+            if screen.width > screen.height {
+                size = initial
+                let centerX = min(max(remembered.midX, screen.minX + size.width / 2),
+                                  screen.maxX - size.width / 2)
+                targetFrame = CGRect(x: centerX - size.width / 2, y: screen.minY,
+                                     width: size.width, height: size.height)
+            } else {
+                let width = min(max(remembered.width, 80), screen.width - 16)
+                let scale = width / max(remembered.width, 1)
+                let height = min(remembered.height * scale, screen.height - 16)
+                size = CGSize(width: width, height: height)
+                targetFrame = CGRect(x: remembered.minX, y: remembered.minY, width: width, height: height)
+            }
         }
         keyboardFocusBase = nil
         keyboardFocusFrame = .null
         card.transform = .identity
-        card.frame = initialCardFrame(in: screen, size: size)
+        card.frame = targetFrame ?? initialCardFrame(in: screen, size: size)
         if let center = launchMovedCenter {
             card.center = CGPoint(x: min(max(center.x, screen.minX + size.width / 2), screen.maxX - size.width / 2),
                                   y: min(max(center.y, screen.minY + size.height / 2), screen.maxY - size.height / 2))
@@ -2102,6 +2134,44 @@ public final class PXPanelEntry: NSObject {
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
+    }
+
+    private func rememberedFrameKey(for orientation: UIInterfaceOrientation) -> String {
+        orientation.isLandscape ? rememberedLandscapeFrameKey : rememberedPortraitFrameKey
+    }
+
+    private func saveRememberedHostFrame(_ frame: CGRect, orientation: UIInterfaceOrientation, in screen: CGRect) {
+        guard screen.width > 0, screen.height > 0, frame.width > 0, frame.height > 0 else { return }
+        let normalized = [
+            "x": Double((frame.minX - screen.minX) / screen.width),
+            "y": Double((frame.minY - screen.minY) / screen.height),
+            "w": Double(frame.width / screen.width),
+            "h": Double(frame.height / screen.height)
+        ]
+        UserDefaults(suiteName: preferenceDomain)?.set(normalized, forKey: rememberedFrameKey(for: orientation))
+    }
+
+    private func rememberedHostFrame(orientation: UIInterfaceOrientation, in screen: CGRect, source: CGSize) -> CGRect? {
+        guard screen.width > 0, screen.height > 0, source.width > 0, source.height > 0 else { return nil }
+        guard let values = UserDefaults(suiteName: preferenceDomain)?.dictionary(forKey: rememberedFrameKey(for: orientation)),
+              let x = values["x"] as? NSNumber,
+              let y = values["y"] as? NSNumber,
+              let w = values["w"] as? NSNumber,
+              let h = values["h"] as? NSNumber else { return nil }
+        let width = CGFloat(w.doubleValue) * screen.width
+        let height = CGFloat(h.doubleValue) * screen.height
+        guard width >= 80, height >= 80 else { return nil }
+        let frame = CGRect(x: screen.minX + CGFloat(x.doubleValue) * screen.width,
+                           y: screen.minY + CGFloat(y.doubleValue) * screen.height,
+                           width: width, height: height)
+        return frame.intersection(screen).isNull ? nil : frame
+    }
+
+    private func rememberCurrentHostFrame() {
+        guard let card = hostCard, let window = hostWindow,
+              let screen = window.rootViewController?.view.bounds,
+              screen.width > 0, screen.height > 0 else { return }
+        saveRememberedHostFrame(card.frame, orientation: PXSceneBridge.systemOrientation(), in: screen)
     }
 
     private func initialCardFrame(in screen: CGRect, size: CGSize) -> CGRect {
@@ -2596,6 +2666,7 @@ public final class PXPanelEntry: NSObject {
                     launchWidthScale = size.width / max(1, base.width)
                     launchMovedCenter = card.center
                 }
+                rememberCurrentHostFrame()
             }
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
@@ -2684,6 +2755,7 @@ public final class PXPanelEntry: NSObject {
                     card.layoutIfNeeded()
                     self.activeBridge.layoutHost()
                     self.layoutHostControls()
+                    self.rememberCurrentHostFrame()
                 }
             })
             return
@@ -2696,6 +2768,7 @@ public final class PXPanelEntry: NSObject {
             card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
             if hostCanvas?.isUserInteractionEnabled == false { launchMovedCenter = card.center }
             layoutHostControls()
+            if gesture.state == .ended { rememberCurrentHostFrame() }
         }
         if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
             moveStartFrame = nil
