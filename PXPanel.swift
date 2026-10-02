@@ -1869,8 +1869,7 @@ public final class PXPanelEntry: NSObject {
         updateCardShadow(card)
         root.view.addSubview(card)
         let clip = UIView(frame: card.bounds)
-        let initialLandscape = screen.width > screen.height
-        clip.backgroundColor = initialLandscape ? .clear : .secondarySystemBackground
+        clip.backgroundColor = .secondarySystemBackground
         clip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         clip.layer.cornerRadius = card.layer.cornerRadius
         clip.layer.cornerCurve = .continuous
@@ -2100,10 +2099,6 @@ public final class PXPanelEntry: NSObject {
         launchMovedCenter = nil
         launchWidthScale = nil
         card.layer.cornerRadius = configuredCornerRadius(in: screen, source: source)
-        if let clip = card.subviews.first {
-            clip.layer.cornerRadius = card.layer.cornerRadius
-            clip.backgroundColor = screen.width > screen.height ? .clear : .secondarySystemBackground
-        }
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
@@ -2129,19 +2124,24 @@ public final class PXPanelEntry: NSObject {
 
     private func initialCardSize(in screen: CGRect, source: CGSize) -> CGSize {
         guard source.width > 0, source.height > 0 else { return .zero }
-        let landscape = layoutOrientation.isLandscape || (layoutOrientation == .unknown && screen.width > screen.height)
+        let landscape = screen.width > screen.height
         let defaults = UserDefaults(suiteName: preferenceDomain)
 
         if landscape {
-            // Landscape split window: keep the original hosted-content layout
-            // untouched and only make the outer PXPanel window wider.  ScreenCore
-            // presents a substantially wider landscape container; use 90% of
-            // the available screen width here while retaining full height.
-            // PXSceneBridge.layoutHost() is intentionally not changed by this
-            // policy, so the app's own aspect-ratio handling remains intact.
+            // Landscape split windows fill the screen vertically.
+            // This deliberately ignores the old 78%/95% landscape size setting.
+            // The source aspect ratio determines the width.
             let height = screen.height
-            let width = min(screen.width * 0.90, screen.width)
-            return CGSize(width: max(height * 0.88, width), height: height)
+            let scale = height / source.height
+            let width = source.width * scale
+
+            // If an unusually wide source would exceed the physical screen,
+            // clamp to the screen width while preserving the aspect ratio.
+            if width > screen.width {
+                let clampedScale = screen.width / source.width
+                return CGSize(width: screen.width, height: source.height * clampedScale)
+            }
+            return CGSize(width: width, height: height)
         }
 
         let key = source.width > source.height
@@ -2214,7 +2214,8 @@ public final class PXPanelEntry: NSObject {
 
     private func configuredCornerRadius(in screen: CGRect, source: CGSize) -> CGFloat {
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let key = "cornerRadius"
+        let key = screen.width > screen.height ? "cornerRadius" : source.width > source.height
+            ? "portraitLandscapeCornerRadius" : "portraitCornerRadius"
         let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "cornerRadius") as? NSNumber
         let portrait = defaults?.object(forKey: "portraitCornerRadius") as? NSNumber
@@ -2295,39 +2296,16 @@ public final class PXPanelEntry: NSObject {
             corner.frame = CGRect(x: corner.tag < 0 ? frame.minX - 12 : frame.maxX - 32,
                                   y: frame.minY - 12, width: 44, height: 44)
         }
-        let landscape = layoutOrientation.isLandscape || frame.width > frame.height
-        if landscape && frame.height >= (hostWindow?.bounds.height ?? frame.height) - 2 {
-            // A full-height landscape card has no usable area below it. Put the
-            // move grip INSIDE the top edge so the gesture remains hittable.
-            let gripWidth = min(frame.width - 24, max(180, frame.width * 0.72))
-            let gripHeight: CGFloat = 44
-            hostMoveGrip?.frame = CGRect(x: frame.midX - gripWidth / 2,
-                                         y: frame.minY + 2,
-                                         width: gripWidth, height: gripHeight)
-            let sideWidth: CGFloat = 42
-            if let moveGrip = hostMoveGrip {
-                moveGrip.accessibilityLabel = "横屏拖动窗口；双击关闭；长按全屏"
-            }
-            let topWidth = min(frame.width - 24, max(180, frame.width * 0.72))
-            let topHeight: CGFloat = 42
-            hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2,
-                                        y: frame.minY + 2,
-                                        width: topWidth, height: topHeight)
-            // Keep the actual move target above the content without placing a
-            // second independent gesture view over the whole window.
-            _ = sideWidth
-        } else {
-            let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
-            let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
-            let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
-            hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
-                                         width: width, height: height)
-            let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
-            let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
-            let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
-            hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
-                                        width: topWidth, height: topHeight)
-        }
+        let width = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "gestureWidth") as? NSNumber ?? 300)))
+        let height = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "gestureHeight") as? NSNumber ?? 80)))
+        let offset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "gestureOffset") as? NSNumber ?? 0)))
+        hostMoveGrip?.frame = CGRect(x: frame.midX - width / 2, y: frame.maxY + offset,
+                                     width: width, height: height)
+        let topWidth = min(360, max(120, CGFloat(truncating: defaults?.object(forKey: "topGestureWidth") as? NSNumber ?? 300)))
+        let topHeight = min(120, max(36, CGFloat(truncating: defaults?.object(forKey: "topGestureHeight") as? NSNumber ?? 80)))
+        let topOffset = min(40, max(-30, CGFloat(truncating: defaults?.object(forKey: "topGestureOffset") as? NSNumber ?? 0)))
+        hostTopGrip?.frame = CGRect(x: frame.midX - topWidth / 2, y: frame.minY - topHeight - topOffset,
+                                    width: topWidth, height: topHeight)
         refreshKeyboardDismissLayer()
     }
 
@@ -2715,20 +2693,7 @@ public final class PXPanelEntry: NSObject {
                 dockAfterOpenBundleID = nil
                 fullscreenAfterOpenBundleID = nil
             }
-            let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-            var proposed = start.offsetBy(dx: translation.x, dy: translation.y)
-
-            // ScreenCore keeps the floating window inside the active screen.
-            // In our full-height landscape mode this also makes the vertical
-            // position effectively fixed at the top edge.
-            let minX = screen.minX
-            let maxX = screen.maxX - proposed.width
-            let minY = screen.minY
-            let maxY = max(screen.minY, screen.maxY - proposed.height)
-            proposed.origin.x = min(max(proposed.origin.x, minX), maxX)
-            proposed.origin.y = min(max(proposed.origin.y, minY), maxY)
-
-            card.frame = proposed
+            card.frame = start.offsetBy(dx: translation.x, dy: translation.y)
             if hostCanvas?.isUserInteractionEnabled == false { launchMovedCenter = card.center }
             layoutHostControls()
         }
