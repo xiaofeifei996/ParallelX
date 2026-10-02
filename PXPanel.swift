@@ -1869,7 +1869,8 @@ public final class PXPanelEntry: NSObject {
         updateCardShadow(card)
         root.view.addSubview(card)
         let clip = UIView(frame: card.bounds)
-        clip.backgroundColor = .secondarySystemBackground
+        let initialLandscape = screen.width > screen.height
+        clip.backgroundColor = initialLandscape ? .clear : .secondarySystemBackground
         clip.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         clip.layer.cornerRadius = card.layer.cornerRadius
         clip.layer.cornerCurve = .continuous
@@ -2099,6 +2100,10 @@ public final class PXPanelEntry: NSObject {
         launchMovedCenter = nil
         launchWidthScale = nil
         card.layer.cornerRadius = configuredCornerRadius(in: screen, source: source)
+        if let clip = card.subviews.first {
+            clip.layer.cornerRadius = card.layer.cornerRadius
+            clip.backgroundColor = screen.width > screen.height ? .clear : .secondarySystemBackground
+        }
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
@@ -2138,12 +2143,12 @@ public final class PXPanelEntry: NSObject {
             let height = screen.height
             let nativeScale = height / source.height
             let nativeWidth = source.width * nativeScale
-            let widthFloor = height * 0.76
+            let widthFloor = height * 0.88
             let preferredWidth = max(nativeWidth, widthFloor)
             // ScreenCore's default split window size is 76%; allow a little
             // more room horizontally while still leaving a visible edge of the
             // underlying app.
-            let width = min(screen.width * 0.88, preferredWidth)
+            let width = min(screen.width * 0.94, preferredWidth)
 
             if width >= screen.width - 0.5 {
                 return CGSize(width: screen.width, height: height)
@@ -2221,8 +2226,7 @@ public final class PXPanelEntry: NSObject {
 
     private func configuredCornerRadius(in screen: CGRect, source: CGSize) -> CGFloat {
         let defaults = UserDefaults(suiteName: preferenceDomain)
-        let key = screen.width > screen.height ? "cornerRadius" : source.width > source.height
-            ? "portraitLandscapeCornerRadius" : "portraitCornerRadius"
+        let key = "cornerRadius"
         let saved = defaults?.object(forKey: key) as? NSNumber
         let legacy = defaults?.object(forKey: "cornerRadius") as? NSNumber
         let portrait = defaults?.object(forKey: "portraitCornerRadius") as? NSNumber

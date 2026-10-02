@@ -761,15 +761,23 @@ static NSHashTable<PXSceneBridge *> *PXBridges;
     CGSize target = canvas.bounds.size;
     if (!host || !canvas || source.width <= 0 || source.height <= 0 ||
         target.width <= 0 || target.height <= 0) return;
+    BOOL containerLandscape = UIInterfaceOrientationIsLandscape([PXSceneBridge systemOrientation]);
+    BOOL contentPortrait = source.height > source.width;
+    // ScreenCore separates the floating container from the hosted content.
+    // In landscape the container may be wider than a portrait scene, but the
+    // scene itself must remain aspect-correct; never stretch its pixels.
     CGFloat scale = MIN(target.width / source.width, target.height / source.height);
-    // The scene owns its content orientation; do not rotate its surface again.
+    if (containerLandscape && contentPortrait) {
+        // Keep the complete portrait surface visible. The extra horizontal
+        // container space is intentional and belongs to the container, not
+        // to the application's scene.
+        scale = target.height / source.height;
+    }
     [UIView performWithoutAnimation:^{
         host.transform = CGAffineTransformIdentity;
         host.bounds = (CGRect){CGPointZero, source};
         [host setNeedsLayout];
         [host layoutIfNeeded];
-        // The scene host positions its own layers. Forcing canonical iOS 15
-        // portrait layers into a landscape CGRect cropped half the picture.
         host.center = CGPointMake(target.width / 2, target.height / 2);
         host.transform = CGAffineTransformMakeScale(scale, scale);
     }];
