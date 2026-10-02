@@ -2631,17 +2631,39 @@ public final class PXPanelEntry: NSObject {
         let frame = (sameScreen ? dock.parkedFrame : nil)
             ?? (rememberSplitFrameEnabled ? rememberedFrame(bundleID: dock.bundleID, in: screen) : nil)
             ?? defaultFrame
+        // The dock card is transformed while it is a mini-window. Never assign
+        // `frame` while that transform is active: UIKit derives frame from
+        // bounds/center/transform, and doing both in the same animation can
+        // introduce a small position error. That error used to accumulate on
+        // the second and subsequent dock -> split restores.
+        let targetBounds = CGRect(origin: .zero, size: frame.size)
+        let targetCenter = CGPoint(x: frame.midX, y: frame.midY)
+        let currentTransform = dock.card.transform
         dock.card.layer.cornerRadius = configuredCornerRadius(in: screen, source: resolved)
         PXMotion.spring(0.32, animations: {
+            dock.card.bounds = targetBounds
+            dock.card.center = targetCenter
             dock.card.transform = .identity
-            dock.card.frame = frame
             dock.card.layoutIfNeeded()
             dock.bridge.layoutHost()
         }, completion: { [weak self, weak dock] _ in
             guard let self = self, let dock = dock, self.hostWindow === dock.window else { return }
-            self.layoutHostControls()
+            // Force an exact final geometry after the transform animation.
+            // This makes every restore start and end at the same frame instead
+            // of carrying forward any fractional transform/center rounding.
+            UIView.performWithoutAnimation {
+                dock.card.transform = .identity
+                dock.card.bounds = targetBounds
+                dock.card.center = targetCenter
+                dock.card.frame = frame
+                dock.card.layer.cornerRadius = self.configuredCornerRadius(in: screen, source: resolved)
+                dock.card.subviews.first?.layer.cornerRadius = dock.card.layer.cornerRadius
+                dock.card.layoutIfNeeded()
+                dock.bridge.layoutHost()
+                self.layoutHostControls()
+            }
         })
-        layoutDocks()
+        _ = currentTransform
     }
 
     @objc private func closeTapped() { closeHost(animated: true) }
