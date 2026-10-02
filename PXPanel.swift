@@ -1083,6 +1083,9 @@ public final class PXPanelEntry: NSObject {
     private var keyboardFocusBase: CGRect?
     private var keyboardFocusFrame = CGRect.null
     private var keyboardFocusRadius: CGFloat = 20
+    // Only the initial open or an actual screen/orientation change may reflow the split card.
+    // Ordinary hosted-geometry callbacks must preserve the current split frame.
+    private var forceHostFrameReflow = false
 
     @objc public static func hasVisibleHost() -> Bool {
         shared.hostWindow?.isHidden == false || shared.dockedHosts.contains { !$0.window.isHidden }
@@ -1310,6 +1313,7 @@ public final class PXPanelEntry: NSObject {
         panel?.view.setNeedsLayout()
         // Home can rotate to portrait during the handoff. The hosted scene
         // keeps its direction, but its card must enter the new screen bounds.
+        forceHostFrameReflow = true
         UIView.performWithoutAnimation { matchHostAspect() }
         activeBridge.refreshHostedOrientationMap()
         activeBridge.refreshKeyboardPlacement()
@@ -1859,6 +1863,7 @@ public final class PXPanelEntry: NSObject {
         // changes; the frame has already been applied above, so this no longer
         // causes a visible jump.
         restoreRememberedFrameOnNextLayout = rememberSplitFrameEnabled
+        forceHostFrameReflow = true
         launchMovedCenter = nil
         launchWidthScale = nil
         let screen = controls.bounds
@@ -2201,32 +2206,56 @@ public final class PXPanelEntry: NSObject {
 
     private func matchHostAspect() {
         guard let window = hostWindow, let card = hostCard else { return }
-        let source = activeBridge.hostedSourceSize()
-        guard source.width > 0, source.height > 0 else { return }
         let screen = window.rootViewController?.view.bounds ?? UIScreen.main.bounds
-        let initial = initialCardSize(in: screen, source: source)
-        var size = initial
-        if let requested = launchWidthScale {
-            let scale = min(requested, (screen.width - 24) / initial.width,
-                            (screen.height - 40) / initial.height)
-            size = CGSize(width: initial.width * scale, height: initial.height * scale)
-        }
+        guard screen.width > 0, screen.height > 0 else { return }
+
+        let source = activeBridge.hostedSourceSize()
+        let hasCurrentFrame = card.bounds.width > 0 && card.bounds.height > 0 &&
+            card.frame.width > 0 && card.frame.height > 0
+        let shouldReflow = forceHostFrameReflow || !hasCurrentFrame
+
         keyboardFocusBase = nil
         keyboardFocusFrame = .null
         card.transform = .identity
-        card.frame = initialCardFrame(in: screen, size: size)
-        if restoreRememberedFrameOnNextLayout, let bundleID = hostedBundleID,
-           let remembered = rememberedFrame(bundleID: bundleID, in: screen) {
-            card.frame = remembered
+
+        if shouldReflow {
+            guard source.width > 0, source.height > 0 else { return }
+            let initial = initialCardSize(in: screen, source: source)
+            var size = initial
+            if let requested = launchWidthScale {
+                let scale = min(requested, (screen.width - 24) / initial.width,
+                                (screen.height - 40) / initial.height)
+                size = CGSize(width: initial.width * scale, height: initial.height * scale)
+            }
+            card.frame = initialCardFrame(in: screen, size: size)
+            if restoreRememberedFrameOnNextLayout, let bundleID = hostedBundleID,
+               let remembered = rememberedFrame(bundleID: bundleID, in: screen) {
+                card.frame = remembered
+            }
+            if let center = launchMovedCenter {
+                card.center = CGPoint(x: min(max(center.x, screen.minX + size.width / 2), screen.maxX - size.width / 2),
+                                      y: min(max(center.y, screen.minY + size.height / 2), screen.maxY - size.height / 2))
+            }
+        } else {
+            // Hosted scene/layout callbacks are not allowed to recreate the default
+            // frame. Keep the exact current split position and size, merely clamp it
+            // to the current screen in case the safe area changed.
+            var frame = card.frame
+            let width = min(frame.width, screen.width)
+            let height = min(frame.height, screen.height)
+            frame.size = CGSize(width: width, height: height)
+            frame.origin.x = min(max(frame.origin.x, screen.minX), screen.maxX - width)
+            frame.origin.y = min(max(frame.origin.y, screen.minY), screen.maxY - height)
+            card.frame = frame
         }
+
         restoreRememberedFrameOnNextLayout = false
-        if let center = launchMovedCenter {
-            card.center = CGPoint(x: min(max(center.x, screen.minX + size.width / 2), screen.maxX - size.width / 2),
-                                  y: min(max(center.y, screen.minY + size.height / 2), screen.maxY - size.height / 2))
-        }
+        forceHostFrameReflow = false
         launchMovedCenter = nil
         launchWidthScale = nil
-        card.layer.cornerRadius = configuredCornerRadius(in: screen, source: source)
+        let radiusSource = source.width > 0 && source.height > 0 ? source :
+            CGSize(width: max(1, card.bounds.width), height: max(1, card.bounds.height))
+        card.layer.cornerRadius = configuredCornerRadius(in: screen, source: radiusSource)
         card.layoutIfNeeded()
         layoutHostControls()
         activeBridge.layoutHost()
